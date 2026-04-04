@@ -1,0 +1,99 @@
+{
+  "name": "NUB Music Bot",
+  "description": "🔥 Ultimate Telegram Voice Chat Music Bot — HD audio/video streaming, multi-language support, premium UI. Powered by Pyrogram (Kurigram) and PyTgCalls.",
+  "logo": "https://raw.githubusercontent.com/nub-coders/nub-music-bot/refs/heads/main/music.jpg",
+  "keywords": [
+    "python3",
+    "telegram",
+    "MusicBot",
+    "telegram-bot",
+    "pyrogram",
+    "voice-chat",
+    "pytgcalls"
+  ],
+  "env": {
+    "API_ID": {
+      "description": "Telegram App API ID — get from https://my.telegram.org",
+      "value": "2040",
+      "required": true
+    },
+    "API_HASH": {
+      "description": "Telegram App API Hash — get from https://my.telegram.org",
+      "value": "b18441a1ff607e10a989891a5462e627",
+      "required": true
+    },
+    "BOT_TOKEN": {
+      "description": "Bot token from @BotFather",
+      "value": "",
+      "required": true
+    },
+    "STRING_SESSION": {
+      "description": "Pyrogram v2 user session string for the assistant account",
+      "value": "",
+      "required": true
+    },
+    "OWNER_ID": {
+      "description": "Your Telegram user ID (get it from @userinfobot)",
+      "value": "6076474757",
+      "required": true
+    },
+    "MONGODB_URI": {
+      "description": "MongoDB connection string — e.g. mongodb+srv://user:pass@cluster.mongodb.net/db",
+      "value": "mongodb+srv://nubcoders:nubcoders@music.8rxlsum.mongodb.net/?retryWrites=true&w=majority&appName=music",
+      "required": true
+    },
+    "YOUTUBE_API_KEYS": {
+      "description": "Comma-separated YouTube Data API v3 keys — get from https://console.cloud.google.com (10K req/day free each). Leave blank to use yt-dlp fallback only.",
+      "value": "",
+      "required": false
+    },
+    "GROUP": {
+      "description": "Support group username (without @)",
+      "value": "nub_coder_s",
+      "required": false
+    },
+    "CHANNEL": {
+      "description": "Updates channel username (without @)",
+      "value": "nub_coders",
+      "required": false
+    },
+    "LOGGER_ID": {
+      "description": "Chat ID of a group/channel to receive error logs",
+      "value": "",
+      "required": false
+    },
+    "DB_NAME": {
+      "description": "MongoDB database name (default: musicbot)",
+      "value": "musicbot",
+      "required": false
+    },
+    "NUB_YT_API_BASE_URL": {
+      "description": "Base URL for external YouTube API proxy (optional)",
+      "value": "http://api.nubcoder.com",
+      "required": false
+    },
+    "YT_API_TOKEN": {
+      "description": "Auth token for the external YouTube API proxy (optional)",
+      "value": "",
+      "required": false
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    },
+    {
+      "url": "heroku/nodejs"
+    },
+    {
+      "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git"
+    }
+  ],
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "free"
+    }
+  },
+  "stack": "container"
+}

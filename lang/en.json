@@ -1,0 +1,37 @@
+{
+  "_name": "English",
+  "_flag": "🇬🇧",
+  "_code": "en",
+
+  "PLAY": "<u><b>▶️ | ɴᴏᴡ sᴛʀᴇᴀᴍɪɴɢ</b></u>\n\n‣ <b>ᴍᴏᴅᴇ:</b> {mode}\n‣ <b>ᴛɪᴛʟᴇ:</b> {title}\n‣ <b>ᴅᴜʀᴀᴛɪᴏɴ:</b> {duration}\n‣ <b>ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {by}",
+  "QUEUE": "<u><b>➕ | ᴀᴅᴅᴇᴅ ᴛᴏ ǫᴜᴇᴜᴇ</b></u>\n\n‣ <b>ᴍᴏᴅᴇ:</b> {mode}\n‣ <b>ᴛɪᴛʟᴇ:</b> {title}\n‣ <b>ᴅᴜʀᴀᴛɪᴏɴ:</b> {duration}\n‣ <b>ᴘᴏsɪᴛɪᴏɴ:</b> #{pos}",
+
+  "NO_STREAM": "❌ | <b>ɴᴏ ᴀᴄᴛɪᴠᴇ sᴛʀᴇᴀᴍ ʀɪɢʜᴛ ɴᴏᴡ.</b>",
+  "SKIPPING": "⏭ | <b>sᴋɪᴘᴘɪɴɢ ᴄᴜʀʀᴇɴᴛ ᴛʀᴀᴄᴋ…</b>\n‣ <b>ʙʏ:</b> {by}",
+  "SKIPPED_EMPTY": "⏭ | <b>ǫᴜᴇᴜᴇ ɪs ɴᴏᴡ ᴇᴍᴘᴛʏ.</b>\n‣ <b>ʙʏ:</b> {by}",
+  "RESUMED": "▶️ | <b>ᴘʟᴀʏʙᴀᴄᴋ ʀᴇsᴜᴍᴇᴅ.</b>\n‣ <b>ʙʏ:</b> {by}",
+  "PAUSED": "⏸ | <b>ᴘʟᴀʏʙᴀᴄᴋ ᴘᴀᴜsᴇᴅ.</b>\n‣ <b>ʙʏ:</b> {by}",
+  "STREAM_ENDED": "⏹ | <b>sᴛʀᴇᴀᴍ ᴇɴᴅᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ.</b>",
+  "QUEUE_EMPTY": "⏺ | <b>ǫᴜᴇᴜᴇ ɪs ᴇᴍᴘᴛʏ.</b>",
+  "QUEUE_EMPTY_STREAM_ENDED": "⏺ | <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ. sᴛʀᴇᴀᴍ sᴛᴏᴘᴘᴇᴅ.</b>",
+  "SKIPPED_SUCCESS": "✅ | <b>sᴋɪᴘᴘᴇᴅ ᴛᴏ ɴᴇxᴛ ᴛʀᴀᴄᴋ.</b>",
+  "AUTO_LEAVE_EMPTY": "⚠️ | <b>ɴᴏ ʟɪsᴛᴇɴᴇʀs ᴅᴇᴛᴇᴄᴛᴇᴅ.</b> <i>ʟᴇᴀᴠɪɴɢ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ.</i>",
+  "AUTO_LEAVE_ONE": "⚠️ | <b>ᴏɴʟʏ ᴏɴᴇ ʟɪsᴛᴇɴᴇʀ ʀᴇᴍᴀɪɴᴇᴅ.</b> <i>ᴀssɪsᴛᴀɴᴛ ʟᴇꜰᴛ.</i>",
+  "ERROR_STREAM": "❌ | <b>ᴄᴏᴜʟᴅ ɴᴏᴛ ꜰɪɴᴅ ᴀ ᴠᴀʟɪᴅ sᴛʀᴇᴀᴍ sᴏᴜʀᴄᴇ.</b>",
+  "ERROR_OCCURRED": "❌ | <b>ᴀɴ ᴇʀʀᴏʀ ᴏᴄᴄᴜʀʀᴇᴅ:</b>",
+  "GROUP_ONLY": "⚠️ | <b>ᴘʟᴀʏ ᴄᴏᴍᴍᴀɴᴅs ᴄᴀɴ ᴏɴʟʏ ʙᴇ ᴜsᴇᴅ ɪɴ ɢʀᴏᴜᴘs.</b>",
+  "LOADING": "🔄 | <b>ʟᴏᴀᴅɪɴɢ…</b>",
+  "PROCESSING": "🔄 | <b>ᴘʀᴏᴄᴇssɪɴɢ…</b>",
+  "REBOOTING": "🔄 | <b>ʀᴇʙᴏᴏᴛɪɴɢ ʙᴏᴛ ᴘʀᴏᴄᴇss…</b>",
+
+  "ADMIN_RESTRICTED_CMD": "🔐 | <b>ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪs ʀᴇsᴛʀɪᴄᴛᴇᴅ ᴛᴏ ᴀᴅᴍɪɴs ᴏɴʟʏ.</b>",
+  "ADMIN_RESTRICTED_ACTION": "🔐 | <b>ᴛʜɪs ᴀᴄᴛɪᴏɴ ɪs ʀᴇsᴛʀɪᴄᴛᴇᴅ ᴛᴏ ᴀᴅᴍɪɴs ᴏɴʟʏ.</b>",
+  "OWNER_SUDO_CMD": "🔑 | <b>ᴏᴡɴᴇʀ/sᴜᴅᴏ ᴏɴʟʏ ᴄᴏᴍᴍᴀɴᴅ.</b>",
+
+  "LANG_SET": "🌐 | <b>ʟᴀɴɢᴜᴀɢᴇ sᴇᴛ ᴛᴏ</b> <code>{lang}</code> <b>{flag}</b>",
+  "LANG_ALREADY": "⚠️ | <b>ᴛʜɪs ᴄʜᴀᴛ ɪs ᴀʟʀᴇᴀᴅʏ ᴜsɪɴɢ</b> <code>{lang}</code>",
+  "LANG_INVALID": "❌ | <b>ɪɴᴠᴀʟɪᴅ ʟᴀɴɢᴜᴀɢᴇ ᴄᴏᴅᴇ.</b>\n\n<b>ᴀᴠᴀɪʟᴀʙʟᴇ ʟᴀɴɢᴜᴀɢᴇs:</b>\n{list}",
+  "LANG_USAGE": "⚠️ | <b>ᴜsᴀɢᴇ:</b> <code>/setlang &lt;code&gt;</code>\n\n<b>ᴀᴠᴀɪʟᴀʙʟᴇ ʟᴀɴɢᴜᴀɢᴇs:</b>\n{list}",
+
+  "START_TEXT": "👋 <b>ʜᴇʏ {name}!</b>\n\n🎵 <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {botname}</b>\n\n<i>ᴀ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ & ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ sᴛʀᴇᴀᴍɪɴɢ.</i>\n\n<b><i>ᴜsᴇ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ.</i></b>"
+}
