@@ -43,6 +43,7 @@ from utils.message import Messages
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
 from database import find_one, push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task
+from thumbnails import get_thumb
 
 async def end(client, update):
     """Handle stream end event"""
@@ -97,7 +98,7 @@ def admin_only():
                     if isinstance(update, CallbackQuery):
                         await update.answer(Messages.ADMIN_UNKNOWN_USER, show_alert=True)
                     else:
-                        await update.reply(Messages.ADMIN_UNKNOWN_USER, reply_to_message_id=reply_id, disable_web_page_preview=True)
+                        await update.reply(Messages.ADMIN_UNKNOWN_USER, reply_to_message_id=reply_id, link_preview_options=None)
                     return
 
                 # --- Fast in-memory checks first (no network I/O) ---
@@ -138,7 +139,7 @@ def admin_only():
                     if isinstance(update, CallbackQuery):
                         await update.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
                     else:
-                        await update.reply(Messages.ADMIN_RESTRICTED_CMD, reply_to_message_id=reply_id, disable_web_page_preview=True)
+                        await update.reply(Messages.ADMIN_RESTRICTED_CMD, reply_to_message_id=reply_id, link_preview_options=None)
                     return
 
                 logger.info(f"User {user_id} authorized for {func.__name__}")
@@ -149,7 +150,7 @@ def admin_only():
                 if isinstance(update, CallbackQuery):
                     await update.answer(Messages.AUTH_FAILED, show_alert=True)
                 else:
-                    await update.reply(Messages.AUTH_FAILED, disable_web_page_preview=True)
+                    await update.reply(Messages.AUTH_FAILED, link_preview_options=None)
                 return
         return wrapper
     return decorator
@@ -169,7 +170,7 @@ async def queue_command(client, message):
     queue_list = queues.get(chat_id, [])
     items = queue_list[:20]
     if not items:
-        return await message.reply(Messages.QUEUE_EMPTY, disable_web_page_preview=True)
+        return await message.reply(Messages.QUEUE_EMPTY, link_preview_options=None)
 
     # Build styled queue text
     text_lines = ["🎵 | ǫᴜᴇᴜᴇ (ᴍᴀx 20)\n"]
@@ -246,7 +247,7 @@ async def active_chats(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     # Use PyTgCalls.calls to get active calls directly
     active_calls = await call_py.calls
@@ -270,7 +271,7 @@ async def active_chats(client, message):
     else:
         reply_text = "<b>Active Voice Chats:</b>\n<blockquote>No active group calls</blockquote>"
 
-    await message.reply_text(reply_text, disable_web_page_preview=True)
+    await message.reply_text(reply_text, link_preview_options=None)
 
 
 async def remove_active_chat(client, chat_id):
@@ -306,9 +307,9 @@ async def mentionall(client, message):
         if usrnum == 5:
             if args:
                 txt = f"<blockquote>{args}\n\n{usrtxt}</blockquote>"
-                await client.send_message(chat_id, txt, disable_web_page_preview=True)
+                await client.send_message(chat_id, txt, link_preview_options=None)
             elif direp:
-                await direp.reply(f"<blockquote>{usrtxt}</blockquote>", disable_web_page_preview=True)
+                await direp.reply(f"<blockquote>{usrtxt}</blockquote>", link_preview_options=None)
             await asyncio.sleep(5)
             usrnum = 0
             usrtxt = ""
@@ -336,7 +337,7 @@ async def seek_handler_func(client, message):
             await client.send_message(
                 message.chat.id,
                 Messages.SEEK_NO_ARGS, 
-            disable_web_page_preview=True)
+            link_preview_options=None)
             return
 
         try:
@@ -345,13 +346,13 @@ async def seek_handler_func(client, message):
                 await client.send_message(
                     message.chat.id,
                     Messages.SEEK_NEGATIVE, 
-                disable_web_page_preview=True)
+                link_preview_options=None)
                 return
         except ValueError:
             await client.send_message(
                 message.chat.id,
                 Messages.SEEK_INVALID, 
-            disable_web_page_preview=True)
+            link_preview_options=None)
             return
 
         # Check if there's a song playing
@@ -372,7 +373,7 @@ async def seek_handler_func(client, message):
                 await client.send_message(
                     message.chat.id,
                     "Assistant is not streaming anything!", 
-                disable_web_page_preview=True)
+                link_preview_options=None)
                 return
 
             played_in_seconds = int(time.time() - played[message.chat.id])
@@ -386,7 +387,7 @@ async def seek_handler_func(client, message):
                     await client.send_message(
                         message.chat.id,
                         Messages.SEEK_BEYOND_REMAINING, 
-                    disable_web_page_preview=True)
+                    link_preview_options=None)
                     return
                 total_seek = seek_value + played_in_seconds
             else:  # seekback
@@ -395,7 +396,7 @@ async def seek_handler_func(client, message):
                     await client.send_message(
                         message.chat.id,
                         Messages.SEEK_BEYOND_PLAYED, 
-                    disable_web_page_preview=True)
+                    link_preview_options=None)
                     return
                 total_seek = played_in_seconds - seek_value
 
@@ -432,30 +433,30 @@ async def seek_handler_func(client, message):
             await client.send_message(
                 message.chat.id,
                 f"Seeked to {to_seek}!\n\nʙʏ: {message.from_user.mention()}", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
         else:
             await client.send_message(
                 message.chat.id,
                 "Assistant is not streaming anything!", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
     except Exception as e:
         await client.send_message(
             message.chat.id,
             f"{Messages.ERROR_OCCURRED} {str(e)}", 
-        disable_web_page_preview=True)
+        link_preview_options=None)
 
 
 @Client.on_message(filters.command("cancel") & filters.group)
 @admin_only()
 async def cancel_spam(client, message):
     if not message.chat.id in spam_chats:
-        return await message.reply(Messages.NO_TAGALL, disable_web_page_preview=True)
+        return await message.reply(Messages.NO_TAGALL, link_preview_options=None)
     else:
         try:
             spam_chats.remove(message.chat.id)
         except:
             pass
-        return await message.reply(Messages.DISMISS_MENTION, disable_web_page_preview=True)
+        return await message.reply(Messages.DISMISS_MENTION, link_preview_options=None)
 
 @Client.on_message(filters.command("del") & filters.group)
 @admin_only()
@@ -470,9 +471,9 @@ async def delete_message_handler(client, message):
         except MessageDeleteForbidden:
               pass
         except Exception as e:
-            await message.reply(Messages.ERROR_DEL_MSG.format(str(e)), disable_web_page_preview=True)
+            await message.reply(Messages.ERROR_DEL_MSG.format(str(e)), link_preview_options=None)
     else:
-        await message.reply(Messages.REPLY_TO_DEL, disable_web_page_preview=True)
+        await message.reply(Messages.REPLY_TO_DEL, link_preview_options=None)
 
 
 @Client.on_message(filters.command("auth") & filters.group)
@@ -494,7 +495,7 @@ async def auth_user(client, message):
 
             # Check if replied user is admin (use cache)
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.OWNER_AUTH_ALL, disable_web_page_preview=True)
+                return await message.reply(Messages.OWNER_AUTH_ALL, link_preview_options=None)
 
             # Check if user can be authorized
             if (replied_user_id != message.chat.id and
@@ -510,13 +511,13 @@ async def auth_user(client, message):
                         {"$set": {'auth_users': AUTH}},
                         upsert=True
                     ))
-                    await message.reply(Messages.USER_AUTH.format(replied_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_AUTH.format(replied_user_id), link_preview_options=None)
                 else:
-                    await message.reply(Messages.USER_ALREADY_AUTH.format(replied_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_ALREADY_AUTH.format(replied_user_id), link_preview_options=None)
             else:
-                await message.reply(Messages.CANT_AUTH_SELF, disable_web_page_preview=True)
+                await message.reply(Messages.CANT_AUTH_SELF, link_preview_options=None)
         else:
-            await message.reply(Messages.NOT_FROM_USER, disable_web_page_preview=True)
+            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
     else:
         # If not a reply, check if a user ID is provided in the command
         command_parts = message.text.split()
@@ -532,13 +533,13 @@ async def auth_user(client, message):
                         {"$set": {'auth_users': AUTH}},
                         upsert=True
                     ))
-                    await message.reply(Messages.USER_AUTH.format(user_id_to_auth), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_AUTH.format(user_id_to_auth), link_preview_options=None)
                 else:
-                    await message.reply(Messages.USER_ALREADY_AUTH.format(user_id_to_auth), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_ALREADY_AUTH.format(user_id_to_auth), link_preview_options=None)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, disable_web_page_preview=True)
+                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, disable_web_page_preview=True)
+            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
 
 @Client.on_message(filters.command("unauth") & filters.group)
 @admin_only()
@@ -557,7 +558,7 @@ async def unauth_user(client, message):
 
             # Check if replied user is admin (use cache)
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.CANT_REMOVE_AUTH_OWNER, disable_web_page_preview=True)
+                return await message.reply(Messages.CANT_REMOVE_AUTH_OWNER, link_preview_options=None)
 
             # Check if user can be unauthorized using global AUTH
             if replied_user_id in AUTH[str(chat_id)]:
@@ -568,11 +569,11 @@ async def unauth_user(client, message):
                     {"$set": {'auth_users': AUTH}},
                     upsert=True
                 ))
-                await message.reply(Messages.USER_REMOVED_AUTH.format(replied_user_id), disable_web_page_preview=True)
+                await message.reply(Messages.USER_REMOVED_AUTH.format(replied_user_id), link_preview_options=None)
             else:
-                await message.reply(Messages.USER_NOT_AUTH.format(replied_user_id), disable_web_page_preview=True)
+                await message.reply(Messages.USER_NOT_AUTH.format(replied_user_id), link_preview_options=None)
         else:
-            await message.reply(Messages.NOT_FROM_USER, disable_web_page_preview=True)
+            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
     else:
         # If not a reply, check if a user ID is provided in the command
         command_parts = message.text.split()
@@ -588,13 +589,13 @@ async def unauth_user(client, message):
                         {"$set": {'auth_users': AUTH}},
                         upsert=True
                     ))
-                    await message.reply(Messages.USER_REMOVED_AUTH.format(user_id_to_unauth), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_REMOVED_AUTH.format(user_id_to_unauth), link_preview_options=None)
                 else:
-                    await message.reply(Messages.USER_NOT_AUTH.format(user_id_to_unauth), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_NOT_AUTH.format(user_id_to_unauth), link_preview_options=None)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, disable_web_page_preview=True)
+                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, disable_web_page_preview=True)
+            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
 
 @Client.on_message(filters.command("block"))
 async def block_user(client, message):
@@ -611,7 +612,7 @@ async def block_user(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     # Check if the message is a reply
     if message.reply_to_message:
@@ -621,7 +622,7 @@ async def block_user(client, message):
             replied_user_id = replied_message.from_user.id
             admin_file = f"{ggg}/admin.txt"
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.OWNER_BLOCK_RESTRICT, disable_web_page_preview=True)
+                return await message.reply(Messages.OWNER_BLOCK_RESTRICT, link_preview_options=None)
             # Check if the replied user is the same as the current chat (group) id
             if replied_user_id != message.chat.id and not replied_message.from_user.is_self and not OWNER_ID == replied_user_id:
                 if replied_user_id not in BLOCK:
@@ -630,14 +631,14 @@ async def block_user(client, message):
                     db_task(collection.update_one({"bot_id": client.me.id},
                                         {"$push": {'busers': replied_user_id}},
                                         upsert=True))
-                    await message.reply(Messages.USER_BLOCKED.format(replied_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_BLOCKED.format(replied_user_id), link_preview_options=None)
                 else:
-                   return await message.reply(Messages.USER_ALREADY_BLOCKED.format(replied_user_id), disable_web_page_preview=True)
+                   return await message.reply(Messages.USER_ALREADY_BLOCKED.format(replied_user_id), link_preview_options=None)
 
             else:
-                await message.reply(Messages.CANT_BLOCK_SELF, disable_web_page_preview=True)
+                await message.reply(Messages.CANT_BLOCK_SELF, link_preview_options=None)
         else:
-            await message.reply(Messages.NOT_FROM_USER, disable_web_page_preview=True)
+            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
     else:
         # If not a reply, check if a user ID is provided in the command
         command_parts = message.text.split()
@@ -652,13 +653,13 @@ async def block_user(client, message):
                                         {"$push": {'busers': user_id_to_block}},
                                         upsert=True
                                     ))
-                    await message.reply(Messages.USER_BLOCKED.format(user_id_to_block), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_BLOCKED.format(user_id_to_block), link_preview_options=None)
                 else:
-                   return await message.reply(Messages.USER_ALREADY_BLOCKED.format(user_id_to_block), disable_web_page_preview=True)
+                   return await message.reply(Messages.USER_ALREADY_BLOCKED.format(user_id_to_block), link_preview_options=None)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, disable_web_page_preview=True)
+                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, disable_web_page_preview=True)
+            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
 
 @Client.on_message(filters.command("reboot") & filters.private)
 async def reboot_handler(client: Client, message: Message):
@@ -674,10 +675,10 @@ async def reboot_handler(client: Client, message: Message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     # Authorized: Reboot process
-    await message.reply(Messages.REBOOTING, disable_web_page_preview=True)
+    await message.reply(Messages.REBOOTING, link_preview_options=None)
     os.system(f"kill -9 {os.getpid()}")  # Hard kill (optional after client.stop())
 
 
@@ -695,7 +696,7 @@ async def setlang_handler(client, message):
         text = (await get_str(chat_id, "LANG_USAGE")).format(
             list=lang_list_text()
         )
-        return await message.reply(text, disable_web_page_preview=True)
+        return await message.reply(text, link_preview_options=None)
 
     code = args[1].lower().strip()
 
@@ -703,21 +704,21 @@ async def setlang_handler(client, message):
         text = (await get_str(chat_id, "LANG_INVALID")).format(
             list=lang_list_text()
         )
-        return await message.reply(text, disable_web_page_preview=True)
+        return await message.reply(text, link_preview_options=None)
 
     current = await get_lang(chat_id)
     if current == code:
         text = (await get_str(chat_id, "LANG_ALREADY")).format(
             lang=LANGUAGES[code]["name"]
         )
-        return await message.reply(text, disable_web_page_preview=True)
+        return await message.reply(text, link_preview_options=None)
 
     await set_lang(chat_id, code)
     text = (await get_str(chat_id, "LANG_SET")).format(
         lang=LANGUAGES[code]["name"],
         flag=LANGUAGES[code]["flag"],
     )
-    await message.reply(text, disable_web_page_preview=True)
+    await message.reply(text, link_preview_options=None)
 
 
 @Client.on_message(filters.command("lang"))
@@ -732,7 +733,7 @@ async def lang_info_handler(client, message):
         f"<b>ᴀᴠᴀɪʟᴀʙʟᴇ ʟᴀɴɢᴜᴀɢᴇs:</b>\n{lang_list_text()}\n\n"
         f"<i>ᴜsᴇ <code>/setlang &lt;code&gt;</code> ᴛᴏ ᴄʜᴀɴɢᴇ (ᴀᴅᴍɪɴ ᴏɴʟʏ)</i>"
     )
-    await message.reply(text, disable_web_page_preview=True)
+    await message.reply(text, link_preview_options=None)
 
 
 # ───────────────────────────────────────────────────────────────────────────────
@@ -751,7 +752,7 @@ async def unblock_user(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     if message.reply_to_message:
         replied_message = message.reply_to_message
@@ -764,9 +765,9 @@ async def unblock_user(client, message):
             db_task(collection.update_one({"bot_id": client.me.id},
                                 {"$pull": {'busers': replied_user_id}},
                                 upsert=True))
-            await message.reply(Messages.REMOVED_FROM_BLOCKLIST.format(replied_user_id), disable_web_page_preview=True)
+            await message.reply(Messages.REMOVED_FROM_BLOCKLIST.format(replied_user_id), link_preview_options=None)
         else:
-            return await message.reply(Messages.NOT_IN_BLOCKLIST.format(replied_user_id), disable_web_page_preview=True)
+            return await message.reply(Messages.NOT_IN_BLOCKLIST.format(replied_user_id), link_preview_options=None)
 
     else:
         # If not a reply, check if a user ID is provided in the command
@@ -782,13 +783,13 @@ async def unblock_user(client, message):
                     db_task(collection.update_one({"bot_id": client.me.id},
                                         {"$pull": {'busers': target_user_id}},
                                         upsert=True))
-                    await message.reply(Messages.REMOVED_FROM_BLOCKLIST.format(target_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.REMOVED_FROM_BLOCKLIST.format(target_user_id), link_preview_options=None)
                 else:
-                    return await message.reply(Messages.NOT_IN_BLOCKLIST.format(target_user_id), disable_web_page_preview=True)
+                    return await message.reply(Messages.NOT_IN_BLOCKLIST.format(target_user_id), link_preview_options=None)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, disable_web_page_preview=True)
+                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, disable_web_page_preview=True)
+            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
 
 
 @Client.on_message(filters.command("sudolist"))
@@ -801,14 +802,14 @@ async def show_sudo_list(client, message):
     is_authorized = is_admin or str(OWNER_ID) == str(user_id)
 
     if not is_authorized:
-        return await message.reply(Messages.PAID_OWNER_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.PAID_OWNER_CMD, link_preview_options=None)
     try:
         # Get all users who have SUDOERS field
         users_data = await find_one(user_sessions, {"bot_id": client.me.id})
         sudo_users = users_data.get("SUDOERS", []) if users_data else []
 
         if not sudo_users:
-            return await message.reply(Messages.NO_SUDO_USERS, disable_web_page_preview=True)
+            return await message.reply(Messages.NO_SUDO_USERS, link_preview_options=None)
 
         # Build the sudo list message
         sudo_list = ["**🔱 SUDO USERS LIST:**\n"]
@@ -829,10 +830,10 @@ async def show_sudo_list(client, message):
         sudo_list.append(f"\n**Total SUDO Users:** `{number-1}`")
 
         # Send the message
-        await message.reply("\n".join(sudo_list), disable_web_page_preview=True)
+        await message.reply("\n".join(sudo_list), link_preview_options=None)
 
     except Exception as e:
-        await message.reply(Messages.ERR_FETCH_SUDO.format(str(e)), disable_web_page_preview=True)
+        await message.reply(Messages.ERR_FETCH_SUDO.format(str(e)), link_preview_options=None)
 
 
 @Client.on_message(filters.command("addsudo"))
@@ -845,7 +846,7 @@ async def add_to_sudo(client, message):
     is_authorized = is_admin or str(OWNER_ID) == str(user_id)
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_CMD, link_preview_options=None)
 
     if message.reply_to_message:
         replied_message = message.reply_to_message
@@ -854,7 +855,7 @@ async def add_to_sudo(client, message):
 
             # Check if target user is already admin
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.ALREADY_OWNER, disable_web_page_preview=True)
+                return await message.reply(Messages.ALREADY_OWNER, link_preview_options=None)
 
             # Check if trying to add self or bot
             if replied_user_id != message.chat.id and not replied_message.from_user.is_self:
@@ -863,14 +864,14 @@ async def add_to_sudo(client, message):
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if replied_user_id not in sudoers:
                     asyncio.create_task(push_to_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", replied_user_id, upsert=True))
-                    await message.reply(Messages.USER_ADDED_SUDO.format(replied_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_ADDED_SUDO.format(replied_user_id), link_preview_options=None)
                     SUDO.append(replied_user_id)
                 else:
-                    await message.reply(Messages.USER_ALREADY_SUDO.format(replied_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_ALREADY_SUDO.format(replied_user_id), link_preview_options=None)
             else:
-                await message.reply(Messages.CANT_SUDO_SELF, disable_web_page_preview=True)
+                await message.reply(Messages.CANT_SUDO_SELF, link_preview_options=None)
         else:
-            await message.reply(Messages.NOT_FROM_USER, disable_web_page_preview=True)
+            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
     else:
         # Handle command with user ID
         command_parts = message.text.split()
@@ -880,21 +881,21 @@ async def add_to_sudo(client, message):
 
                 # Check if target user is already admin
                 if target_user_id in get_admin_ids(admin_file):
-                    return await message.reply(Messages.ALREADY_OWNER, disable_web_page_preview=True)
+                    return await message.reply(Messages.ALREADY_OWNER, link_preview_options=None)
 
                 # Get current sudo users
                 users_data = await find_one(user_sessions, {"bot_id": client.me.id})
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if target_user_id not in sudoers:
                     asyncio.create_task(push_to_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", target_user_id, upsert=True))
-                    await message.reply(Messages.USER_ADDED_SUDO.format(target_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_ADDED_SUDO.format(target_user_id), link_preview_options=None)
                     SUDO.append(target_user_id)
                 else:
-                    await message.reply(Messages.USER_ALREADY_SUDO.format(target_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_ALREADY_SUDO.format(target_user_id), link_preview_options=None)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, disable_web_page_preview=True)
+                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, disable_web_page_preview=True)
+            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
 
 @Client.on_message(filters.command("rmsudo"))
 async def remove_from_sudo(client, message):
@@ -906,7 +907,7 @@ async def remove_from_sudo(client, message):
     is_authorized = is_admin or (user_id == OWNER_ID)
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_CMD, link_preview_options=None)
 
     # Handle reply to message
     if message.reply_to_message:
@@ -916,25 +917,25 @@ async def remove_from_sudo(client, message):
 
             # Check if target user is an admin
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.CANT_REMOVE_OWNER_SUDO, disable_web_page_preview=True)
+                return await message.reply(Messages.CANT_REMOVE_OWNER_SUDO, link_preview_options=None)
 
             # Check if trying to remove self or bot
             if replied_user_id != message.chat.id and not replied_message.from_user.is_self:
                 # Get current sudo users
                 users_data = await find_one(user_sessions, {"bot_id": client.me.id})
                 if not users_data:
-                    return await message.reply(Messages.USER_NOT_IN_DB.format(replied_user_id), disable_web_page_preview=True)
+                    return await message.reply(Messages.USER_NOT_IN_DB.format(replied_user_id), link_preview_options=None)
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if replied_user_id in sudoers:
                     asyncio.create_task(pull_from_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", replied_user_id))
-                    await message.reply(Messages.USER_REMOVED_SUDO.format(replied_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_REMOVED_SUDO.format(replied_user_id), link_preview_options=None)
                     SUDO.remove(replied_user_id)
                 else:
-                    await message.reply(Messages.USER_NOT_IN_SUDO.format(replied_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_NOT_IN_SUDO.format(replied_user_id), link_preview_options=None)
             else:
-                await message.reply(Messages.CANT_REMOVE_SELF_SUDO, disable_web_page_preview=True)
+                await message.reply(Messages.CANT_REMOVE_SELF_SUDO, link_preview_options=None)
         else:
-            await message.reply(Messages.NOT_FROM_USER, disable_web_page_preview=True)
+            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
     else:
         # Handle command with user ID
         command_parts = message.text.split()
@@ -944,23 +945,23 @@ async def remove_from_sudo(client, message):
 
                 # Check if target user is an admin
                 if target_user_id in get_admin_ids(admin_file):
-                    return await message.reply(Messages.CANT_REMOVE_OWNER_SUDO, disable_web_page_preview=True)
+                    return await message.reply(Messages.CANT_REMOVE_OWNER_SUDO, link_preview_options=None)
 
                 # Get current sudo users
                 users_data = await find_one(user_sessions, {"bot_id": client.me.id})
                 if not users_data:
-                    return await message.reply(Messages.USER_NOT_IN_DB.format(target_user_id), disable_web_page_preview=True)
+                    return await message.reply(Messages.USER_NOT_IN_DB.format(target_user_id), link_preview_options=None)
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if target_user_id in sudoers:
                     asyncio.create_task(pull_from_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", target_user_id))
-                    await message.reply(Messages.USER_REMOVED_SUDO.format(target_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_REMOVED_SUDO.format(target_user_id), link_preview_options=None)
                     SUDO.remove(target_user_id)
                 else:
-                    await message.reply(Messages.USER_NOT_IN_SUDO.format(target_user_id), disable_web_page_preview=True)
+                    await message.reply(Messages.USER_NOT_IN_SUDO.format(target_user_id), link_preview_options=None)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, disable_web_page_preview=True)
+                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, disable_web_page_preview=True)
+            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
 
 
 
@@ -1013,7 +1014,7 @@ async def send_log_message(client, log_group_id, message, is_private):
         await client.send_message(
             chat_id=int(log_group_id),
             text=log_text,
-            disable_web_page_preview=True
+            link_preview_options=None
         )
     except Exception as e:
         logger.info(f"Error sending log message: {str(e)}")
@@ -1052,7 +1053,7 @@ async def user_client_start_handler(client, message):
     command_args = message.text.split() if message.text else "hh".split()
     if len(command_args) > 1 and '_' in command_args[1]:
         try:
-            loading = await message.reply(Messages.GETTING_STREAM_INFO, disable_web_page_preview=True)
+            loading = await message.reply(Messages.GETTING_STREAM_INFO, link_preview_options=None)
             # Split the argument using underscore and get the video ID
             _, video_id = command_args[1].split('_', 1)
 
@@ -1089,25 +1090,25 @@ async def user_client_start_handler(client, message):
                         f"❌ Failed to send photo: {str(e)}\n\n{caption}",
                         reply_markup=keyboard,
                         reply_to_message_id=message.id, 
-                    disable_web_page_preview=True)
+                    link_preview_options=None)
             else:
                 return await message.reply_text(
                     f"❌ Error: {video_info}",
                     reply_to_message_id=message.id, 
-                disable_web_page_preview=True)
+                link_preview_options=None)
 
         except Exception as e:
             return await message.reply_text(
                 f"❌ Error processing video ID: {str(e)}",
                 reply_to_message_id=message.id, 
-            disable_web_page_preview=True)
+            link_preview_options=None)
 
     # Handle logging
 
     session_name = f'user_{client.me.id}'
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
-    editing = await message.reply(Messages.LOADING, disable_web_page_preview=True)
+    editing = await message.reply(Messages.LOADING, link_preview_options=None)
     owner = await client.get_users(OWNER_ID)
     ow_id = owner.id if owner.username else None
 
@@ -1348,7 +1349,7 @@ async def blocklist_handler(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     # Check for admin or owner
 
@@ -1356,14 +1357,14 @@ async def blocklist_handler(client, message):
     # Fetch blocklist from the database
     user_data = await find_one(collection, {"bot_id": client.me.id})
     if not user_data:
-        return await message.reply(Messages.NO_BLOCKLIST, disable_web_page_preview=True)
+        return await message.reply(Messages.NO_BLOCKLIST, link_preview_options=None)
 
     blocked_users = user_data.get('busers', [])
     if not blocked_users:
-        return await message.reply(Messages.NO_USERS_BLOCKED, disable_web_page_preview=True)
+        return await message.reply(Messages.NO_USERS_BLOCKED, link_preview_options=None)
 
     blocklist_text = "Blocked Users:\n" + "\n".join([f"- `{user_id}`" for user_id in blocked_users])
-    await message.reply_text(blocklist_text, disable_web_page_preview=True)
+    await message.reply_text(blocklist_text, link_preview_options=None)
 
 
 from pytgcalls import filters as call_filters
@@ -1549,7 +1550,7 @@ async def play_handler_func(client, message):
 
     # Check if the command is sent in a group
     if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        await message.reply(Messages.GROUP_ONLY, disable_web_page_preview=True)
+        await message.reply(Messages.GROUP_ONLY, link_preview_options=None)
         return
 
     # Get the bot username and retrieve the session client ID from connector
@@ -1566,14 +1567,14 @@ async def play_handler_func(client, message):
     if channel_mode:
         linked_chat = (await client.get_chat(message.chat.id)).linked_chat
         if not linked_chat:
-            await message.reply(Messages.NO_LINKED_CHANNEL, disable_web_page_preview=True)
+            await message.reply(Messages.NO_LINKED_CHANNEL, link_preview_options=None)
             return
         target_chat_id = linked_chat.id
 
     # Check queue for the target chat
     current_queue = len(queues.get(target_chat_id, [])) if queues else 0
 
-    massage = await message.reply(Messages.BOLT, disable_web_page_preview=True)
+    massage = await message.reply(Messages.BOLT, link_preview_options=None)
     # Set target chat as active based on channel mode or not
     is_active = await is_active_chat(client, target_chat_id)
     await add_active_chat(client, target_chat_id)
@@ -1810,7 +1811,7 @@ async def play_handler_func(client, message):
             )
         ],
         ])
-                await client.send_message(message.chat.id, Messages.QUEUE[int(11)].format(mode, f"[{trim_title(title)}](https://t.me/{client.me.username}?start=vidid_{extract_video_id(youtube_link)})" if not os.path.exists(youtube_link) else trim_title(title), duration, position), reply_markup=keyboard,disable_web_page_preview=True)
+                await client.send_message(message.chat.id, Messages.QUEUE[int(11)].format(mode, f"[{trim_title(title)}](https://t.me/{client.me.username}?start=vidid_{extract_video_id(youtube_link)})" if not os.path.exists(youtube_link) else trim_title(title), duration, position), reply_markup=keyboard,link_preview_options=None)
                 try:
                    await message.delete()
                 except:
@@ -1959,7 +1960,7 @@ async def get_chat_type(client, chat_id):
 
 async def status(client, message):
     """Handles the /status command with song statistics"""
-    Man = await message.reply_text(Messages.COLLECTING_STATS, disable_web_page_preview=True)
+    Man = await message.reply_text(Messages.COLLECTING_STATS, link_preview_options=None)
     start = datetime.datetime.now()
     u = g = sg = c = a_chat = play_count = 0
     user_data = await find_one(collection, {"bot_id": client.me.id})
@@ -2067,7 +2068,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             
             await callback_query.message.reply(
                 f"QUEUE CLEARED\nStreaming stopped\nRequested by: {callback_query.from_user.mention()}", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
             try:
                 await callback_query.message.delete()
             except Exception as e:
@@ -2085,7 +2086,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             
             await callback_query.message.reply(
                 Messages.NO_STREAM, 
-            disable_web_page_preview=True)
+            link_preview_options=None)
             playing.pop(chat_id, None)
             
             await callback_query.answer(Messages.NO_ACTIVE_STREAM, show_alert=False)
@@ -2116,18 +2117,18 @@ async def end_handler_func(client, message):
        queues.pop(message.chat.id, None)
        await client.send_message(message.chat.id,
 f"QUEUE CLEARED\nStreaming stopped\nRequested by: {message.from_user.mention()}", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
        await call_py.leave_call(message.chat.id)
        playing.pop(message.chat.id, None)
    else:
      await client.send_message(message.chat.id, Messages.NO_STREAM, 
-disable_web_page_preview=True)
+link_preview_options=None)
      await remove_active_chat(client, message.chat.id)
      await call_py.leave_call(message.chat.id)
      playing.pop(message.chat.id, None)
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM, 
-disable_web_page_preview=True)
+link_preview_options=None)
      playing.pop(message.chat.id, None)
 
 
@@ -2158,7 +2159,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
         if chat_id in queues and len(queues[chat_id]) > 0:
             # There's a next song in queue
             next_song = queues[chat_id].pop(0)
-            await callback_query.message.reply(Messages.SKIPPING.format(callback_query.from_user.mention()), disable_web_page_preview=True)
+            await callback_query.message.reply(Messages.SKIPPING.format(callback_query.from_user.mention()), link_preview_options=None)
             
             try:
                 await clients['call_py'].pause(chat_id)
@@ -2189,7 +2190,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
             if chat_id in playing:
                 playing[chat_id].clear()
             
-            await callback_query.message.reply(Messages.SKIPPED_EMPTY.format(callback_query.from_user.mention()), disable_web_page_preview=True)
+            await callback_query.message.reply(Messages.SKIPPED_EMPTY.format(callback_query.from_user.mention()), link_preview_options=None)
             
             try:
                 await callback_query.message.delete()
@@ -2225,7 +2226,7 @@ async def loop_handler_func(client, message):
             await client.send_message(
                 message.chat.id,
                 Messages.LOOP_NO_ARGS, 
-            disable_web_page_preview=True)
+            link_preview_options=None)
             return
 
         try:
@@ -2234,13 +2235,13 @@ async def loop_handler_func(client, message):
                 await client.send_message(
                     message.chat.id,
                     Messages.LOOP_OUT_OF_BOUNDS, 
-                disable_web_page_preview=True)
+                link_preview_options=None)
                 return
         except ValueError:
             await client.send_message(
                 message.chat.id,
                 Messages.LOOP_INVALID, 
-            disable_web_page_preview=True)
+            link_preview_options=None)
             return
 
         # Check if there's a song playing
@@ -2258,18 +2259,18 @@ async def loop_handler_func(client, message):
             await client.send_message(
                 message.chat.id,
                 f"Current song will be repeated {loop_count} times!\n\nʙʏ: {message.from_user.mention()}", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
         else:
             await client.send_message(
                 message.chat.id,
                 "Assistant is not streaming anything!", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
 
     except Exception as e:
         await client.send_message(
             message.chat.id,
             f"❌ An error occurred: {str(e)}", 
-        disable_web_page_preview=True)
+        link_preview_options=None)
 
 @Client.on_message(filters.command("skip"))
 @admin_only()
@@ -2286,7 +2287,7 @@ async def skip_handler_func(client, message):
    if message.chat.id in queues:
     if len(queues[message.chat.id]) >0:
        next = queues[message.chat.id].pop(0)
-       await client.send_message(message.chat.id, Messages.SKIPPING.format(message.from_user.mention()), disable_web_page_preview=True)
+       await client.send_message(message.chat.id, Messages.SKIPPING.format(message.from_user.mention()), link_preview_options=None)
        playing[message.chat.id] = next
        try:
           await call_py.pause(message.chat.id)
@@ -2296,17 +2297,17 @@ async def skip_handler_func(client, message):
     else:
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
-       await client.send_message(message.chat.id, Messages.SKIPPED_EMPTY.format(message.from_user.mention()), disable_web_page_preview=True)
+       await client.send_message(message.chat.id, Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
        playing[message.chat.id].clear()
    else:
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
        await client.send_message(message.chat.id,
-              Messages.SKIPPED_EMPTY.format(message.from_user.mention()), disable_web_page_preview=True)
+              Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
        playing[message.chat.id].clear()
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM, 
-disable_web_page_preview=True)
+link_preview_options=None)
      playing[message.chat.id].clear()
 
 
@@ -2332,7 +2333,7 @@ async def button_resume_handler(client: Client, callback_query: CallbackQuery):
             await call_py.resume(chat_id)
             await callback_query.message.reply(
                 f"Song resumed. Use the Pause button to pause again.\n\nʙʏ: {callback_query.from_user.mention()}", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING)
     except NotInCallError:
@@ -2359,7 +2360,7 @@ async def button_pause_handler(client: Client, callback_query: CallbackQuery):
             await call_py.pause(chat_id)
             await callback_query.message.reply(
                 f"Song paused. Use the Resume button to continue.\n\nʙʏ: {callback_query.from_user.mention()}", 
-            disable_web_page_preview=True)
+            link_preview_options=None)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING)
     except NotInCallError:
@@ -2375,10 +2376,10 @@ async def resume_handler_func(client, message):
    bot_username = client.me.username
    if  await is_active_chat(client, message.chat.id):
        await call_py.resume(message.chat.id)
-       await client.send_message(message.chat.id, Messages.RESUMED.format(message.from_user.mention()), disable_web_page_preview=True)
-   else: await client.send_message(message.chat.id, Messages.NO_STREAM, disable_web_page_preview=True)
+       await client.send_message(message.chat.id, Messages.RESUMED.format(message.from_user.mention()), link_preview_options=None)
+   else: await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
   except NotInCallError:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, disable_web_page_preview=True)
+     await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
 
 
 @Client.on_message(filters.command("pause"))
@@ -2392,11 +2393,11 @@ async def pause_handler_func(client, message):
    if  await is_active_chat(client, message.chat.id):
        await call_py.pause(message.chat.id)
        await client.send_message(message.chat.id, Messages.PAUSED.format(message.from_user.mention()), 
-disable_web_page_preview=True)
+link_preview_options=None)
    else:
-       await client.send_message(message.chat.id,  Messages.NO_STREAM, disable_web_page_preview=True)
+       await client.send_message(message.chat.id,  Messages.NO_STREAM, link_preview_options=None)
   except NotInCallError:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, disable_web_page_preview=True)
+     await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
 
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -2420,7 +2421,7 @@ async def broadcast_callback_handler(client, callback_query):
     bot_data = await find_one(collection, {"bot_id": client.me.id})
     message_to_broadcast, forwarding = broadcast_message.get(client.me.id)
     if bot_data and bot:
-        X = await callback_query.message.reply(Messages.START_BOT_BROADCAST, disable_web_page_preview=True)
+        X = await callback_query.message.reply(Messages.START_BOT_BROADCAST, link_preview_options=None)
         users = bot_data.get('users', [])
         progress_msg = ""
         u, g, sg, a_chat = 0, 0, 0, 0
@@ -2474,14 +2475,14 @@ async def broadcast_callback_handler(client, callback_query):
 
 
     if userbot and session:
-        XX = await callback_query.message.reply(Messages.START_ASSISTANT_BROADCAST, disable_web_page_preview=True)
+        XX = await callback_query.message.reply(Messages.START_ASSISTANT_BROADCAST, link_preview_options=None)
         uu, ug, usg, ua_chat = 0, 0, 0, 0
         try:
             # Ensure communication with the bot
             try:
                 await session.get_chat(client.me.id)
             except PeerIdInvalid:
-                await session.send_message(bot_username, "/start", disable_web_page_preview=True)
+                await session.send_message(bot_username, "/start", link_preview_options=None)
             except UserBlocked:
                 await session.unblock_user(bot_username)
             await asyncio.sleep(1)
@@ -2528,7 +2529,7 @@ async def broadcast_callback_handler(client, callback_query):
 
         except Exception as e:
             logger.info(f"Error with session broadcast: {e}")
-            await XX.reply(f"An error occurred during userbot broadcasting.{e}", disable_web_page_preview=True)
+            await XX.reply(f"An error occurred during userbot broadcasting.{e}", link_preview_options=None)
 
     # Finalize broadcast summary
         await XX.edit(
@@ -2686,7 +2687,7 @@ async def status_command_handler(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     await status(client, message)
 
@@ -2713,15 +2714,15 @@ async def broadcast_command_handler(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     sender_id = client.me.id
     user_data = await user_sessions.find_one({"bot_id": sender_id})
     if not user_data:
-        return await message.reply(Messages.USER_DATA_NOT_FOUND, disable_web_page_preview=True)
+        return await message.reply(Messages.USER_DATA_NOT_FOUND, link_preview_options=None)
     if not isinstance(message, CallbackQuery):
       if not message.reply_to_message:
-        return await message.reply(Messages.REPLY_TO_BROADCAST, disable_web_page_preview=True)
+        return await message.reply(Messages.REPLY_TO_BROADCAST, link_preview_options=None)
       broadcast_message[client.me.id] = [message.reply_to_message]
       broadcast_message[client.me.id].append(True if message.command[0].lower().startswith("f") else None)
     group = user_data.get('group')
@@ -2755,7 +2756,7 @@ async def broadcast_command_handler(client, message):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
     else:  # If it's a normal command message
-        mess = await message.reply(Messages.GETTING_CHATS, disable_web_page_preview=True)
+        mess = await message.reply(Messages.GETTING_CHATS, link_preview_options=None)
         await get_status(client)
         if broadcasts[client.me.id]:
            await mess.edit(
@@ -2763,7 +2764,7 @@ async def broadcast_command_handler(client, message):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         else:
-           await message.reply(Messages.NO_DATA_FOUND, disable_web_page_preview=True)
+           await message.reply(Messages.NO_DATA_FOUND, link_preview_options=None)
 
 
 
@@ -2833,11 +2834,11 @@ async def handle_power_command(client, message):
         await message.reply(
             power_message,
             #reply_markup=buttons
-        disable_web_page_preview=True)
+        link_preview_options=None)
 
     except Exception as e:
         logger.error(f"Power check error: {e}")
-        await message.reply(Messages.ERROR_PERMISSIONS, disable_web_page_preview=True)
+        await message.reply(Messages.ERROR_PERMISSIONS, link_preview_options=None)
 
 
 
@@ -2862,7 +2863,7 @@ async def pingme(client, message):
     ]
 
     # Animated loading sequence
-    msg = await message.reply_text(Messages.PINGING, disable_web_page_preview=True)
+    msg = await message.reply_text(Messages.PINGING, link_preview_options=None)
 
     for frame in ping_frames:
         await msg.edit(f"```\n{frame}\n```{choice(loading_emojis)}")
@@ -2926,7 +2927,7 @@ async def info_command(client: Client, message: Message):
     target_user = None
     sender_id = message.from_user.id
     if not sender_id == OWNER_ID:
-        return await message.reply_text(Messages.BOT_OWNER_ONLY, disable_web_page_preview=True)
+        return await message.reply_text(Messages.BOT_OWNER_ONLY, link_preview_options=None)
 
     if len(message.command) >= 2:
         user_input = message.command[1]
@@ -2939,7 +2940,7 @@ async def info_command(client: Client, message: Message):
                 username = user_input.strip('@')
                 target_user = await client.get_users(username)
         except Exception:
-            await message.reply(Messages.ERROR_USER_NOT_FOUND, disable_web_page_preview=True)
+            await message.reply(Messages.ERROR_USER_NOT_FOUND, link_preview_options=None)
             return
 
     if target_user:
@@ -3000,12 +3001,12 @@ async def info_command(client: Client, message: Message):
                 await message.reply(
                     response,
                     reply_markup=create_copy_markup(response), 
-                disable_web_page_preview=True)
+                link_preview_options=None)
         else:
             await message.reply(
                 response,
                 reply_markup=create_copy_markup(response), 
-            disable_web_page_preview=True)
+            link_preview_options=None)
         return
 
     # Rest of the original code for replied messages and chat info remains the same
@@ -3032,7 +3033,7 @@ async def info_command(client: Client, message: Message):
             await message.reply(
                 response,
                 reply_markup=create_copy_markup(response), 
-            disable_web_page_preview=True)
+            link_preview_options=None)
 
         else:
             user = await client.get_users(replied.from_user.id)
@@ -3089,12 +3090,12 @@ async def info_command(client: Client, message: Message):
                     await message.reply(
                         response,
                         reply_markup=create_copy_markup(response), 
-                    disable_web_page_preview=True)
+                    link_preview_options=None)
             else:
                 await message.reply(
                     response,
                     reply_markup=create_copy_markup(response), 
-                disable_web_page_preview=True)
+                link_preview_options=None)
 
     else:
         if chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
@@ -3123,7 +3124,7 @@ async def info_command(client: Client, message: Message):
             await message.reply(
                 response,
                 reply_markup=create_copy_markup(response), 
-            disable_web_page_preview=True)
+            link_preview_options=None)
 
         else:
             user = await client.get_users(chat.id)
@@ -3164,12 +3165,12 @@ async def info_command(client: Client, message: Message):
                     await message.reply(
                         response,
                         reply_markup=create_copy_markup(response), 
-                    disable_web_page_preview=True)
+                    link_preview_options=None)
             else:
                 await message.reply(
                     response,
                     reply_markup=create_copy_markup(response), 
-                disable_web_page_preview=True)
+                link_preview_options=None)
 
 
 @Client.on_callback_query(filters.regex("^close$"))
@@ -3181,7 +3182,7 @@ async def close_message(client, query):
         await client.send_message(
             query.message.chat.id,
             f"🗑 Message closed by {query.from_user.mention}", 
-        disable_web_page_preview=True)
+        link_preview_options=None)
     except Exception as e:
         print(f"Error closing message: {e}")
 
@@ -3194,9 +3195,9 @@ async def kang(client, message):
     client = clients['session']
     user = message.from_user
     if not user:
-       return await message.reply_text(Messages.USE_COMMAND_AS_USER, disable_web_page_preview=True)
+       return await message.reply_text(Messages.USE_COMMAND_AS_USER, link_preview_options=None)
     replied = message.reply_to_message
-    Man = await message.reply_text(Messages.STICKER_LONG, disable_web_page_preview=True)
+    Man = await message.reply_text(Messages.STICKER_LONG, link_preview_options=None)
     media_ = None
     emoji_ = None
     is_anim = False
@@ -3307,14 +3308,14 @@ async def kang(client, message):
             break
         if exist is not False:
             try:
-                await client.send_message("stickers", "/addsticker", disable_web_page_preview=True)
+                await client.send_message("stickers", "/addsticker", link_preview_options=None)
             except YouBlockedUser:
                 await client.unblock_user("stickers")
-                await client.send_message("stickers", "/addsticker", disable_web_page_preview=True)
+                await client.send_message("stickers", "/addsticker", link_preview_options=None)
             except Exception as e:
                 return await Man.edit(f"**ERROR:** `{e}`")
             await asyncio.sleep(2)
-            await client.send_message("stickers", packname, disable_web_page_preview=True)
+            await client.send_message("stickers", packname, link_preview_options=None)
             await asyncio.sleep(2)
             limit = "50" if is_anim else "120"
             while limit in await get_response(message, client):
@@ -3330,27 +3331,27 @@ async def kang(client, message):
                     await Man.edit(
                     f"`Creating a New Sticker Pack {pack} Because the Sticker Pack is Full`"
                 )
-                await client.send_message("stickers", packname, disable_web_page_preview=True)
+                await client.send_message("stickers", packname, link_preview_options=None)
                 await asyncio.sleep(2)
                 if await get_response(message, client) == "Invalid pack selected.":
-                    await client.send_message("stickers", cmd, disable_web_page_preview=True)
+                    await client.send_message("stickers", cmd, link_preview_options=None)
                     await asyncio.sleep(2)
-                    await client.send_message("stickers", packnick, disable_web_page_preview=True)
+                    await client.send_message("stickers", packnick, link_preview_options=None)
                     await asyncio.sleep(2)
                     await client.send_document("stickers", media_)
                     await asyncio.sleep(2)
-                    await client.send_message("Stickers", emoji_, disable_web_page_preview=True)
+                    await client.send_message("Stickers", emoji_, link_preview_options=None)
                     await asyncio.sleep(2)
-                    await client.send_message("Stickers", "/publish", disable_web_page_preview=True)
+                    await client.send_message("Stickers", "/publish", link_preview_options=None)
                     await asyncio.sleep(2)
                     if is_anim:
                         await client.send_message(
                             "Stickers", f"<{packnick}>", parse_mode=ParseMode.MARKDOWN, 
-                        disable_web_page_preview=True)
+                        link_preview_options=None)
                         await asyncio.sleep(2)
-                    await client.send_message("Stickers", "/skip", disable_web_page_preview=True)
+                    await client.send_message("Stickers", "/skip", link_preview_options=None)
                     await asyncio.sleep(2)
-                    await client.send_message("Stickers", packname, disable_web_page_preview=True)
+                    await client.send_message("Stickers", packname, link_preview_options=None)
                     await asyncio.sleep(2)
                     await Man.edit(
                         f"**Sticker Added Successfully!**\n 🔥 **[CLICK HERE](https://t.me/addstickers/{packname})** 🔥\n**To Use Stickers**"
@@ -3365,18 +3366,18 @@ async def kang(client, message):
                     "**Failed to Add Sticker, Use @Stickers Bot to Add Your Sticker.**"
                 )
                 return
-            await client.send_message("Stickers", emoji_, disable_web_page_preview=True)
+            await client.send_message("Stickers", emoji_, link_preview_options=None)
             await asyncio.sleep(2)
-            await client.send_message("Stickers", "/done", disable_web_page_preview=True)
+            await client.send_message("Stickers", "/done", link_preview_options=None)
         else:
             await Man.edit(Messages.CREATING_STICKER_PACK)
             try:
-                await client.send_message("Stickers", cmd, disable_web_page_preview=True)
+                await client.send_message("Stickers", cmd, link_preview_options=None)
             except YouBlockedUser:
                 await client.unblock_user("stickers")
-                await client.send_message("stickers", "/addsticker", disable_web_page_preview=True)
+                await client.send_message("stickers", "/addsticker", link_preview_options=None)
             await asyncio.sleep(2)
-            await client.send_message("Stickers", packnick, disable_web_page_preview=True)
+            await client.send_message("Stickers", packnick, link_preview_options=None)
             await asyncio.sleep(2)
             await client.send_document("stickers", media_)
             await asyncio.sleep(2)
@@ -3388,16 +3389,16 @@ async def kang(client, message):
                     "**Failed to Add Sticker, Use @Stickers Bot to Add Your Sticker.**"
                 )
                 return
-            await client.send_message("Stickers", emoji_, disable_web_page_preview=True)
+            await client.send_message("Stickers", emoji_, link_preview_options=None)
             await asyncio.sleep(2)
-            await client.send_message("Stickers", "/publish", disable_web_page_preview=True)
+            await client.send_message("Stickers", "/publish", link_preview_options=None)
             await asyncio.sleep(2)
             if is_anim:
-                await client.send_message("Stickers", f"<{packnick}>", disable_web_page_preview=True)
+                await client.send_message("Stickers", f"<{packnick}>", link_preview_options=None)
                 await asyncio.sleep(2)
-            await client.send_message("Stickers", "/skip", disable_web_page_preview=True)
+            await client.send_message("Stickers", "/skip", link_preview_options=None)
             await asyncio.sleep(2)
-            await client.send_message("Stickers", packname, disable_web_page_preview=True)
+            await client.send_message("Stickers", packname, link_preview_options=None)
             await asyncio.sleep(2)
         await Man.edit(
             f"**Sticker Added Successfully!**\n 🔥 **[CLICK HERE](https://t.me/addstickers/{packname})** 🔥\n**To Use Stickers**"
@@ -3417,14 +3418,14 @@ async def get_response(message, client):
 @Client.on_message(filters.command("mmf"))
 async def memify(client, message):
     if not message.reply_to_message_id:
-        await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, disable_web_page_preview=True)
+        await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
         return
     reply_message = message.reply_to_message
     if not reply_message.media:
-        await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, disable_web_page_preview=True)
+        await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
         return
     file = await client.download_media(reply_message)
-    Man = await message.reply_text(Messages.PROCESSING, disable_web_page_preview=True)
+    Man = await message.reply_text(Messages.PROCESSING, link_preview_options=None)
     text = get_arg(message)
     if len(text) < 1:
         return await Man.edit(f"Please use `/mmf <text>`")
@@ -3452,7 +3453,7 @@ async def set_welcome_handler(client, message):
     user_dir = f"{ggg}/{session_name}"
     try:
         if not sender_id == OWNER_ID:
-           return await message.reply_text(Messages.BOT_OWNER_ONLY, disable_web_page_preview=True)
+           return await message.reply_text(Messages.BOT_OWNER_ONLY, link_preview_options=None)
 
         replied_msg = message.reply_to_message
         if not replied_msg:
@@ -3473,7 +3474,7 @@ async def set_welcome_handler(client, message):
                 "• 'Welcome {name}! Your ID is {id}'\n"
                 "• Reply to a photo/video with caption 'Welcome to {botname}!'"
             )
-            return await message.reply_text(usage_text, disable_web_page_preview=True)
+            return await message.reply_text(usage_text, link_preview_options=None)
 
         updates = []
 
@@ -3481,7 +3482,7 @@ async def set_welcome_handler(client, message):
         if replied_msg.text or replied_msg.caption:
             welcome_text = (replied_msg.text or replied_msg.caption).strip()
             if len(welcome_text) > 4096:
-                return await message.reply_text(Messages.WELCOME_TOO_LONG, disable_web_page_preview=True)
+                return await message.reply_text(Messages.WELCOME_TOO_LONG, link_preview_options=None)
 
             entities = sorted(
                 (replied_msg.entities or replied_msg.caption_entities or []),
@@ -3548,7 +3549,7 @@ async def set_welcome_handler(client, message):
                 error_msg += "• Welcome {name}!\n"
                 error_msg += "• Your ID: {id}\n"
                 error_msg += "• Welcome to {botname}!"
-                return await message.reply_text(error_msg, disable_web_page_preview=True)
+                return await message.reply_text(error_msg, link_preview_options=None)
 
             set_gvar(client.me.id, "WELCOME", processed_text)
             updates.append("welcome message")
@@ -3560,12 +3561,12 @@ async def set_welcome_handler(client, message):
                 # Check if media type is allowed
                 if not (replied_msg.photo or replied_msg.video or
                        replied_msg.sticker or replied_msg.animation):
-                    return await message.reply_text(Messages.ONLY_MEDIA_ALLOWED, disable_web_page_preview=True)
+                    return await message.reply_text(Messages.ONLY_MEDIA_ALLOWED, link_preview_options=None)
 
                 # Check file size (5MB = 5 * 1024 * 1024 bytes)
                 file_size = getattr(replied_msg, 'file_size', 0)
                 if file_size > 5242880:  # 5MB in bytes
-                    return await message.reply_text(Messages.MEDIA_SIZE_EXCEED, disable_web_page_preview=True)
+                    return await message.reply_text(Messages.MEDIA_SIZE_EXCEED, link_preview_options=None)
 
                 # First try to save to user_dir
                 logo_path_jpg = f"{user_dir}/logo.jpg"
@@ -3590,14 +3591,14 @@ async def set_welcome_handler(client, message):
             except Exception as e:
                 if m_d and os.path.exists(m_d):
                     os.remove(m_d)
-                return await message.reply_text(Messages.ERROR_MEDIA_PROCESS.format(str(e)), disable_web_page_preview=True)
+                return await message.reply_text(Messages.ERROR_MEDIA_PROCESS.format(str(e)), link_preview_options=None)
 
         if not updates:
-            return await message.reply_text(Messages.NOTHING_TO_UPDATE, disable_web_page_preview=True)
+            return await message.reply_text(Messages.NOTHING_TO_UPDATE, link_preview_options=None)
 
         # Send confirmation and preview
         success_msg = f"✅ Updated {' and '.join(updates)}!"
-        await client.send_message(message.chat.id, success_msg + "\n\nPreview:", disable_web_page_preview=True)
+        await client.send_message(message.chat.id, success_msg + "\n\nPreview:", link_preview_options=None)
 
         # Show preview
         try:
@@ -3657,18 +3658,18 @@ async def set_welcome_handler(client, message):
                 await client.send_message(
                     message.chat.id,
                     welcome_text,
-                disable_web_page_preview=True)
+                link_preview_options=None)
     except Exception as e:
         error_msg = f"❌ Error: `{str(e)}`"
         logger.info(f"Error for user {message.from_user.id}: {str(e)}")
-        return await message.reply_text(error_msg, disable_web_page_preview=True)
+        return await message.reply_text(error_msg, link_preview_options=None)
 
 @Client.on_message(filters.command(["resetwelcome", "rwelcome"]))
 async def resetwelcome(client: Client, message: Message):
     sender_id = message.from_user.id
     if not sender_id == OWNER_ID:
-        return await message.reply_text(Messages.BOT_OWNER_ONLY, disable_web_page_preview=True)
+        return await message.reply_text(Messages.BOT_OWNER_ONLY, link_preview_options=None)
 
     set_gvar(client.me.id, "WELCOME", None)
     set_gvar(client.me.id, "LOGO", None)
-    await message.reply_text(Messages.WELCOME_RESET, disable_web_page_preview=True)
+    await message.reply_text(Messages.WELCOME_RESET, link_preview_options=None)

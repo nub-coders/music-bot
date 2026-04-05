@@ -290,7 +290,7 @@ async def autoleave_vc(message, duration_str, chat):
                     await clients["bot"].send_message(
                         message.chat.id,
                         Messages.AUTO_LEAVE_EMPTY,
-                        disable_web_page_preview=True
+                        link_preview_options=None
                     )
                     break
 
@@ -338,7 +338,7 @@ async def pautoleave_vc(message, duration_str):
                 await clients["bot"].send_message(
                     message.chat.id,
                     Messages.AUTO_LEAVE_ONE,
-                    disable_web_page_preview=True
+                    link_preview_options=None
                 )
                 break
 
@@ -718,7 +718,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.debug(f"[join_call] Final stream source resolved: {stream_source[:120]}..." if stream_source else "[join_call] Final stream source resolved: None")
         if not stream_source:
             logger.error(f"[join_call] No stream source provided (neither stream_url nor youtube_link) for chat {chat_id}")
-            await clients["bot"].send_message(chat.id, Messages.ERROR_STREAM, disable_web_page_preview=True)
+            await clients["bot"].send_message(chat.id, Messages.ERROR_STREAM, link_preview_options=None)
             return await remove_active_chat(chat_id)
 
         logger.info(f"[join_call] Attempting to play: {title} from {stream_source[:100]}... in chat {chat_id}")
@@ -800,13 +800,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 logger.warning(f"[join_call] Failed to send photo, sending as text instead: {photo_err}")
                 sent_message = await clients["bot"].send_message(
                     chat_id, message_text, reply_markup=keyboard, 
-                disable_web_page_preview=True)
+                link_preview_options=None)
                 logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
         else:
             logger.warning(f"[join_call] Thumbnail is None, sending as text message")
             sent_message = await clients["bot"].send_message(
                 chat_id, message_text, reply_markup=keyboard, 
-            disable_web_page_preview=True)
+            link_preview_options=None)
             logger.info(f"[join_call] Playback notification sent as text (no thumbnail), message_id: {sent_message.id}")
         _msg_ms = (time.perf_counter() - _msg_t0) * 1000
         logger.info(f"[join_call] ⏱ Now-playing message sent in {_msg_ms:.1f}ms for chat {chat_id}")
@@ -825,11 +825,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
     except NoActiveGroupCall:
         logger.error(f"[join_call] NoActiveGroupCall exception for chat {chat.id} - No active group calls")
-        await clients["bot"].send_message(chat.id, "ERROR: No active group calls", disable_web_page_preview=True)
+        await clients["bot"].send_message(chat.id, "ERROR: No active group calls", link_preview_options=None)
         return await remove_active_chat(chat.id)
     except Exception as e:
         logger.error(f"[join_call] Unexpected error in chat {chat.id}: {type(e).__name__} - {e}", exc_info=True)
-        await clients["bot"].send_message(chat.id, f"ERROR: {e}", disable_web_page_preview=True)
+        await clients["bot"].send_message(chat.id, f"ERROR: {e}", link_preview_options=None)
         return await remove_active_chat(chat.id)
 
 

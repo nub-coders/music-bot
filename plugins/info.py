@@ -42,7 +42,7 @@ async def pingme(client, message):
     ]
     loading = ["🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘","🕙","🕚","🕛"]
 
-    msg = await message.reply_text(Messages.PINGING, disable_web_page_preview=True)
+    msg = await message.reply_text(Messages.PINGING, link_preview_options=None)
     for frame in ping_frames:
         await msg.edit(f"```\n{frame}\n```{choice(loading)}")
         await asyncio.sleep(0.3)
@@ -75,11 +75,11 @@ async def active_chats_info(client, message):
         or uid in SUDO
     )
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, disable_web_page_preview=True)
+        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     cp = _call_py()
     if cp is None:
-        return await message.reply("❌ Call client not ready.", disable_web_page_preview=True)
+        return await message.reply("❌ Call client not ready.", link_preview_options=None)
 
     active_calls = await cp.calls
     if active_calls:
@@ -99,7 +99,7 @@ async def active_chats_info(client, message):
     else:
         reply_text = "<b>Active Voice Chats:</b>\n<blockquote>No active group calls</blockquote>"
 
-    await message.reply_text(reply_text, disable_web_page_preview=True)
+    await message.reply_text(reply_text, link_preview_options=None)
 
 
 # ── /np / /nowplaying ──────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ async def now_playing(client, message):
 
     if not song:
         txt = await get_str(chat_id, "NO_STREAM")
-        return await message.reply(txt, disable_web_page_preview=True)
+        return await message.reply(txt, link_preview_options=None)
 
     title = song.get("title", "Unknown")
     duration = song.get("duration", "N/A")
@@ -154,7 +154,7 @@ async def now_playing(client, message):
         f"{progress_text}"
         f"{queue_info}"
     )
-    await message.reply(text, disable_web_page_preview=True)
+    await message.reply(text, link_preview_options=None)
 
 
 # ── /lang ──────────────────────────────────────────────────────────────────────
@@ -169,4 +169,4 @@ async def lang_info_handler(client, message):
         f"<b>ᴀᴠᴀɪʟᴀʙʟᴇ ʟᴀɴɢᴜᴀɢᴇs:</b>\n{lang_list_text()}\n\n"
         f"<i>ᴜsᴇ <code>/setlang &lt;code&gt;</code> ᴛᴏ ᴄʜᴀɴɢᴇ (ᴀᴅᴍɪɴ ᴏɴʟʏ)</i>"
     )
-    await message.reply(text, disable_web_page_preview=True)
+    await message.reply(text, link_preview_options=None)
