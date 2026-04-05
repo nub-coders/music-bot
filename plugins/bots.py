@@ -1295,6 +1295,17 @@ async def commands_handler(client, callback_query):
         "</blockquote>"
     )
 
+    category_pages = {
+        "playback": playback_commands,
+        "auth": auth_commands,
+        "blocklist": blocklist_commands,
+        "sudo": sudo_commands,
+        "broadcast": broadcast_commands,
+        "tools": tools_commands,
+        "kang": kang_commands,
+        "status": status_commands,
+    }
+
     # ---------- Navigation buttons ----------
     # --- Category Buttons replaced by Buttons.HELP_HOME ---
 
@@ -1304,13 +1315,22 @@ async def commands_handler(client, callback_query):
 
     # ---------- Routing ----------
     if data == "all":
+        await callback_query.answer()
         await callback_query.message.edit_caption(
             caption="<u><b>📜 | sᴇʟᴇᴄᴛ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ</b></u>",
             reply_markup=Buttons.HELP_HOME,
         )
+    elif data in category_pages:
+        await callback_query.answer()
+        await callback_query.message.edit_caption(
+            caption=category_pages[data],
+            reply_markup=back_markup,
+        )
     elif data == "owner":
+        await callback_query.answer()
         await callback_query.message.edit_caption(caption=owner_commands, reply_markup=back_markup)
     elif data == "back":
+            await callback_query.answer()
             name = callback_query.from_user.mention()
             botname = client.me.mention()
             greet_message = await gvarstatus(client.me.id, "WELCOME") or (
@@ -3178,11 +3198,13 @@ async def close_message(client, query):
     try:
         # Delete the original message
         await query.message.delete()
-        # Send confirmation with mention
-        await client.send_message(
+        # Send confirmation with mention and remove it after 5 seconds
+        closed_msg = await client.send_message(
             query.message.chat.id,
             f"🗑 Message closed by {query.from_user.mention}", 
         link_preview_options=None)
+        await asyncio.sleep(5)
+        await closed_msg.delete()
     except Exception as e:
         print(f"Error closing message: {e}")
 
