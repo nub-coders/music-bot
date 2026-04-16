@@ -1,0 +1,5 @@
+ffmpeg
+libmediainfo0
+libmagic1
+libffi-dev
+libssl-dev
