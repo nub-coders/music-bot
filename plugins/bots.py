@@ -67,6 +67,29 @@ logger = logging.getLogger("pyrogram")
 session = clients["session"]
 call_py = clients["call_py"]
 
+_admin_member_cache: dict[tuple[int, int], tuple[str, float]] = {}
+
+
+def _chat_type_value(chat_type):
+    return getattr(chat_type, "value", chat_type)
+
+
+def _chat_type_from_cache(chat_type_value):
+    if not chat_type_value:
+        return None
+    try:
+        return enums.ChatType(chat_type_value)
+    except Exception:
+        return chat_type_value
+
+
+def _is_admin_member_status(status):
+    status_value = _chat_type_value(status)
+    return status_value in (
+        ChatMemberStatus.OWNER.value,
+        ChatMemberStatus.ADMINISTRATOR.value,
+    )
+
 
 
 
@@ -131,8 +154,16 @@ def admin_only():
                     return await func(client, update)
 
                 # --- Fallback: check Telegram group admin status (1 network call) ---
-                chat_member = await client.get_chat_member(chat_id, user_id)
-                is_chat_admin = chat_member.status in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
+                cache_key = (chat_id, user_id)
+                now = time.time()
+                cached_member = _admin_member_cache.get(cache_key)
+                if cached_member and cached_member[1] > now:
+                    is_chat_admin = _is_admin_member_status(cached_member[0])
+                else:
+                    chat_member = await client.get_chat_member(chat_id, user_id)
+                    status_value = _chat_type_value(chat_member.status)
+                    _admin_member_cache[cache_key] = (status_value, now + 60)
+                    is_chat_admin = _is_admin_member_status(status_value)
 
                 if not is_chat_admin:
                     logger.warning(f"User {user_id} not authorized for command {command}")
@@ -230,48 +261,6 @@ async def is_active_chat(client, chat_id):  # noqa: F811
 async def add_active_chat(client, chat_id):  # noqa: F811
     active.add(chat_id)
 
-
-
-@Client.on_message(filters.command("ac"))
-async def active_chats(client, message):
-    admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
-    admin_ids = get_admin_ids(admin_file)
-    is_admin = user_id in admin_ids
-
-    # Check permissions using global SUDO variable
-    is_authorized = (
-        is_admin or
-        str(OWNER_ID) == str(user_id) or
-        user_id in SUDO
-    )
-
-    if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
-
-    # Use PyTgCalls.calls to get active calls directly
-    active_calls = await call_py.calls
-    
-    if active_calls:
-        titles = []
-        for chat_id in active_calls.keys():
-            try:
-                chat = await client.get_chat(chat_id)
-                title = f"• {chat.title}"
-            except Exception as e:
-                title = f"• [ID: {chat_id}] (Failed to fetch title)"
-            titles.append(title)
-
-        titles_str = '\n'.join(titles)
-        reply_text = (
-            f"<b>Active group calls:</b>\n"
-            f"<blockquote expandable>{titles_str}</blockquote>\n"
-            f"<b>Total:</b> {len(active_calls)}"
-        )
-    else:
-        reply_text = "<b>Active Voice Chats:</b>\n<blockquote>No active group calls</blockquote>"
-
-    await message.reply_text(reply_text, link_preview_options=None)
 
 
 async def remove_active_chat(client, chat_id):
@@ -1357,9 +1346,8 @@ async def blocklist_handler(client, message):
 
     is_admin = False
     if os.path.exists(admin_file):
-        with open(admin_file, "r") as file:
-            admin_ids = [int(line.strip()) for line in file.readlines()]
-            is_admin = user_id in admin_ids
+        admin_ids = get_admin_ids(admin_file)
+        is_admin = user_id in admin_ids
 
     # Check permissions
     is_authorized = (
@@ -1977,6 +1965,24 @@ async def get_chat_type(client, chat_id):
     return None
 
 
+async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
+    chat_id_key = str(chat_id)
+    cached_chat_type = _chat_type_from_cache(chat_type_cache.get(chat_id_key))
+    if cached_chat_type:
+        return cached_chat_type
+
+    chat_type = await get_chat_type(client, chat_id)
+    if chat_type:
+        chat_type_value = _chat_type_value(chat_type)
+        chat_type_cache[chat_id_key] = chat_type_value
+        db_task(collection.update_one(
+            {"bot_id": bot_id},
+            {"$set": {f"chat_type_cache.{chat_id_key}": chat_type_value}},
+            upsert=True,
+        ))
+    return chat_type
+
+
 
 async def status(client, message):
     """Handles the /status command with song statistics"""
@@ -1997,10 +2003,25 @@ async def status(client, message):
         users = user_data.get('users', [])
         total_users = len(users)
 
+        if total_users > 500:
+            await Man.edit_text(
+                f"<b>📊 Comprehensive Bot Statistics</b>\n"
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+                f"⏱ <b>Processed in:</b> <code>0s</code>\n\n"
+                f"✦ <b>Stored Users:</b> <code>{total_users}</code>\n"
+                f"✦ <b>Detailed stats:</b> <code>Skipped to avoid timeout</code>\n"
+                f"✦ <b>Songs Played (24h):</b> <code>{play_count}</code>\n\n"
+                f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+                f"<b>🎶 @{client.me.username} Performance Summary</b>"
+            )
+            return
+
+        chat_type_cache = dict(user_data.get('chat_type_cache', {}))
+
         # Process chats in batches for better performance
         for i, chat_id in enumerate(users):
             try:
-                chat_type = await get_chat_type(client, chat_id)
+                chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
 
                 if chat_type == enums.ChatType.PRIVATE:
                     u += 1
@@ -2573,12 +2594,21 @@ async def get_status(client):
     users = user_data.get('users', [])
     progress_msg = ""
 
+        if len(users) > 500:
+            mess += (
+                f"<b>BOT STATS:</b>\n"
+                f"<blockquote><b>`Stored users = {len(users)}`</b>\n"
+                f"<b>`Detailed stats skipped to avoid timeout`</b></blockquote>"
+            )
+            mess += (f"\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
+            broadcasts[client.me.id] = mess
+            return mess
 
-    # Use asyncio.gather for efficient parallel processing
-    chat_types = await asyncio.gather(
-      *[get_chat_type(client, chat_id) for chat_id in users]
-    )
-    for i, chat_type in enumerate(chat_types):
+        chat_type_cache = dict(user_data.get('chat_type_cache', {}))
+
+
+        for i, chat_id in enumerate(users):
+            chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
       if chat_type is None:
         continue # Skip if chat type could not be fetched
 
@@ -2695,9 +2725,8 @@ async def status_command_handler(client, message):
 
     is_admin = False
     if os.path.exists(admin_file):
-        with open(admin_file, "r") as file:
-            admin_ids = [int(line.strip()) for line in file.readlines()]
-            is_admin = user_id in admin_ids
+        admin_ids = get_admin_ids(admin_file)
+        is_admin = user_id in admin_ids
 
     # Check permissions
     is_authorized = (
@@ -2722,9 +2751,8 @@ async def broadcast_command_handler(client, message):
 
     is_admin = False
     if os.path.exists(admin_file):
-        with open(admin_file, "r") as file:
-            admin_ids = [int(line.strip()) for line in file.readlines()]
-            is_admin = user_id in admin_ids
+        admin_ids = get_admin_ids(admin_file)
+        is_admin = user_id in admin_ids
 
     # Check permissions
     is_authorized = (
@@ -2862,67 +2890,6 @@ async def handle_power_command(client, message):
 
 
 
-
-@Client.on_message(filters.command("ping"))
-async def pingme(client, message):
-    # Calculate uptime
-    from random import choice
-    uptime = await get_readable_time((time.time() - StartTime))
-    start = datetime.datetime.now()
-    owner = await client.get_users(OWNER_ID)
-    ow_id = owner.id if owner.username else None
-    # Fun emoji animations for loading
-    loading_emojis = ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"]
-    ping_frames = [
-        "█▒▒▒▒▒▒▒▒▒▒ 10%",
-        "███▒▒▒▒▒▒▒ 30%",
-        "█████▒▒▒▒▒ 50%",
-        "███████▒▒▒ 70%",
-        "█████████▒ 90%",
-        "██████████ 100%"
-    ]
-
-    # Animated loading sequence
-    msg = await message.reply_text(Messages.PINGING, link_preview_options=None)
-
-    for frame in ping_frames:
-        await msg.edit(f"```\n{frame}\n```{choice(loading_emojis)}")
-        await asyncio.sleep(0.3)  # Smooth animation delay
-
-    end = datetime.datetime.now()
-    ping_duration = (end - start).microseconds / 1000
-
-    # Status indicators based on ping speed
-    if ping_duration < 100:
-        status = "EXCELLENT 🟢"
-    elif ping_duration < 200:
-        status = "GOOD 🟡"
-    else:
-        status = "MODERATE 🔴"
-
-    # Fancy formatted response
-    response = f"""
-╭──────────────────
-│   PONG! 🏓
-├──────────────────
-│ ⌚ Speed: {ping_duration:.2f}ms
-│ 📊 Status: {status}
-│ ⏱️ Uptime: {uptime}
-│ 👑 Owner: {owner.mention()}
-╰──────────────────
-"""
-
-    # Add random motivational messages
-    quotes = [
-        "Blazing fast! ⚡",
-        "Speed demon! 🔥",
-        "Lightning quick! ⚡",
-        "Sonic boom! 💨"
-    ]
-
-    await msg.edit(
-        response + f"\n<b>{choice(quotes)}</b>"
-    )
 
 from pyrogram import Client, enums, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
