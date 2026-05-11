@@ -827,7 +827,7 @@ async def handle_youtube_ytdlp(argument):
         logger.error(f"[youtube.handle_youtube_ytdlp] Error: {e}")
         return None
 
-async def handle_youtube(argument):
+async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=None):
     """
     Main function to get YouTube video information.
     Prioritizes API calls, falls back to yt-dlp via get_video_details.
@@ -836,9 +836,10 @@ async def handle_youtube(argument):
         tuple: (title, duration, youtube_link, thumbnail, channel_name, views, video_id, stream_url)
     """
     
-    # Use get_video_details which handles API → yt-dlp fallback
+    # Run the synchronous get_video_details in a thread to avoid blocking
+    # the event loop (it uses yt-dlp internally which can take 3-15+ seconds)
     logger.debug(f"[youtube.handle_youtube] Handling argument='{argument}'")
-    details = get_video_details(argument)
+    details = await asyncio.to_thread(get_video_details, argument)
     
     if 'error' in details:
         logger.warning(f"[youtube.handle_youtube] Failed to get details: {details.get('error')}")
@@ -857,4 +858,18 @@ async def handle_youtube(argument):
     )
 
     logger.info(f"[youtube.handle_youtube] Success: title='{details.get('title', 'N/A')}', id='{details.get('video_id', 'N/A')}'")
+
+    # If an update callback is provided, let it update the queued item by track_id
+    if update_callback and track_id and chat_id:
+        try:
+            update_callback(track_id, chat_id, {
+                'title': details.get('title', 'N/A'),
+                'duration': details.get('duration', 'N/A'),
+                'yt_link': details.get('video_url', 'N/A'),
+                'stream_url': details.get('stream_url', 'N/A'),
+                'thumbnail': details.get('thumbnail', 'N/A'),
+            })
+        except Exception:
+            pass
+
     return result_tuple

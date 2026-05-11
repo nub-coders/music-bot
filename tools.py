@@ -100,20 +100,22 @@ async def get_stream_url(youtube_url: str):
 
     try:
         import yt_dlp
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            logger.info(f"📥 Extracting stream URL from YouTube: {youtube_url}")
-            info = ydl.extract_info(youtube_url, download=False)
-            
-            # Get direct stream URL using optimized extraction
-            stream_url = extract_best_format_url(info.get("formats", []))
-            
-            if stream_url:
-                logger.info(f"✅ Successfully extracted stream URL")
-            else:
-                logger.warning(f"⚠️ Could not extract stream URL")
-            
-            return stream_url
-            
+
+        def _sync_extract():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                logger.info(f"📥 Extracting stream URL from YouTube: {youtube_url}")
+                info = ydl.extract_info(youtube_url, download=False)
+                return extract_best_format_url(info.get("formats", []))
+
+        stream_url = await asyncio.to_thread(_sync_extract)
+
+        if stream_url:
+            logger.info(f"✅ Successfully extracted stream URL")
+        else:
+            logger.warning(f"⚠️ Could not extract stream URL")
+
+        return stream_url
+
     except Exception as e:
         logger.error(f"❌ Error extracting stream URL: {e}")
         return None
@@ -131,6 +133,10 @@ connector = {}
 songs_client = {}
 owners = {}
 spam_chats = []
+
+# In-memory TTL cache for play-style format (avoids DB hit on every join_call)
+_format_style_cache: dict[int, tuple[int, float]] = {}  # {owner_id: (style_index, expire_ts)}
+_FORMAT_CACHE_TTL = 120  # seconds
 broadcasts = {}
 broadcast_message = {}
 SUDO = []
@@ -770,7 +776,14 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         display_title = f"[{title_formatted}](https://t.me/{clients['bot'].me.username}?start=vidid_{extract_video_id(youtube_link)})" if youtube_link and not os.path.exists(youtube_link) else title_formatted
 
         try:
-            style_index = int(await gvarstatus(OWNER_ID, "format") or 11)
+            _now = time.time()
+            _cached = _format_style_cache.get(OWNER_ID)
+            if _cached and _cached[1] > _now:
+                style_index = _cached[0]
+            else:
+                _raw = await gvarstatus(OWNER_ID, "format")
+                style_index = int(_raw or 11)
+                _format_style_cache[OWNER_ID] = (style_index, _now + _FORMAT_CACHE_TTL)
         except Exception:
             style_index = 11
         logger.debug(f"[join_call] Using play_style index: {style_index}")

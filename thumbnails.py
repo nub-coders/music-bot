@@ -385,7 +385,7 @@ def draw_text_with_shadow(background, draw, position, text, font, fill, shadow_o
     draw.text(position, text, font=font, fill=fill)
 
 
-async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoid=None):
+async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoid=None, track_id=None, chat_id=None, update_callback=None):
     try:
         import uuid
 
@@ -434,6 +434,13 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
             except:
+                pass
+
+        # If provided, notify caller that thumbnail is ready
+        if update_callback and track_id and chat_id:
+            try:
+                update_callback(track_id, chat_id, {'thumb': background_path})
+            except Exception:
                 pass
 
         return background_path

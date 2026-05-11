@@ -1564,9 +1564,6 @@ async def play_handler_func(client, message):
     # Get the bot username and retrieve the session client ID from connector
     youtube_link = None
     input_text = message.text.split(" ", 1)
-    d_ata = await find_one(collection, {"bot_id": client.me.id})
-
-    act_calls = len(active)
 
     # Determine if we need channel mode
     chat = message.chat
@@ -1668,13 +1665,13 @@ async def play_handler_func(client, message):
         # Generate thumbnail if missing
         if not thumbnail and media_type in ["video", "video_note"]:
             try:
-                thumbnail = generate_thumbnail(youtube_link, f'{user_dir}/thumb.png')
+                thumbnail = await asyncio.to_thread(generate_thumbnail, youtube_link, f'{user_dir}/thumb.png')
             except Exception as e:
                 print(e)
                 thumbnail = None
         # Format duration
         if not duration or duration <=0:
-            duration = with_opencv(youtube_link)
+            duration = await asyncio.to_thread(with_opencv, youtube_link)
         duration = format_duration(int(duration))
         media_info = {
             'title': title,
@@ -2594,39 +2591,38 @@ async def get_status(client):
     users = user_data.get('users', [])
     progress_msg = ""
 
-        if len(users) > 500:
-            mess += (
-                f"<b>BOT STATS:</b>\n"
-                f"<blockquote><b>`Stored users = {len(users)}`</b>\n"
-                f"<b>`Detailed stats skipped to avoid timeout`</b></blockquote>"
-            )
-            mess += (f"\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
-            broadcasts[client.me.id] = mess
-            return mess
+    if len(users) > 500:
+        mess += (
+            f"<b>BOT STATS:</b>\n"
+            f"<blockquote><b>`Stored users = {len(users)}`</b>\n"
+            f"<b>`Detailed stats skipped to avoid timeout`</b></blockquote>"
+        )
+        mess += (f"\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
+        broadcasts[client.me.id] = mess
+        return mess
 
-        chat_type_cache = dict(user_data.get('chat_type_cache', {}))
+    chat_type_cache = dict(user_data.get('chat_type_cache', {}))
 
+    for i, chat_id in enumerate(users):
+        chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
+        if chat_type is None:
+            continue # Skip if chat type could not be fetched
 
-        for i, chat_id in enumerate(users):
-            chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
-      if chat_type is None:
-        continue # Skip if chat type could not be fetched
-
-      if chat_type == enums.ChatType.PRIVATE:
-        u += 1
-      elif chat_type ==  enums.ChatType.GROUP:
-        g += 1
-      elif chat_type == enums.ChatType.SUPERGROUP:
-        sg += 1
-        try:
-          user_s = await client.get_chat_member(users[i], int(client.me.id))
-          if user_s.status in (
-            enums.ChatMemberStatus.OWNER,
-                enums.ChatMemberStatus.ADMINISTRATOR,
-          ):
-            a_chat += 1
-        except Exception as e:
-          logger.info(f"Error getting chat member status for {users[i]}: {e}")
+        if chat_type == enums.ChatType.PRIVATE:
+            u += 1
+        elif chat_type == enums.ChatType.GROUP:
+            g += 1
+        elif chat_type == enums.ChatType.SUPERGROUP:
+            sg += 1
+            try:
+                user_s = await client.get_chat_member(users[i], int(client.me.id))
+                if user_s.status in (
+                    enums.ChatMemberStatus.OWNER,
+                    enums.ChatMemberStatus.ADMINISTRATOR,
+                ):
+                    a_chat += 1
+            except Exception as e:
+                logger.info(f"Error getting chat member status for {users[i]}: {e}")
     mess += (
         f"""<b>BOT STATS:</b>
 <blockquote><b>`Private chats = {u}</b>`
@@ -2634,26 +2630,23 @@ async def get_status(client):
 <b>`Super Groups = {sg}`<b>
 <b>`Admin in Chats = {a_chat}`</b></blockquote>""")
 
-      #Update the progress message every 10 iterations.
     uu = ug = usg  = ua_chat =0
     async for dialog in session.get_dialogs():
-      try:
-        if dialog.chat.type == enums.ChatType.PRIVATE:
-            uu += 1
-        elif dialog.chat.type == enums.ChatType.GROUP:
-            ug += 1
-        elif dialog.chat.type == enums.ChatType.SUPERGROUP:
-            usg += 1
-            user_s = await dialog.chat.get_member(int(session.me.id))
-            if user_s.status in (
-                enums.ChatMemberStatus.OWNER,
-                enums.ChatMemberStatus.ADMINISTRATOR,
-            ):
-                ua_chat += 1
-      except:
-        pass
-        # Count blocked users from the blocklist
-    # Final message with stats
+        try:
+            if dialog.chat.type == enums.ChatType.PRIVATE:
+                uu += 1
+            elif dialog.chat.type == enums.ChatType.GROUP:
+                ug += 1
+            elif dialog.chat.type == enums.ChatType.SUPERGROUP:
+                usg += 1
+                user_s = await dialog.chat.get_member(int(session.me.id))
+                if user_s.status in (
+                    enums.ChatMemberStatus.OWNER,
+                    enums.ChatMemberStatus.ADMINISTRATOR,
+                ):
+                    ua_chat += 1
+        except:
+            pass
 
     mess += (
         f"""\n\n<b>ASSISTANT STATS:</b>
