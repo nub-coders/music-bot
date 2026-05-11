@@ -687,20 +687,60 @@ async def hd_stream_closed_kicked(client, update):
     playing.pop(chat_id, None)
 
 
-async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None):
+async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None):
     """Join voice call and start streaming"""
     original_title = title
     title = trim_title(title)
     logger.debug(f"[join_call] Title trimmed from: {original_title} -> {title}")
-    logger.debug(f"[join_call] Thumb value received: {thumb}")
     logger.info(f"[join_call] Starting join_call for chat {chat.id} (Title: {title}, Mode: {mode})")
-    logger.debug(f"[join_call] Parameters - youtube_link: {youtube_link}, stream_url: {stream_url}, duration: {duration}")
-    logger.debug(f"[join_call] Thumbnail: {thumb if thumb else 'None'} (type: {type(thumb).__name__})")
-    logger.debug(f"[join_call] Requested by: {by.id if hasattr(by, 'id') else by}")
 
     try:
         chat_id = chat.id
         audio_flags = MediaStream.Flags.IGNORE if mode == "audio" else None
+
+        # ── Wait for YouTube task if we have no stream source yet ──────────────
+        if not stream_url and not youtube_link and yt_task:
+            for attempt in range(3):
+                if yt_task.done():
+                    break
+                logger.info(
+                    f"[join_call] No stream source yet — "
+                    f"waiting for YouTube task (attempt {attempt + 1}/3)..."
+                )
+                await asyncio.sleep(1)
+
+            if yt_task.done() and not yt_task.cancelled():
+                try:
+                    result = yt_task.result()
+                    # handle_youtube returns:
+                    # (title, duration, youtube_link, thumbnail,
+                    #  channel_name, views, video_id, stream_url)
+                    if result and result[2] and result[2] != 'N/A':
+                        _title, _dur, _yt_link, _thumbnail, \
+                            _channel, _views, _vid_id, _stream = result
+                        if _yt_link and _yt_link != 'N/A':
+                            youtube_link = _yt_link
+                        if _stream and _stream != 'N/A':
+                            stream_url = _stream
+                        if _title and _title != 'N/A':
+                            title = trim_title(_title)
+                        if _dur and _dur != 'N/A':
+                            duration = _dur
+                        if thumb is None and _thumbnail and _thumbnail != 'N/A':
+                            thumb = asyncio.create_task(
+                                get_thumb(
+                                    _title, str(_dur), _thumbnail,
+                                    _channel, str(_views), _vid_id,
+                                )
+                            )
+                            thumb.add_done_callback(
+                                lambda t: t.exception() if not t.cancelled() else None
+                            )
+                        logger.info(f"[join_call] YouTube task resolved — title='{title}'")
+                except Exception as e:
+                    logger.warning(f"[join_call] yt_task result failed: {e}")
+            else:
+                logger.warning(f"[join_call] YouTube task not done after 3s — proceeding with None source")
 
         queue = queues.get(chat_id, [])
         position = len(queue)
@@ -868,7 +908,8 @@ async def end(client, update):
                 next_song['duration'],
                 next_song['mode'],
                 next_song['thumb'],
-                next_song.get('stream_url')
+                next_song.get('stream_url'),
+                yt_task=next_song.get('_yt_task'),
             )
         else:
             logger.info(f"Song queue for chat {update.chat_id} is empty.")

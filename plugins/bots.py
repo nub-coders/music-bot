@@ -1411,7 +1411,8 @@ async def dend(client, update, channel_id= None):
                 next_song['duration'],
                 next_song['mode'],
                 next_song['thumb'],
-                next_song.get('stream_url')
+                next_song.get('stream_url'),
+                yt_task=next_song.get('_yt_task'),
             )
         else:
             logger.info(f"Song queue for chat {chat_id} is empty.")
@@ -1586,6 +1587,8 @@ async def play_handler_func(client, message):
 
     youtube_link = None
     media_info = {}
+    track_id = None
+    _yt_task = None
     
     # Initialize title with a safe default to prevent unbound variable issues
     title = trim_title("Unknown Media")
@@ -1683,15 +1686,23 @@ async def play_handler_func(client, message):
         }
     elif len(input_text) == 2:
         search_query = input_text[1]
+        import uuid as _uuid
+        track_id = str(_uuid.uuid4())
 
-        title, duration, youtube_link, thumbnail, channel_name, views, video_id, stream_url = await handle_youtube(search_query)
-        title = trim_title(title)
-        if not youtube_link:
-            try:
-                await massage.edit(Messages.NO_QUERY_MATCH)
-                return await remove_active_chat(client, target_chat_id)
-            except:
-                return await remove_active_chat(client, target_chat_id)
+        # Placeholder values — join_call will wait for the task to resolve
+        title = trim_title(search_query[:25])
+        duration = None
+        youtube_link = None
+        thumbnail = None
+        channel_name = None
+        views = None
+        video_id = None
+        stream_url = None
+
+        _yt_task = asyncio.create_task(handle_youtube(search_query))
+        _yt_task.add_done_callback(
+            lambda t: t.exception() if not t.cancelled() else None
+        )
     else:
         try:
             await massage.edit(f"{Messages.NO_QUERY_GIVEN}\n`/play query`")
@@ -1713,8 +1724,10 @@ async def play_handler_func(client, message):
             )
         )
     else:
-        thumb = asyncio.create_task(get_thumb(title, str(duration), thumbnail, channel_name, str(views), video_id))
-    thumb.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+        # join_call will create the thumb task once yt_task resolves
+        thumb = None
+    if thumb:
+        thumb.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
     bot_username = client.me.username
 
     # Retrieve the session client from the clients dictionary
@@ -1797,7 +1810,9 @@ async def play_handler_func(client, message):
         mode,
         thumb,
         force_play,
-        stream_url
+        stream_url,
+        track_id=track_id,
+        yt_task=_yt_task,
     )
     if is_active and not force_play:
                 position = len(queues.get(message.chat.id)) if queues.get(target_chat.id) else 1
@@ -1844,13 +1859,16 @@ async def put_queue(
     chat,
     by,
     duration,
-audio_flags,
-thumb,
-forceplay = False,
-stream_url = None):
+    audio_flags,
+    thumb,
+    forceplay=False,
+    stream_url=None,
+    track_id=None,
+    yt_task=None,
+):
     try:
-        duration_in_seconds = time_to_seconds(duration) - 3
-    except:
+        duration_in_seconds = (time_to_seconds(duration) - 3) if duration else 0
+    except Exception:
         duration_in_seconds = 0
     put = {
         "message": message,
@@ -1860,9 +1878,11 @@ stream_url = None):
         "yt_link": yt_link,
         "chat": chat,
         "by": by,
-        "session":client,
-        "thumb":thumb,
+        "session": client,
+        "thumb": thumb,
         "stream_url": stream_url
+        "_track_id": track_id,
+        "_yt_task": yt_task,
     }
     if forceplay:
         check = queues.get(chat.id)
@@ -2213,7 +2233,8 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
                 next_song['duration'], 
                 next_song['mode'], 
                 next_song['thumb'], 
-                next_song.get('stream_url')
+                next_song.get('stream_url'),
+                yt_task=next_song.get('_yt_task'),
             )
             await callback_query.answer(Messages.SKIPPED_SUCCESS, show_alert=False)
         else:
@@ -2331,7 +2352,7 @@ async def skip_handler_func(client, message):
           await call_py.pause(message.chat.id)
        except:
           pass
-       await join_call(next['message'], next['title'], next['yt_link'], next['chat'], next['by'], next['duration'], next['mode'], next['thumb'], next.get('stream_url'))
+    await join_call(next['message'], next['title'], next['yt_link'], next['chat'], next['by'], next['duration'], next['mode'], next['thumb'], next.get('stream_url'), yt_task=next.get('_yt_task'))
     else:
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
