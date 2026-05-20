@@ -1047,7 +1047,7 @@ async def user_client_start_handler(client, message):
             _, video_id = command_args[1].split('_', 1)
 
             # Get video details
-            video_info = get_video_details(video_id)
+            video_info = await get_video_details(video_id)
 
             if isinstance(video_info, dict):
                 # Format numbers

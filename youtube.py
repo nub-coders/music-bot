@@ -622,7 +622,7 @@ def extract_best_format(formats):
 
     return 'N/A'
 
-def get_video_details(video_id):
+async def get_video_details(video_id):
     """
     Get video details using API first, then yt_dlp fallback
 
@@ -637,7 +637,7 @@ def get_video_details(video_id):
     if API_TOKEN:
         try:
             logger.debug(f"[youtube.get_video_details] Using API for video_id='{video_id}'")
-            api_result = get_video_info(video_id)
+            api_result = await get_video_info(video_id)
             
             if api_result and api_result[0] and api_result[0] != "N/A":
                 title, video_id_result, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken = api_result
@@ -671,7 +671,6 @@ def get_video_details(video_id):
             "no_warnings": True,
             "skip_download": True,
             "cookiesfrombrowser": ("firefox",),
-            "format": "best",
 
             # Performance optimizations
             "extract_flat": False,  # We need full info
@@ -760,7 +759,6 @@ async def handle_youtube_ytdlp(argument):
             "no_warnings": True,
             "skip_download": True,
             "cookiesfrombrowser": ("firefox",),
-            "format": "best",
 
             # Performance optimizations
             "extract_flat": False,
@@ -836,10 +834,8 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
         tuple: (title, duration, youtube_link, thumbnail, channel_name, views, video_id, stream_url)
     """
     
-    # Run the synchronous get_video_details in a thread to avoid blocking
-    # the event loop (it uses yt-dlp internally which can take 3-15+ seconds)
     logger.debug(f"[youtube.handle_youtube] Handling argument='{argument}'")
-    details = await asyncio.to_thread(get_video_details, argument)
+    details = await get_video_details(argument)
     
     if 'error' in details:
         logger.warning(f"[youtube.handle_youtube] Failed to get details: {details.get('error')}")
