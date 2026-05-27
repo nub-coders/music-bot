@@ -1880,7 +1880,7 @@ async def put_queue(
         "by": by,
         "session": client,
         "thumb": thumb,
-        "stream_url": stream_url
+        "stream_url": stream_url,
         "_track_id": track_id,
         "_yt_task": yt_task,
     }
@@ -2352,7 +2352,7 @@ async def skip_handler_func(client, message):
           await call_py.pause(message.chat.id)
        except:
           pass
-    await join_call(next['message'], next['title'], next['yt_link'], next['chat'], next['by'], next['duration'], next['mode'], next['thumb'], next.get('stream_url'), yt_task=next.get('_yt_task'))
+       await join_call(next['message'], next['title'], next['yt_link'], next['chat'], next['by'], next['duration'], next['mode'], next['thumb'], next.get('stream_url'), yt_task=next.get('_yt_task'))
     else:
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
