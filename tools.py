@@ -687,7 +687,7 @@ async def hd_stream_closed_kicked(client, update):
     playing.pop(chat_id, None)
 
 
-async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None, draft_id=None):
+async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None):
     """Join voice call and start streaming"""
     original_title = title
     title = trim_title(title)
@@ -769,12 +769,6 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         logger.info(f"[join_call] Attempting to play: {title} from {stream_source[:100]}... in chat {chat_id}")
         logger.debug(f"[join_call] Calling clients['call_py'].play with AudioQuality.MEDIUM and VideoQuality.HD_720p; audio_flags={audio_flags}")
-
-        if draft_id:
-            try:
-                await clients["bot"].send_message_draft(chat_id, draft_id, text=f"🔊 Starting voice stream: {title}...")
-            except Exception:
-                pass
 
         _jc_t0 = time.perf_counter()
         await clients["call_py"].play(
@@ -916,7 +910,6 @@ async def end(client, update):
                 next_song['thumb'],
                 next_song.get('stream_url'),
                 yt_task=next_song.get('_yt_task'),
-                draft_id=next_song.get('_draft_id'),
             )
         else:
             logger.info(f"Song queue for chat {update.chat_id} is empty.")
