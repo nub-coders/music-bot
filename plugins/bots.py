@@ -1413,6 +1413,7 @@ async def dend(client, update, channel_id= None):
                 next_song['thumb'],
                 next_song.get('stream_url'),
                 yt_task=next_song.get('_yt_task'),
+                draft_id=next_song.get('_draft_id'),
             )
         else:
             logger.info(f"Song queue for chat {chat_id} is empty.")
@@ -1448,7 +1449,7 @@ def generate_thumbnail(video_path, thumb_path):
 
 
 # Modified media download with progress
-async def download_media_with_progress(client, msg, media_msg, type_of):
+async def download_media_with_progress(client, msg, media_msg, type_of, draft_id=None):
     start_time = time.time()
     filename = getattr(media_msg, 'file_name', 'file')
     session_name = f'user_{client.me.id}'
@@ -1457,7 +1458,7 @@ async def download_media_with_progress(client, msg, media_msg, type_of):
     try:
         file_path = await client.download_media(media_msg,file_name=f"{user_dir}/",
             progress=progress_bar,
-            progress_args=(client, msg, type_of, filename, start_time))
+            progress_args=(client, msg, type_of, filename, start_time, draft_id))
         return file_path
     except Exception as e:
         print(f"Download error: {e}")
@@ -1465,7 +1466,7 @@ async def download_media_with_progress(client, msg, media_msg, type_of):
 
 
 # Modified progress bar with error handling
-async def progress_bar(current, total, client, msg, type_of, filename, start_time):
+async def progress_bar(current, total, client, msg, type_of, filename, start_time, draft_id=None):
     if total == 0:
         return
 
@@ -1497,6 +1498,11 @@ async def progress_bar(current, total, client, msg, type_of, filename, start_tim
             try:
               if random.choices([True, False], weights=[1, 20])[0]:
                 await msg.edit(progress_message)
+                if draft_id:
+                    try:
+                        await client.send_message_draft(msg.chat.id, draft_id, text=progress_message)
+                    except Exception:
+                        pass
             except Exception as e:
                 print(f"Progress update error: {e}")
 
@@ -1552,6 +1558,16 @@ async def play_handler_func(client, message):
     if message.from_user.id in BLOCK:
         return
 
+    # Premium animated draft initialization
+    draft_id = getattr(client, "rnd_id", lambda: random.randint(1, 2**63 - 1))()
+    async def update_draft(text):
+        try:
+            await client.send_message_draft(message.chat.id, draft_id, text=text)
+        except Exception as e:
+            logger.debug(f"Failed to update draft: {e}")
+
+    await update_draft("")  # Shows animated "Thinking..." bubble
+
     command = message.command[0].lower()
     mode = "video" if command.startswith("v") or command.startswith("cv") else "audio"
     force_play = command.endswith("force")
@@ -1571,6 +1587,7 @@ async def play_handler_func(client, message):
     target_chat_id = message.chat.id
     # For channel commands, check for linked channel
     if channel_mode:
+        await update_draft("🔍 Resolving linked channel...")
         linked_chat = (await client.get_chat(message.chat.id)).linked_chat
         if not linked_chat:
             await message.reply(Messages.NO_LINKED_CHANNEL, link_preview_options=None)
@@ -1580,6 +1597,7 @@ async def play_handler_func(client, message):
     # Check queue for the target chat
     current_queue = len(queues.get(target_chat_id, [])) if queues else 0
 
+    await update_draft("🎵 Fetching chat stream status...")
     massage = await message.reply(Messages.BOLT, link_preview_options=None)
     # Set target chat as active based on channel mode or not
     is_active = await is_active_chat(client, target_chat_id)
@@ -1596,6 +1614,7 @@ async def play_handler_func(client, message):
     # Check if replied to media message
     if message.reply_to_message and message.reply_to_message.media:
         media_msg = message.reply_to_message
+        await update_draft("📥 Processing replied media...")
         media_type = None
         duration = 0
         thumbnail = None
@@ -1651,17 +1670,21 @@ async def play_handler_func(client, message):
             if media_type and doc.thumbs:
                 thumbnail = await client.download_media(doc.thumbs[0].file_id,f"{user_dir}/")
         else:
+            await update_draft(Messages.UNSUPPORTED_MEDIA)
             await massage.edit(Messages.UNSUPPORTED_MEDIA)
             return await remove_active_chat(client, target_chat_id)
         if not media_type:
+            await update_draft(Messages.UNSUPPORTED_MEDIA)
             await massage.edit(Messages.UNSUPPORTED_MEDIA)
             return await remove_active_chat(client, target_chat_id)
         # For media messages
+        await update_draft(f"📥 Processing and downloading {media_type}...")
         youtube_link = await download_media_with_progress(
             client,
             massage,
             message.reply_to_message,
-            "Media"
+            "Media",
+            draft_id=draft_id
         )
         stream_url = None
 
@@ -1686,6 +1709,7 @@ async def play_handler_func(client, message):
         }
     elif len(input_text) == 2:
         search_query = input_text[1]
+        await update_draft(f"🔎 Searching YouTube for: {search_query[:30]}...")
         import uuid as _uuid
         track_id = str(_uuid.uuid4())
 
@@ -1737,14 +1761,19 @@ async def play_handler_func(client, message):
         # Public group
         try:
             try:
+                await update_draft("⚡ Connecting assistant to public group...")
                 joined_chat = await session.get_chat(message.chat.username)
             except:
                 joined_chat = await session.join_chat(message.chat.username)
         except (InviteHashExpired, ChannelPrivate):
-            await massage.edit(f"Assistant is banned in this chat.\n\nPlease unban {session.me.username or session.me.id}")
+            err_msg = f"Assistant is banned in this chat.\n\nPlease unban {session.me.username or session.me.id}"
+            await update_draft(err_msg)
+            await massage.edit(err_msg)
             return await remove_active_chat(client, target_chat_id)
         except Exception as e:
-            await massage.edit(f"Failed to join the group. Error: {e}")
+            err_msg = f"Failed to join the group. Error: {e}"
+            await update_draft(err_msg)
+            await massage.edit(err_msg)
             return await remove_active_chat(client, target_chat_id)
     else:
         # Private group — try to get/join without relying on privileges check.
@@ -1758,30 +1787,36 @@ async def play_handler_func(client, message):
 
         # Step 1: Maybe the session is already a member — no join needed.
         try:
+            await update_draft("⚡ Checking assistant membership in private group...")
             joined_chat = await session.get_chat(message.chat.id)
             logger.info(f"[play] Session already in private group {message.chat.id}")
         except Exception:
             # Step 2: Not a member yet. Try to export invite link and join.
             if not is_admin_or_owner:
+                await update_draft(Messages.NEED_INVITE_PERMISSION)
                 await massage.edit(Messages.NEED_INVITE_PERMISSION)
                 return await remove_active_chat(client, target_chat_id)
             try:
+                await update_draft("⚡ Exporting invite link for assistant...")
                 invite_link = await client.export_chat_invite_link(message.chat.id)
+                await update_draft("⚡ Assistant joining private group via invite link...")
                 joined_chat = await session.join_chat(invite_link)
                 logger.info(f"[play] Session joined private group {message.chat.id} via invite link")
             except (InviteHashExpired, ChannelPrivate):
-                await massage.edit(
-                    f"Assistant is banned in this chat.\n\nPlease unban "
-                    f"{session.me.mention()}\nuser id: {session.me.id}"
-                )
+                err_msg = f"Assistant is banned in this chat.\n\nPlease unban {session.me.mention()}\nuser id: {session.me.id}"
+                await update_draft(err_msg)
+                await massage.edit(err_msg)
                 return await remove_active_chat(client, target_chat_id)
             except Exception as e:
                 # If Telegram rejects due to missing invite permission, tell the user
                 err_str = str(e).lower()
                 if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
+                    await update_draft(Messages.NEED_INVITE_PERMISSION)
                     await massage.edit(Messages.NEED_INVITE_PERMISSION)
                 else:
-                    await massage.edit(f"Failed to join the group. Error: {e}")
+                    err_msg = f"Failed to join the group. Error: {e}"
+                    await update_draft(err_msg)
+                    await massage.edit(err_msg)
                 return await remove_active_chat(client, target_chat_id)
 
 
@@ -1792,6 +1827,7 @@ async def play_handler_func(client, message):
         # For channel mode, use the linked chat
         linked_chat = (await session.get_chat(message.chat.id)).linked_chat
         if not linked_chat:
+            await update_draft(Messages.LINKED_CHANNEL_ERROR)
             await massage.edit(Messages.LINKED_CHANNEL_ERROR)
             return await remove_active_chat(client, target_chat_id)
         target_chat = linked_chat
@@ -1813,6 +1849,7 @@ async def play_handler_func(client, message):
         stream_url,
         track_id=track_id,
         yt_task=_yt_task,
+        draft_id=draft_id,
     )
     if is_active and not force_play:
                 position = len(queues.get(message.chat.id)) if queues.get(target_chat.id) else 1
@@ -1831,6 +1868,7 @@ async def play_handler_func(client, message):
             )
         ],
         ])
+                await update_draft(f"✅ Queued at position {position}!")
                 await client.send_message(message.chat.id, Messages.QUEUE[int(11)].format(mode, f"[{trim_title(title)}](https://t.me/{client.me.username}?start=vidid_{extract_video_id(youtube_link)})" if not os.path.exists(youtube_link) else trim_title(title), duration, position), reply_markup=keyboard,link_preview_options=None)
                 try:
                    await message.delete()
@@ -1839,6 +1877,7 @@ async def play_handler_func(client, message):
 
 
     else:
+      await update_draft("🔊 Starting voice stream...")
       await dend(client, massage, target_chat.id if channel_mode else None)
     await message.delete()
 
@@ -1865,6 +1904,7 @@ async def put_queue(
     stream_url=None,
     track_id=None,
     yt_task=None,
+    draft_id=None,
 ):
     try:
         duration_in_seconds = (time_to_seconds(duration) - 3) if duration else 0
@@ -1883,6 +1923,7 @@ async def put_queue(
         "stream_url": stream_url,
         "_track_id": track_id,
         "_yt_task": yt_task,
+        "_draft_id": draft_id,
     }
     if forceplay:
         check = queues.get(chat.id)
