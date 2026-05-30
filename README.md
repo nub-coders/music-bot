@@ -1,63 +1,75 @@
-<h1 align="center">Telegram Music Bot 🎵</h1>
-<p align="center">
-  <img src="https://raw.githubusercontent.com/nub-coders/nub-music-bot/refs/heads/main/music.jpg" alt="Bot Logo" width="200"/>
-</p>
+ # nub-music-bot
 
-<p align="center">
-  <b>🔥 Ultimate Telegram Voice Chat Music Bot with breathtaking streaming capabilities!</b><br>
-  Powered by cutting-edge Pyrogram (Kurigram) and next-gen PyTgCalls for lightning-fast performance. Experience crystal-clear HD audio/video streaming with stunning UI and advanced features that will revolutionize your group voice chats! ⚡✨
-</p>
+ Telegram music/voice-chat bot for streaming audio (and video) into group voice chats.
 
-## ✨ Features
-- 🎧 **Crystal Clear Audio/Video:** Stream HD audio and video to Telegram Voice Chats seamlessly.
-- ⏭️ **Queue Management:** Smart queue system, ability to view queue (`/queue`) and skip tracking.
-- ⏯️ **Playback Controls:** Seek (`/seek`, `/seekback`), pause, resume, and skip media directly in the chat.
-- ⚡ **Lightning Fast:** Uses `PyTgCalls` and `Kurigram` under the hood for low latency and high stability, taking full advantage of the `uvloop` magic.
-- 🛡️ **Advanced Permissions:** Robust admin management including owner access, sudoers, authorized users list (`/auth`, `/unauth`), and blocklists (`/block`, `/unblock`).
-- 🔄 **Real-time Status:** View active voice calls and current playing statuses across all groups (`/ac`).
-- 🎨 **Beautiful UI:** Auto-generated dynamic images and stylized thumbnails for tracks along with stylish font support.
+ ![Bot Logo](https://raw.githubusercontent.com/nub-coders/nub-music-bot/refs/heads/main/music.jpg)
 
-## 🚀 Recommended Deployment
+ Summary
+ -------
+ Lightweight, extensible Python bot built on `Pyrogram` and `pytgcalls` to stream media into Telegram voice chats. This repo contains the bot code, plugins, and utilities used to download, queue and stream media from YouTube and other sources.
 
-### Deploy to Heroku
-Deploying to Heroku is the easiest way to get your bot running fast. Click the button below to deploy!
+ Quick features
+ --------------
+ - Queue and playback controls (seek, pause, resume, skip)
+ - Admin/sudo/owner controls and simple permission management
+ - Auto-generated thumbnails and status messages
+ - Support for YouTube downloads via `yt-dlp`
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/nub-music-bot)
+ Requirements
+ ------------
+ - Python 3.10+
+ - `ffmpeg` installed on the host
+ - MongoDB (or a compatible MongoDB URI)
 
-### Local / VPS Deployment
-If you prefer running the bot on your own server or a VPS locally:
+ Configuration (environment variables)
+ -------------------------------------
+ The bot reads configuration from environment variables. Key names used by the project (see `config.py`) are:
 
-#### 1. Requirements 
-- Python 3.10+ (Recommended Python 3.13)
-- `ffmpeg` installed on the system
-- MongoDB (Database)
+ - `API_ID` (default in `config.py` shown for convenience)
+ - `API_HASH`
+ - `BOT_TOKEN`
+ - `STRING_SESSION`
+ - `OWNER_ID`
+ - `MONGODB_URI`
+ - Optional: `LOGGER_ID`, `DB_NAME`, `YOUTUBE_API_KEYS`, `YT_API_TOKEN`, `NUB_YT_API_BASE_URL`
 
-#### 2. Get your credentials
-You will need to fetch your variables and set them in your environment:
-- `API_ID` & `API_HASH` from [my.telegram.org](https://my.telegram.org)
+ Quickstart (local or VPS)
+ -------------------------
+ 1. Clone the repo:
 
-- `BOT_TOKEN` from [@BotFather](https://t.me/BotFather)
-- `OWNER_ID`: Your Telegram User ID.
-- `STRING_SESSION`: A valid Pyrogram session string to act as the music assistant account.
-- `MONGODB_URI`: Connectstring for MongoDB instance.
+ ```bash
+ git clone https://github.com/nub-coders/nub-music-bot.git
+ cd nub-music-bot
+ ```
 
-#### 3. Clone & Run
-```bash
-git clone https://github.com/nub-coders/nub-music-bot.git
-cd nub-music-bot
-pip install -r requirements.txt
-# Set environment variables from app.json
-python3 main.py
-```
+ 2. Install dependencies:
 
-## 🛠️ Stack / Technologies Used
-- **Language:** Python
-- **Bot Framework:** [Pyrogram](https://github.com/pyrogram/pyrogram) / Kurigram
-- **Calling Engine:** [PyTgCalls](https://github.com/pytgcalls/pytgcalls)
-- **Database:** MongoDB (`motor`, `pymongo`)
-- **Media Download/Extraction:** `yt-dlp`, `youtube-search-python`, `imageio`, `mutagen`
-- **Image Processing:** `Pillow`
+ ```bash
+ python3 -m pip install -r requirements.txt
+ ```
 
-<p align="center">
-  <i>Developed and crafted with ❤️ by <a href="https://t.me/nub_coders">Nub Coders</a></i>
-</p>
+ 3. Provide environment variables (example using a `.env` file or export commands). At a minimum set `BOT_TOKEN` and either `STRING_SESSION` or Pyrogram credentials.
+
+ 4. Run the bot:
+
+ ```bash
+ python3 main.py
+ ```
+
+ Deploy
+ ------
+ - A `Procfile` and `app.json` are included for easy Heroku deployment (see repository root).
+
+ Contributing
+ ------------
+ Contributions are welcome. Open issues or PRs with clear descriptions and tests where appropriate.
+
+ License
+ -------
+ See `LICENSE` (if present) or add a license file to the repository.
+
+ Credits
+ -------
+ Developed by the Nub Coders community.
+
+ For detailed configuration, inspect `config.py` and `app.json` in the project root.
