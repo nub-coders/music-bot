@@ -8,7 +8,8 @@ google-auth-httplib2
 google-auth-oauthlib
 httpx
 imageio
-kurigram
+pyrogram @ git+https://github.com/KurimuzonAkuma/pyrogram.git
+tgcrypto
 lottie
 lxml
 motor
@@ -23,7 +24,4 @@ pymongo
 python-magic
 pytz
 requests
-telegraph
-TgCrypto
-uvloop
 yt-dlp[default]
