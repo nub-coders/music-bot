@@ -42,6 +42,7 @@ from tools import trim_title, join_call
 from utils.message import Messages
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
+from utils.emoji import Emoji
 from database import find_one, push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task
 from thumbnails import get_thumb
 
@@ -3259,10 +3260,64 @@ async def kang(client, message):
             else:
                 emoji_ = args[0]
 
-        if emoji_ and emoji_ not in (
-            getattr(emoji, _) for _ in dir(emoji) if not _.startswith("_")
-        ):
-            emoji_ = None
+        if emoji_:
+            def is_unicode_emoji(s: str) -> bool:
+                if not s:
+                    return False
+                emoji_re = re.compile(
+                    "["
+                    "\U0001F300-\U0001F6FF"
+                    "\U0001F700-\U0001F77F"
+                    "\U0001F780-\U0001F7FF"
+                    "\U0001F800-\U0001F8FF"
+                    "\U0001F900-\U0001F9FF"
+                    "\U0001FA00-\U0001FA6F"
+                    "\U0001FA70-\U0001FAFF"
+                    "\U00002702-\U000027B0"
+                    "\U000024C2-\U0001F251"
+                    "]+",
+                    flags=re.UNICODE,
+                )
+                return bool(emoji_re.fullmatch(s) or emoji_re.search(s))
+
+            valid = False
+            # normalize
+            e = str(emoji_).strip()
+
+            # If user provided a named constant (e.g., PLAY, MUSIC_NOTE)
+            if hasattr(Emoji, e):
+                emoji_ = getattr(Emoji, e)
+                valid = True
+
+            # If it's purely numeric, treat as custom emoji id
+            if not valid and e.isdigit():
+                try:
+                    emoji_ = int(e)
+                    valid = True
+                except Exception:
+                    valid = False
+
+            # If it's a unicode emoji (one or more glyphs), accept as-is
+            if not valid and is_unicode_emoji(e):
+                emoji_ = e
+                valid = True
+
+            # As a last resort, check if it matches any Emoji constant values
+            if not valid:
+                try:
+                    for name in dir(Emoji):
+                        if name.startswith("_"):
+                            continue
+                        val = getattr(Emoji, name)
+                        if str(val) == e:
+                            emoji_ = val
+                            valid = True
+                            break
+                except Exception:
+                    valid = False
+
+            if not valid:
+                emoji_ = None
         if not emoji_:
             emoji_ = "✨"
 
