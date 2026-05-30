@@ -8,7 +8,7 @@ google-auth-httplib2
 google-auth-oauthlib
 httpx
 imageio
-pyrogram @ git+https://github.com/KurimuzonAkuma/pyrogram.git
+https://github.com/KurimuzonAkuma/kurigram/archive/dev.zip
 tgcrypto
 lottie
 lxml
