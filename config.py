@@ -9,7 +9,7 @@ OWNER_ID    = int(os.getenv("OWNER_ID", "6076474757"))
 GROUP       = os.getenv("GROUP", "nub_coder_s")
 CHANNEL     = os.getenv("CHANNEL", "nub_coders")
 
-# ── Sensitive — must be set via environment, no defaults ─────────────────────────
+# ── Sensitive — must be set via environment, no defaults ────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
 STRING_SESSION = os.getenv("STRING_SESSION", "")
 MONGODB_URI    = os.getenv("MONGODB_URI", "mongodb+srv://nubcoders:nubcoders@music.8rxlsum.mongodb.net/?retryWrites=true&w=majority&appName=music")
