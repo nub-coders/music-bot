@@ -57,16 +57,18 @@
  ```
 
  Deploy
- ------
- - A `Procfile` and `app.json` are included for easy Heroku deployment (see repository root).
+------
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/nub-music-bot)
+
+- A `Procfile` and `app.json` are included for easy Heroku deployment (see repository root).
 
  Contributing
  ------------
  Contributions are welcome. Open issues or PRs with clear descriptions and tests where appropriate.
 
  License
- -------
- See `LICENSE` (if present) or add a license file to the repository.
+-------
+This project is licensed under the MIT License - see the `LICENSE` file for details.
 
  Credits
  -------
