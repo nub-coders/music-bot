@@ -1832,7 +1832,13 @@ async def play_handler_func(client, message):
             )
         ],
         ])
-                await client.send_message(message.chat.id, Messages.QUEUE[int(11)].format(mode, f"[{trim_title(title)}](https://t.me/{client.me.username}?start=vidid_{extract_video_id(youtube_link)})" if not os.path.exists(youtube_link) else trim_title(title), duration, position), reply_markup=keyboard,link_preview_options=None)
+                is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
+                video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None
+                if video_id:
+                    title_text = f"[{trim_title(title)}](https://t.me/{client.me.username}?start=vidid_{video_id})"
+                else:
+                    title_text = trim_title(title)
+                await client.send_message(message.chat.id, Messages.QUEUE[int(11)].format(mode, title_text, duration, position), reply_markup=keyboard,link_preview_options=None)
                 try:
                    await message.delete()
                 except:
