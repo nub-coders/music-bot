@@ -279,9 +279,38 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
 
 # New: Get video info using local search and stream extraction
 async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") -> Tuple[str, str, str, str, str, str, str, str, str]:
-    """Get video info using local search and stream extraction."""
+    """Get video info using nubcoder API, falling back to local search."""
+    # Primary: use the nubcoder /info API endpoint
+    if API_TOKEN and BASE_URL:
+        try:
+            logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}' (mode={mode})")
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    f"{BASE_URL}/info",
+                    params={"q": query, "token": API_TOKEN, "mode": mode},
+                )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("stream_url") and data.get("title"):
+                    logger.info(f"[youtube.get_video_info] nubcoder API success: title='{data.get('title')}'")
+                    return (
+                        data.get('title', 'N/A'),
+                        data.get('video_id', 'N/A'),
+                        data.get('duration', '0'),
+                        data.get('youtube_link', 'N/A'),
+                        data.get('channel_name', 'N/A'),
+                        data.get('views', '0'),
+                        data.get('stream_url', 'N/A'),
+                        data.get('thumbnail', 'N/A'),
+                        'api',
+                    )
+            logger.warning(f"[youtube.get_video_info] nubcoder API returned status {resp.status_code}, falling back")
+        except Exception as e:
+            logger.warning(f"[youtube.get_video_info] nubcoder API failed: {e}, falling back")
+
+    # Fallback: local YouTube Data API search + stream extraction
     try:
-        logger.debug(f"[youtube.get_video_info] Searching for '{query}' (max_results={max_results}, mode={mode})")
+        logger.debug(f"[youtube.get_video_info] Falling back to local search for '{query}' (max_results={max_results}, mode={mode})")
         results = await youtube_search(query, limit=max_results)
         if not results:
             return (None,) * 9

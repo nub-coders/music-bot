@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 from utils.message import Messages
 from utils.button import Buttons
+from thumbnails import get_thumb
 
 
 def extract_best_format_url(formats):

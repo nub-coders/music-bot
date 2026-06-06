@@ -1816,6 +1816,15 @@ async def play_handler_func(client, message):
         yt_task=_yt_task,
     )
     if is_active and not force_play:
+                if _yt_task and duration is None:
+                    try:
+                        yt_result = await _yt_task
+                        if yt_result:
+                            title = trim_title(yt_result[0]) if yt_result[0] else title
+                            duration = yt_result[1] if yt_result[1] else "N/A"
+                            youtube_link = yt_result[2] if yt_result[2] else youtube_link
+                    except Exception:
+                        duration = "N/A"
                 position = len(queues.get(message.chat.id)) if queues.get(target_chat.id) else 1
                 keyboard = InlineKeyboardMarkup([
             [
