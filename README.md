@@ -74,6 +74,6 @@ This project is licensed under the MIT License - see the `LICENSE` file for deta
 
  Credits
  -------
- Developed by the <img src="https://nubcoder.com/logo.svg" height="16" alt="Nub Coder" />Nub Coders community.
+ Developed by the <img src="https://nubcoder.com/logo.svg" height="20" align="center" /> Nub Coders community.
 
  For detailed configuration, inspect `config.py` and `app.json` in the project root.
