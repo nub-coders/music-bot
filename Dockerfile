@@ -21,6 +21,7 @@ COPY . .
 
 RUN echo '#!/bin/bash\necho "Starting application..."\npython3 main.py' > start.sh && \
     chmod +x start.sh
+RUN chown -R root:root /root/.mozilla 2>/dev/null || true
 
 # Default command
 CMD ["./start.sh"]
