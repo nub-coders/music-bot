@@ -27,7 +27,7 @@ YOUTUBE_API_KEYS = os.getenv("YOUTUBE_API_KEYS", "")
 
 # External YouTube proxy (optional)
 YT_API_TOKEN      = os.getenv("YT_API_TOKEN", None)
-NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "http://api.nubcoder.com")
+NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "http://api.nubcoders.com")
 
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()

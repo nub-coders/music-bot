@@ -60,7 +60,7 @@
 ------
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/nub-music-bot)
 
-[![Deploy to Deplox](https://app.nubcoder.com/deploy/button.svg)](https://app.nubcoder.com/deploy?template=https://github.com/nub-coders/nub-music-bot)
+[![Deploy to Deplox](https://app.nubcoders.com/deploy/button.svg)](https://app.nubcoders.com/deploy?template=https://github.com/nub-coders/nub-music-bot)
 
 - A `Procfile` and `app.json` are included for easy Heroku deployment (see repository root).
 
