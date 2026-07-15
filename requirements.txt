@@ -1,17 +1,9 @@
 aiofiles
 aiohttp
-certifi
-cryptg
-fake-useragent
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
 httpx
 imageio
 https://github.com/KurimuzonAkuma/kurigram/archive/dev.zip
 tgcrypto
-lottie
-lxml
 motor
 mutagen
 numpy
@@ -20,8 +12,6 @@ Pillow
 psutil
 py-tgcalls
 pymediainfo
-pymongo
 python-magic
-pytz
 requests
 yt-dlp[default]

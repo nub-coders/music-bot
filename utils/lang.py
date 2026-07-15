@@ -18,7 +18,7 @@ Supported languages (no Hindi):
 import json
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict
 
 from database import user_sessions, db_task
 

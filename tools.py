@@ -1,42 +1,22 @@
-import json
-import subprocess
-import requests
 import re
 import asyncio
-import math
 import os
-import sys
-import shlex
 import time
-import gc
 import shutil
 import textwrap
 import datetime
-import magic
-import psutil
 
-from io import BytesIO
-from urllib.parse import parse_qs, urlparse
-from re import sub
-from typing import Tuple, Optional
-from functools import wraps
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from pyrogram import Client, filters, enums
-from pyrogram.enums import ButtonStyle
-from pyrogram.errors.exceptions import InviteHashExpired, ChannelPrivate
-from pyrogram.errors import FloodWait, RPCError
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-
-from pytgcalls import idle, PyTgCalls
-from pytgcalls.types import AudioQuality, MediaStream, VideoQuality, ChatUpdate, StreamEnded
-from pytgcalls.exceptions import NotInCallError, NoActiveGroupCall
+from pytgcalls.types import AudioQuality, MediaStream, VideoQuality, StreamEnded
+from pytgcalls.exceptions import NoActiveGroupCall
 
 from PIL import Image, ImageDraw, ImageFont
 from pymediainfo import MediaInfo
 
 
 from config import *
-from youtube import handle_youtube, get_video_details, extract_video_id, format_number, format_duration, time_to_seconds
+from youtube import extract_video_id
 from database import user_sessions, db_task, collection
 
 import logging
@@ -122,22 +102,13 @@ async def get_stream_url(youtube_url: str):
         return None
 
 
-temporary = {}
 active = set()  # set for O(1) membership checks
 playing = {}
 queues = {}
 clients = {}
 played = {}
-linkage = {}
-conversations = {}
-connector = {}
-songs_client = {}
-owners = {}
 spam_chats = []
 
-# In-memory TTL cache for play-style format (avoids DB hit on every join_call)
-_format_style_cache: dict[int, tuple[int, float]] = {}  # {owner_id: (style_index, expire_ts)}
-_FORMAT_CACHE_TTL = 120  # seconds
 broadcasts = {}
 broadcast_message = {}
 SUDO = []
@@ -180,50 +151,6 @@ def clear_directory(directory_path):
             logger.warning(f"Failed to delete {item_path}: {e}")
 
 
-
-def is_streamable(file_path):
-    """
-    Check if a file is potentially streamable.
-
-    Args:
-        file_path (str): Path to the file to be checked
-
-    Returns:
-        bool: True if file is potentially streamable, False otherwise
-    """
-    # Check if file exists
-    if not os.path.exists(file_path):
-        return False
-
-    # Supported streamable file extensions
-    STREAMABLE_EXTENSIONS = {
-        'video': {'.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', 
-                  '.webm', '.m4v', '.mpg', '.mpeg', '.3gp'},
-        'audio': {'.mp3', '.wav', '.flac', '.aac', '.ogg', 
-                  '.wma', '.m4a', '.opus'}
-    }
-
-    try:
-        # Get file extension
-        file_extension = os.path.splitext(file_path)[1].lower()
-
-        # Use python-magic for MIME type detection
-        mime = magic.Magic(mime=True)
-        detected_mime_type = mime.from_file(file_path)
-
-        # Check streamability based on MIME type and extension
-        is_video_mime = detected_mime_type.startswith('video/')
-        is_audio_mime = detected_mime_type.startswith('audio/')
-
-        is_video_ext = file_extension in STREAMABLE_EXTENSIONS['video']
-        is_audio_ext = file_extension in STREAMABLE_EXTENSIONS['audio']
-
-        # Return True if any streaming condition is met
-        return is_video_mime or is_audio_mime or is_video_ext or is_audio_ext
-
-    except Exception:
-        return False
-
 def get_arg(message):
     msg = message.text
     msg = msg.replace(" ", "", 1) if msg[1] == " " else msg
@@ -234,123 +161,13 @@ def get_arg(message):
 
 
 
-async def is_active_chat(chat_id):
-    return chat_id in active
 
-async def add_active_chat(chat_id):
-    active.add(chat_id)
 
 async def remove_active_chat(chat_id):
     active.discard(chat_id)
     chat_dir = f"{ggg}/user_{clients['bot'].me.id}/{chat_id}"
     os.makedirs(chat_dir, exist_ok=True)
     clear_directory(chat_dir)
-
-
-async def autoleave_vc(message, duration_str, chat):
-    """
-    Automatically leave voice chat when only the bot remains in the call.
-    """
-    while True:
-        try:
-            # Stop if song changed (duration changed = new song)
-            song = playing.get(chat.id)
-            if song and str(song.get('duration')) != str(duration_str):
-                break
-        except Exception:
-            pass
-
-        try:
-            # Count members with a simple integer — no need to build a list
-            member_count = 0
-            solo_bot = False
-            async for member in clients["session"].get_call_members(chat.id):
-                member_count += 1
-                if member_count == 1 and member.chat.id == clients["session"].me.id:
-                    solo_bot = True
-                elif member_count > 1:
-                    solo_bot = False
-                    break
-
-            if member_count == 1 and solo_bot:
-                await asyncio.sleep(25)  # Confirm persistent emptiness
-
-                # Recheck
-                member_count = 0
-                solo_bot = False
-                async for member in clients["session"].get_call_members(chat.id):
-                    member_count += 1
-                    if member_count == 1 and member.chat.id == clients["session"].me.id:
-                        solo_bot = True
-                    elif member_count > 1:
-                        solo_bot = False
-                        break
-
-                if member_count == 1 and solo_bot:
-                    await clients["call_py"].leave_call(chat.id)
-                    try:
-                        queues[chat.id].clear()
-                        playing[chat.id].clear()
-                    except KeyError:
-                        pass
-                    await remove_active_chat(chat.id)  # called once
-                    await clients["bot"].send_message(
-                        message.chat.id,
-                        Messages.AUTO_LEAVE_EMPTY,
-                        link_preview_options=None
-                    )
-                    break
-
-        except Exception as e:
-            logger.warning(f"Autoleave error: {e}")
-            break
-
-        await asyncio.sleep(8)
-async def pautoleave_vc(message, duration_str):
-    """
-    Automatically leave voice chat when members count is <= 1.
-    """
-    while True:
-        try:
-            song = playing.get(message.chat.id)
-            if song and str(song.get('duration')) != str(duration_str):
-                break
-        except Exception:
-            pass
-
-        # Count members with a simple integer — no need for a full list
-        member_count = 0
-        try:
-            async for _ in clients["session"].get_call_members(message.chat.id):
-                member_count += 1
-                if member_count > 1:  # early exit — we only care about <= 1
-                    break
-        except Exception:
-            break
-
-        if member_count <= 1:
-            await asyncio.sleep(5)  # Confirm for 5 seconds
-
-            member_count = 0
-            async for _ in clients["session"].get_call_members(message.chat.id):
-                member_count += 1
-                if member_count > 1:
-                    break
-
-            if member_count <= 1:
-                await clients["call_py"].leave_call(message.chat.id)
-                queues.pop(message.chat.id, None)
-                playing.pop(message.chat.id, None)
-                await remove_active_chat(message.chat.id)
-                await clients["bot"].send_message(
-                    message.chat.id,
-                    Messages.AUTO_LEAVE_ONE,
-                    link_preview_options=None
-                )
-                break
-
-        # Wait before next check
-        await asyncio.sleep(10)
 
 
 async def update_progress_button(message, duration_str, chat):
@@ -395,28 +212,8 @@ async def update_progress_button(message, duration_str, chat):
         logger.warning(f"Progress update error: {e}")
 
 
-def get_readable_time(seconds: int) -> str:
-    count = 0
-    ping_time = ""
-    time_list = []
-    time_suffix_list = ["s", "ᴍ", "ʜ", "ᴅᴀʏs"]
-    while count < 4:
-        count += 1
-        if count < 3:
-            remainder, result = divmod(seconds, 60)
-        else:
-            remainder, result = divmod(seconds, 24)
-        if seconds == 0 and remainder == 0:
-            break
-        time_list.append(int(result))
-        seconds = int(remainder)
-    for i in range(len(time_list)):
-        time_list[i] = str(time_list[i]) + time_suffix_list[i]
-    if len(time_list) == 4:
-        ping_time += time_list.pop() + ", "
-    time_list.reverse()
-    ping_time += ":".join(time_list)
-    return ping_time
+async def get_readable_time(seconds: int) -> str:
+    return str(datetime.timedelta(seconds=int(seconds)))
 
 
 
@@ -432,104 +229,6 @@ def convert_bytes(size: float) -> str:
         t_n += 1
     return "{:.2f} {}B".format(size, power_dict[t_n])
 
-
-def int_to_alpha(user_id: int) -> str:
-    alphabet = "abcdefghij"
-    return "".join(alphabet[int(d)] for d in str(user_id))
-
-
-def alpha_to_int(user_id_alphabet: str) -> int:
-    alphabet = "abcdefghij"
-    return int("".join(str(alphabet.index(c)) for c in user_id_alphabet))
-
-
-
-
-def seconds_to_min(seconds):
-    if seconds is not None:
-        seconds = int(seconds)
-        d, h, m, s = (
-            seconds // (3600 * 24),
-            seconds // 3600 % 24,
-            seconds % 3600 // 60,
-            seconds % 3600 % 60,
-        )
-        if d > 0:
-            return "{:02d}:{:02d}:{:02d}:{:02d}".format(d, h, m, s)
-        elif h > 0:
-            return "{:02d}:{:02d}:{:02d}".format(h, m, s)
-        elif m > 0:
-            return "{:02d}:{:02d}".format(m, s)
-        elif s > 0:
-            return "00:{:02d}".format(s)
-    return "-"
-
-
-def speed_converter(seconds, speed):
-    speed = float(speed)
-    if speed == 0.5:
-        seconds = seconds * 2
-    elif speed == 0.75:
-        seconds = seconds + ((50 * seconds) // 100)
-    elif speed == 1.5:
-        seconds = seconds - ((25 * seconds) // 100)
-    elif speed == 2.0:
-        seconds = seconds - ((50 * seconds) // 100)
-    collect = seconds
-    if seconds is not None:
-        seconds = int(seconds)
-        d, h, m, s = (
-            seconds // (3600 * 24),
-            seconds // 3600 % 24,
-            seconds % 3600 // 60,
-            seconds % 3600 % 60,
-        )
-        if d > 0:
-            return "{:02d}:{:02d}:{:02d}:{:02d}".format(d, h, m, s), collect
-        elif h > 0:
-            return "{:02d}:{:02d}:{:02d}".format(h, m, s), collect
-        elif m > 0:
-            return "{:02d}:{:02d}".format(m, s), collect
-        elif s > 0:
-            return "00:{:02d}".format(s), collect
-    return "-"
-
-
-def check_duration(file_path):
-    command = [
-        "ffprobe",
-        "-loglevel",
-        "quiet",
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-        file_path,
-    ]
-
-    pipe = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    out, err = pipe.communicate()
-    _json = json.loads(out)
-
-    if "format" in _json:
-        if "duration" in _json["format"]:
-            return float(_json["format"]["duration"])
-
-    if "streams" in _json:
-        for s in _json["streams"]:
-            if "duration" in s:
-                return float(s["duration"])
-
-    return "Unknown"
-
-
-# frozenset for O(1) membership checks
-formats = frozenset([
-    "webm", "mkv", "flv", "vob", "ogv", "ogg", "rrc", "gifv", "mng",
-    "mov", "avi", "qt", "wmv", "yuv", "rm", "asf", "amv", "mp4", "m4p",
-    "m4v", "mpg", "mp2", "mpeg", "mpe", "mpv", "svi", "3gp", "3g2",
-    "mxf", "roq", "nsv", "f4v", "f4p", "f4a", "f4b",
-])
 
 async def convert_to_image(message, client) -> [None, str]:
     """Convert Most Media Formats To Raw Image"""
@@ -816,20 +515,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         display_title = f"[{title_formatted}](https://t.me/{clients['bot'].me.username}?start=vidid_{extract_video_id(youtube_link)})" if youtube_link and not os.path.exists(youtube_link) else title_formatted
 
-        try:
-            _now = time.time()
-            _cached = _format_style_cache.get(OWNER_ID)
-            if _cached and _cached[1] > _now:
-                style_index = _cached[0]
-            else:
-                _raw = await gvarstatus(OWNER_ID, "format")
-                style_index = int(_raw or 11)
-                _format_style_cache[OWNER_ID] = (style_index, _now + _FORMAT_CACHE_TTL)
-        except Exception:
-            style_index = 11
-        logger.debug(f"[join_call] Using play_style index: {style_index}")
-
-        message_text = Messages.PLAY.get(style_index, Messages.PLAY[11]).format(
+        message_text = Messages.PLAY.format(
             mode_formatted,
             display_title,
             duration,
@@ -962,13 +648,6 @@ async def get_user_data(user_id, key):
 async def gvarstatus(user_id, key):
     return await get_user_data(user_id, key)
 
-
-
-
-PLANS = {
-    "standard": {"amount": 6900, "duration": 20, "merit": 0},   # ₹69 for 20 days
-    "pro": {"amount": 17900, "duration": 60, "merit": 2}        # ₹180 for 60 days
-}
 
 # Appropriate tagall messages for when no text is provided
 TAGALL = [

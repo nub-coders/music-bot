@@ -14,7 +14,7 @@ import subprocess
 import requests
 import yt_dlp
 from urllib.parse import urlparse, parse_qs
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 
 
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
@@ -28,15 +28,12 @@ from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, Y
 SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
 
-def get_available_keys():
-    keys = [k.strip() for k in _YOUTUBE_API_KEYS_RAW.split(",") if k.strip()]
-    return keys
+YOUTUBE_API_KEYS = [k.strip() for k in _YOUTUBE_API_KEYS_RAW.split(",") if k.strip()]
 
 def get_random_key():
-    keys = get_available_keys()
-    if not keys:
+    if not YOUTUBE_API_KEYS:
         raise RuntimeError("YouTube API key not configured")
-    return random.choice(keys)
+    return random.choice(YOUTUBE_API_KEYS)
 
 def parse_dur(duration: str) -> str:
     match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration or "")
@@ -94,8 +91,7 @@ def process_video(item, details):
         return None
 
 async def youtube_search(query: str, limit: int = 1):
-    keys = get_available_keys()
-    if not keys:
+    if not YOUTUBE_API_KEYS:
         return []
     async with httpx.AsyncClient(timeout=10) as client:
         api_key = get_random_key()
@@ -332,130 +328,6 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
         logger.error(f"[youtube.get_video_info] Exception: {e}")
         return (None,) * 9
 
-
-# New: Search videos using local YouTube Data API logic
-async def search_videos(query: str, limit: int = 5) -> List[Dict]:
-    """Search videos using local YouTube Data API logic."""
-    try:
-        logger.debug(f"[youtube.search_videos] Searching query='{query}' limit={limit}")
-        results = await youtube_search(query, limit=limit)
-        logger.debug(f"[youtube.search_videos] Returning {len(results)} results")
-        return results
-    except Exception as e:
-        logger.error(f"[youtube.search_videos] Exception: {e}")
-        return []
-
-def get_trending_songs(limit: int = 10) -> List[dict]:
-    """Get trending songs"""
-    try:
-        response = requests.get(f'{BASE_URL}/trending', params={'limit': limit}, timeout=30)
-        response.raise_for_status()
-        return response.json().get('results', [])
-    except Exception as e:
-        logger.error(f"[youtube.get_trending] Error: {e}")
-        return []
-
-def get_song_suggestions(query: str, limit: int = 5) -> List[str]:
-    """Get autocomplete suggestions"""
-    try:
-        response = requests.get(f'{BASE_URL}/suggest', params={'q': query, 'limit': limit}, timeout=10)
-        response.raise_for_status()
-        return response.json().get('results', [])
-    except Exception as e:
-        logger.error(f"[youtube.get_suggest] Error: {e}")
-        return []
-
-def get_stream_url_api(url_or_query: str, mode: str = "audio") -> str:
-    """Get stream URL from API"""
-    try:
-        response = requests.get(
-            f'{BASE_URL}/stream',
-            params={'q': url_or_query, 'mode': mode, 'token': API_TOKEN},
-            timeout=30
-        )
-        response.raise_for_status()
-        data = response.json()
-        if mode == 'combined':
-            return data.get('video_url'), data.get('audio_url')
-        return data.get('stream_url', 'N/A')
-    except Exception as e:
-        logger.error(f"[youtube.get_stream] Error: {e}")
-        return None
-
-def get_video_stream_urls_api(url_or_query: str) -> Tuple[str, str]:
-    """Get separated best quality video and audio URLs"""
-    try:
-        response = requests.get(
-            f'{BASE_URL}/video-stream',
-            params={'q': url_or_query, 'token': API_TOKEN},
-            timeout=30
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get('video_url', 'N/A'), data.get('audio_url', 'N/A')
-    except Exception as e:
-        logger.error(f"[youtube.get_video_stream_urls] Error: {e}")
-        return None, None
-
-def get_playlist_songs_api(url: str) -> List[dict]:
-    """Get playlist songs"""
-    try:
-        response = requests.get(
-            f'{BASE_URL}/playlist',
-            params={'url': url, 'token': API_TOKEN},
-            timeout=60
-        )
-        response.raise_for_status()
-        return response.json().get('songs', [])
-    except Exception as e:
-        logger.error(f"[youtube.get_playlist] Error: {e}")
-        return []
-
-def get_library_version() -> dict:
-    """Get library version"""
-    try:
-        return requests.get(f'{BASE_URL}/version', timeout=10).json()
-    except Exception:
-        return {}
-
-def check_health() -> bool:
-    """Check server health"""
-    try:
-        return requests.get(f'{BASE_URL}/health', timeout=5).status_code == 200
-    except Exception:
-        return False
-
-
-def get_rate_limit_status() -> Tuple[int, int, int, bool, str]:
-    """Get quota status - returns (daily_limit, requests_used, requests_remaining, is_admin, reset_time)"""
-    try:
-        start_time = time.time()
-        logger.debug(f"[youtube.get_rate_limit_status] Requesting rate limit status; token_set={bool(API_TOKEN)}")
-        response = requests.get(
-            f'{BASE_URL}/rate-limit-status',
-            params={'token': API_TOKEN},
-            timeout=10
-        )
-        response.raise_for_status()
-        data = response.json()
-        elapsed = round(time.time() - start_time, 3)
-        logger.info(f"[youtube.get_rate_limit_status] API response received in {elapsed}s")
-        
-        remaining = data.get('requests_remaining', 0)
-        used = data.get('requests_used', 0)
-
-        status = (
-            data.get('daily_limit', 0),
-            data.get('requests_used', 0),
-            data.get('requests_remaining', 0),
-            data.get('is_admin', False),
-            data.get('reset_time', 'N/A')
-        )
-        logger.debug(f"[youtube.get_rate_limit_status] Parsed status: {status}")
-        return status
-    except requests.RequestException as e:
-        logger.error(f"[youtube.get_rate_limit_status] RequestException: {e}")
-        return 0, 0, 0, False, str(e)
 
 def extract_video_id(url):
     """
@@ -771,88 +643,6 @@ async def get_video_details(video_id):
     except Exception as e:
         logger.error(f"[youtube.get_video_details] Unexpected error: {e}")
         return {'error': f"Unexpected error: {str(e)}"}
-
-async def handle_youtube_ytdlp(argument):
-    """
-    Helper function to get YouTube video info using yt-dlp.
-
-    Returns:
-        tuple: (title, duration, youtube_link, thumbnail, channel_name, views, video_id, stream_url)
-    """
-    try:
-        is_url = re.match(r"^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+", argument)
-        logger.debug(f"[youtube.handle_youtube_ytdlp] argument='{argument}', is_url={bool(is_url)}")
-        ydl_opts = {
-            # Only gather metadata, no downloads
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "cookiesfrombrowser": ("firefox",),
-
-            # Performance optimizations
-            "extract_flat": False,
-            "writethumbnail": False,
-            "writeinfojson": False,
-            "writedescription": False,
-            "writesubtitles": False,
-            "writeautomaticsub": False,
-
-            # Network optimizations  
-            "http_chunk_size": 10485760,  # 10MB chunks
-            "retries": 1,  # Reduce retries for speed
-            "fragment_retries": 1,
-
-            # Skip unnecessary processing
-            "skip_playlist_after_errors": 1,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            if is_url:
-                 info_dict = ydl.extract_info(argument, download=False)
-            else:
-               info_dict= ydl.extract_info(f"ytsearch:{argument}", download=False)['entries'][0]
-
-            if not info_dict:
-                logger.warning("[youtube.handle_youtube_ytdlp] No info_dict returned")
-                return None
-
-            title = info_dict.get('title', 'N/A')
-            video_id = info_dict.get('id', 'N/A')
-            channel_name = info_dict.get('uploader', 'N/A')
-            views = info_dict.get('view_count', 'N/A')
-            youtube_link = f"https://www.youtube.com/watch?v={video_id}"
-
-            # Duration can be in seconds or a string, convert to seconds if needed
-            duration_raw = info_dict.get('duration', 0)
-            if isinstance(duration_raw, str):
-                try:
-                    duration_sec = time_to_seconds(duration_raw)
-                except:
-                    duration_sec = 0
-            else:
-                duration_sec = int(duration_raw) if duration_raw else 0
-            
-            duration_formatted = format_duration(duration_sec)
-
-            thumbnail_url = 'N/A'
-            if 'thumbnails' in info_dict and info_dict['thumbnails']:
-                 thumbnail_url = info_dict['thumbnails'][-1]['url']
-
-            # Extract stream URL from formats
-            stream_url = 'N/A'
-            if 'formats' in info_dict and info_dict['formats']:
-                # Get the best format with audio and video, or best available
-                for fmt in reversed(info_dict['formats']):
-                    if fmt.get('url'):
-                        stream_url = fmt.get('url', 'N/A')
-                        break
-
-            logger.info(f"[youtube.handle_youtube_ytdlp] Extracted info for id='{video_id}', title='{title}'")
-
-            return (title, duration_formatted, youtube_link, thumbnail_url, channel_name, views, video_id, stream_url)
-
-    except Exception as e:
-        logger.error(f"[youtube.handle_youtube_ytdlp] Error: {e}")
-        return None
 
 async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=None):
     """

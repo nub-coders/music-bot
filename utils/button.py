@@ -37,16 +37,8 @@ class Buttons:
         [InlineKeyboardButton("🏠 ʜᴏᴍᴇ",             callback_data="commands_back", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.HOME)],
     ])
 
-    # ─── Back and Close ─────────────────────────────────────────────────────
+    # ─── Back ───────────────────────────────────────────────────────────────
     BACK  = InlineKeyboardMarkup([[InlineKeyboardButton("◀️ ʙᴀᴄᴋ",  callback_data="commands_all", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.BACK)]])
-    CLOSE = InlineKeyboardMarkup([[InlineKeyboardButton("✖ ᴄʟᴏsᴇ", callback_data="close",        style=ButtonStyle.DANGER,  icon_custom_emoji_id=Emoji.CLOSE)]])
-
-    @staticmethod
-    def auth_confirm_markup(user_id):
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ ᴄᴏɴꜰɪʀᴍ ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ", callback_data=f"auth_confirm_{user_id}", style=ButtonStyle.SUCCESS, icon_custom_emoji_id=Emoji.SUCCESS)],
-            [InlineKeyboardButton("✖ ᴄᴀɴᴄᴇʟ",                  callback_data="close",                   style=ButtonStyle.DANGER,  icon_custom_emoji_id=Emoji.CLOSE)],
-        ])
 
     @staticmethod
     def start_markup(bot_username, ow_id, OWNER_ID, GROUP):
@@ -92,17 +84,4 @@ class Buttons:
         """Generates the markup for the force play results."""
         return InlineKeyboardMarkup([[
             InlineKeyboardButton("🎬 sᴛʀᴇᴀᴍ ᴏɴ ʏᴏᴜᴛᴜʙᴇ", url=youtube_url, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.ROCKET),
-        ]])
-
-    @staticmethod
-    def refresh_power_markup(chat_id):
-        """Refresh bot power status mockup."""
-        return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄 ʀᴇꜰʀᴇsʜ", callback_data=f"refresh_power_{chat_id}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.REFRESH),
-        ]])
-
-    @staticmethod
-    def broadcast_markup():
-        return InlineKeyboardMarkup([[
-            InlineKeyboardButton("📢 ʙʀᴏᴀᴅᴄᴀsᴛ 🚀", callback_data="broadcast", icon_custom_emoji_id=Emoji.BROADCAST),
         ]])

@@ -3,7 +3,8 @@ import os
 import logging
 
 from pyrogram import idle
-from pytgcalls import filters as call_filters
+from pytgcalls import PyTgCalls, filters as call_filters
+from pytgcalls.types import ChatUpdate
 from pyrogram import Client
 from pyrogram.errors.exceptions import (
     SessionRevoked, UserDeactivatedBan, AuthKeyInvalid,

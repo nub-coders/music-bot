@@ -4,7 +4,6 @@ Async MongoDB database handler for nub-music-bot
 import asyncio
 import inspect
 import logging
-import os
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -35,11 +34,6 @@ def db_task(coro):
     """Schedule a MongoDB write as a low-priority background task."""
     asyncio.create_task(_bg_db_task(coro))
 
-async def update_one(collection, filter, update, upsert=False):
-    return await collection.update_one(filter, update, upsert=upsert)
-
-async def find_one(collection, filter):
-    return await collection.find_one(filter)
 
 async def push_to_array(collection, filter, field, value, upsert=False):
     return await collection.update_one(filter, {"$push": {field: value}}, upsert=upsert)

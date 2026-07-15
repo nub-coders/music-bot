@@ -1,19 +1,16 @@
 import os
 import time
-import pymongo
 
 # ── Telegram (non-sensitive — safe as defaults) ─────────────────────────────────
 API_ID      = os.getenv("API_ID", "2040")
 API_HASH    = os.getenv("API_HASH", "b18441a1ff607e10a989891a5462e627")
 OWNER_ID    = int(os.getenv("OWNER_ID", "6076474757"))
 GROUP       = os.getenv("GROUP", "nub_coder_s")
-CHANNEL     = os.getenv("CHANNEL", "nub_coders")
 
 # ── Sensitive — must be set via environment, no defaults ────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
 STRING_SESSION = os.getenv("STRING_SESSION", "")
 MONGODB_URI    = os.getenv("MONGODB_URI", "mongodb+srv://nubcoders:nubcoders@music.8rxlsum.mongodb.net/?retryWrites=true&w=majority&appName=music")
-mongodb        = MONGODB_URI   # alias used across codebase
 
 # ── Optional ──────────────────────────────────────────────────────────────────────
 LOGGER_ID = os.getenv("LOGGER_ID", None)
@@ -32,9 +29,3 @@ NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "http://api.nubcoders.com
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()
 StartTime = time.time()
-
-# ── Sync MongoDB (legacy — main async DB access is via database.py / motor) ───────
-mongo_client  = pymongo.MongoClient(mongodb)
-db            = mongo_client['voice']
-user_sessions = db['user_sessions']
-collection    = db["users"]

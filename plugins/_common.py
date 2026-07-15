@@ -33,8 +33,8 @@ from tools import (
     SUDO, AUTH, BLOCK, TAGALL,
     get_admin_ids, get_readable_time, convert_bytes,
     join_call, remove_active_chat, get_stream_url,
-    update_progress_button, autoleave_vc, pautoleave_vc,
-    is_streamable, check_duration, trim_title,
+    update_progress_button,
+    trim_title,
     get_arg, clear_directory,
     gvarstatus,
 )
@@ -43,7 +43,7 @@ from utils.message import Messages
 from utils.button import Buttons
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from database import (
-    find_one, push_to_array, pull_from_array,
+    push_to_array, pull_from_array,
     set_fields, collection, user_sessions, db_task,
 )
 

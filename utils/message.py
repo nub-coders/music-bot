@@ -1,30 +1,15 @@
-class UniformFormat:
-    def __init__(self, text):
-        self.text = text
-
-    def __getitem__(self, key):
-        return self.text
-
-    def get(self, key, default=None):
-        return self.text
-
-
 class Messages:
-    QUEUE = UniformFormat(
-        """**➕ Added to Queue**
+    QUEUE = """**➕ Added to Queue**
 **Mode:** {}
 **Title:** {}
 **Duration:** {}
 **Position:** #{}"""
-    )
 
-    PLAY = UniformFormat(
-        """**▶ Now Playing**
+    PLAY = """**▶ Now Playing**
 **Mode:** {}
 **Title:** {}
 **Duration:** {}
 **Requested by:** {}"""
-    )
 
     NO_STREAM = "No active stream right now."
     SKIPPING = "**⏭ Skipping current track...**\nRequested by: {}"

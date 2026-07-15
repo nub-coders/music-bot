@@ -52,11 +52,6 @@
       "value": "nub_coder_s",
       "required": false
     },
-    "CHANNEL": {
-      "description": "Updates channel username (without @)",
-      "value": "nub_coders",
-      "required": false
-    },
     "LOGGER_ID": {
       "description": "Chat ID of a group/channel to receive error logs",
       "value": "",
@@ -81,12 +76,6 @@
   "buildpacks": [
     {
       "url": "heroku/python"
-    },
-    {
-      "url": "heroku/nodejs"
-    },
-    {
-      "url": "https://github.com/heroku/heroku-buildpack-activestorage-preview"
     }
   ],
   "formation": {

@@ -6,7 +6,6 @@ import logging
 import os
 import random
 import re
-import requests
 import time
 from functools import wraps
 
@@ -32,35 +31,21 @@ from pyrogram.types import (
     InlineKeyboardButton
 )
 
-from pytgcalls.exceptions import NotInCallError, NoActiveGroupCall
+from pytgcalls.exceptions import NotInCallError
 from pytgcalls.types import AudioQuality, MediaStream, VideoQuality
 
 from config import *
 from tools import *
-from youtube import handle_youtube, extract_video_id, format_duration
+from youtube import handle_youtube, extract_video_id, format_duration, get_video_details, format_number, time_to_seconds
 from tools import trim_title, join_call
 from utils.message import Messages
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
 from utils.emoji import Emoji
-from database import find_one, push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task
+from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task
 from thumbnails import get_thumb
 
-async def end(client, update):
-    """Handle stream end event"""
-    chat_id = update.chat_id
-    logger.info(f"Stream ended in chat {chat_id}")
-    await dend(clients['bot'], type('obj', (object,), {'chat': type('obj', (object,), {'id': chat_id})})(), chat_id)
-
-async def hd_stream_closed_kicked(client, update):
-    """Handle voice chat closed or kicked events"""
-    chat_id = update.chat_id
-    logger.info(f"Voice chat closed or kicked in chat {chat_id}")
-    await remove_active_chat(clients['bot'], chat_id)
-    if chat_id in playing:
-        playing[chat_id].clear()
-    if chat_id in queues:
-        queues[chat_id].clear()
+# end() and hd_stream_closed_kicked() live in tools.py — registered in main.py
 
 # Clients will be passed as parameter instead of imported
 # Get the logger
@@ -75,13 +60,6 @@ def _chat_type_value(chat_type):
     return getattr(chat_type, "value", chat_type)
 
 
-def _chat_type_from_cache(chat_type_value):
-    if not chat_type_value:
-        return None
-    try:
-        return enums.ChatType(chat_type_value)
-    except Exception:
-        return chat_type_value
 
 
 def _is_admin_member_status(status):
@@ -194,7 +172,6 @@ create_custom_filter = filters.create(lambda _, __, message: any(m.is_self for m
 
 # Auth handler
 
-from PIL import Image, ImageDraw, ImageFont
 # Add /queue command to show up to 20 items in queue as a photo with brown background
 @Client.on_message(filters.command("queue"))
 async def queue_command(client, message):
@@ -210,7 +187,6 @@ async def queue_command(client, message):
         title = item.get("title", "Unknown")
         duration = item.get("duration", "-")
         text_lines.append(f"{idx}. {title}  [{duration}]")
-    text = "\n".join(text_lines)
 
     # Create dark gradient-style image
     width, height = 900, 650
@@ -282,8 +258,6 @@ async def mentionall(client, message):
 
     # If no message or reply provided, use random message from TAGALL
     if not direp and not args:
-        import random
-        from tools import TAGALL
         args = random.choice(TAGALL)
 
     spam_chats.append(chat_id)
@@ -369,26 +343,20 @@ async def seek_handler_func(client, message):
             played_in_seconds = int(time.time() - played[message.chat.id])
 
             # Check seek boundaries based on command
-            command = command_parts[0].lower()
-            if command == "/seek":
-                # Check if seeking forward would exceed remaining duration
-                remaining_duration = duration_seconds - played_in_seconds
-                if seek_value > remaining_duration:
-                    await client.send_message(
-                        message.chat.id,
-                        Messages.SEEK_BEYOND_REMAINING, 
-                    link_preview_options=None)
-                    return
-                total_seek = seek_value + played_in_seconds
-            else:  # seekback
-                # Check if seeking back would exceed played duration
-                if seek_value > played_in_seconds:
-                    await client.send_message(
-                        message.chat.id,
-                        Messages.SEEK_BEYOND_PLAYED, 
-                    link_preview_options=None)
-                    return
-                total_seek = played_in_seconds - seek_value
+            is_forward = command_parts[0].lower() == "/seek"
+            if is_forward:
+                limit = duration_seconds - played_in_seconds
+                error_msg = Messages.SEEK_BEYOND_REMAINING
+            else:
+                limit = played_in_seconds
+                error_msg = Messages.SEEK_BEYOND_PLAYED
+
+            if seek_value > limit:
+                await client.send_message(
+                    message.chat.id, error_msg, link_preview_options=None)
+                return
+
+            total_seek = played_in_seconds + (seek_value if is_forward else -seek_value)
 
             # Set audio flags based on mode
             mode = current_song['mode']
@@ -415,7 +383,7 @@ async def seek_handler_func(client, message):
             )
 
             # Update played time based on command
-            if command == "/seek":
+            if is_forward:
                 played[message.chat.id] -= seek_value
             else:  # seekback
                 played[message.chat.id] += seek_value
@@ -610,7 +578,6 @@ async def block_user(client, message):
         # If the replied message is from a user (and not from the bot itself)
         if replied_message.from_user:
             replied_user_id = replied_message.from_user.id
-            admin_file = f"{ggg}/admin.txt"
             if replied_user_id in get_admin_ids(admin_file):
                 return await message.reply(Messages.OWNER_BLOCK_RESTRICT, link_preview_options=None)
             # Check if the replied user is the same as the current chat (group) id
@@ -794,8 +761,7 @@ async def show_sudo_list(client, message):
     if not is_authorized:
         return await message.reply(Messages.PAID_OWNER_CMD, link_preview_options=None)
     try:
-        # Get all users who have SUDOERS field
-        users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+        users_data = await user_sessions.find_one({"bot_id": client.me.id})
         sudo_users = users_data.get("SUDOERS", []) if users_data else []
 
         if not sudo_users:
@@ -850,7 +816,7 @@ async def add_to_sudo(client, message):
             # Check if trying to add self or bot
             if replied_user_id != message.chat.id and not replied_message.from_user.is_self:
                 # Get current sudo users
-                users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+                users_data = await user_sessions.find_one({"bot_id": client.me.id})
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if replied_user_id not in sudoers:
                     asyncio.create_task(push_to_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", replied_user_id, upsert=True))
@@ -874,7 +840,7 @@ async def add_to_sudo(client, message):
                     return await message.reply(Messages.ALREADY_OWNER, link_preview_options=None)
 
                 # Get current sudo users
-                users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+                users_data = await user_sessions.find_one({"bot_id": client.me.id})
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if target_user_id not in sudoers:
                     asyncio.create_task(push_to_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", target_user_id, upsert=True))
@@ -912,7 +878,7 @@ async def remove_from_sudo(client, message):
             # Check if trying to remove self or bot
             if replied_user_id != message.chat.id and not replied_message.from_user.is_self:
                 # Get current sudo users
-                users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+                users_data = await user_sessions.find_one({"bot_id": client.me.id})
                 if not users_data:
                     return await message.reply(Messages.USER_NOT_IN_DB.format(replied_user_id), link_preview_options=None)
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
@@ -938,7 +904,7 @@ async def remove_from_sudo(client, message):
                     return await message.reply(Messages.CANT_REMOVE_OWNER_SUDO, link_preview_options=None)
 
                 # Get current sudo users
-                users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+                users_data = await user_sessions.find_one({"bot_id": client.me.id})
                 if not users_data:
                     return await message.reply(Messages.USER_NOT_IN_DB.format(target_user_id), link_preview_options=None)
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
@@ -958,14 +924,6 @@ async def remove_from_sudo(client, message):
 
 
 
-from pyrogram.types import Chat
-from pyrogram.errors import ChatAdminRequired
-
-async def get_chat_member_count(client, chat_id):
-    try:
-        return await client.get_chat_members_count(chat_id)
-    except Exception:
-        return "Unknown"
 
 async def send_log_message(client, log_group_id, message, is_private):
     try:
@@ -984,7 +942,10 @@ async def send_log_message(client, log_group_id, message, is_private):
             )
         else:
             chat = message.chat
-            members_count = await get_chat_member_count(client, chat.id)
+            try:
+                members_count = await client.get_chat_members_count(chat.id)
+            except Exception:
+                members_count = "Unknown"
             try:
                 invite_link = await client.export_chat_invite_link(chat.id)
             except Exception:
@@ -1014,7 +975,7 @@ async def send_log_message(client, log_group_id, message, is_private):
 @Client.on_message(filters.command("start") | (filters.group & create_custom_filter))
 async def user_client_start_handler(client, message):
     user_id = message.chat.id
-    user_data = await find_one(collection, {"bot_id": client.me.id})
+    user_data = await collection.find_one({"bot_id": client.me.id})
     is_private = message.chat.type == enums.ChatType.PRIVATE
     should_log = False
     if user_data:
@@ -1104,9 +1065,7 @@ async def user_client_start_handler(client, message):
 
     buttons_markup = Buttons.start_markup(client.me.username, ow_id, OWNER_ID, GROUP)
     import psutil
-    from random import choice
     uptime = await get_readable_time((time.time() - StartTime))
-    start = datetime.datetime.now()
 
 
 
@@ -1342,7 +1301,7 @@ async def commands_handler(client, callback_query):
 async def blocklist_handler(client, message):
     admin_file = f"{ggg}/admin.txt"
     user_id = message.from_user.id
-    users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+    users_data = await user_sessions.find_one({"bot_id": client.me.id})
     sudoers = users_data.get("SUDOERS", []) if users_data else []
 
     is_admin = False
@@ -1364,7 +1323,7 @@ async def blocklist_handler(client, message):
 
 
     # Fetch blocklist from the database
-    user_data = await find_one(collection, {"bot_id": client.me.id})
+    user_data = await collection.find_one({"bot_id": client.me.id})
     if not user_data:
         return await message.reply(Messages.NO_BLOCKLIST, link_preview_options=None)
 
@@ -1375,20 +1334,6 @@ async def blocklist_handler(client, message):
     blocklist_text = "Blocked Users:\n" + "\n".join([f"- `{user_id}`" for user_id in blocked_users])
     await message.reply_text(blocklist_text, link_preview_options=None)
 
-
-from pytgcalls import filters as call_filters
-
-def currently_playing(client, message):
-    try:
-        if len(queues[message.chat.id]) <=1:
-           return False
-        return True
-    except KeyError:
-        True
-
-
-
-# Import join_call function from tools.py
 
 async def dend(client, update, channel_id= None):
     # Enhanced input validation
@@ -1428,7 +1373,6 @@ async def dend(client, update, channel_id= None):
 from PIL import Image
 import imageio
 import cv2
-from pyrogram.raw.types import DocumentAttributeVideo, DocumentAttributeAudio
 
 
 def generate_thumbnail(video_path, thumb_path):
@@ -1538,8 +1482,6 @@ def with_opencv(filename):
 # duration = get_media_duration('path/to/your/media/file.ogg')
 @Client.on_message(filters.command(["play", "vplay", "playforce", "vplayforce", "cplay", "cvplay", "cplayforce", "cvplayforce"]))
 async def play_handler_func(client, message):
-    # ── Speed tracking: start the clock the moment we enter this handler ──
-    _query = message.text.split(" ", 1)[1].strip() if len(message.text.split(" ", 1)) > 1 else "<media reply>"
     session_name = f'user_{client.me.id}'
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
@@ -1729,7 +1671,6 @@ async def play_handler_func(client, message):
         thumb = None
     if thumb:
         thumb.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
-    bot_username = client.me.username
 
     # Retrieve the session client from the clients dictionary
 
@@ -1847,7 +1788,7 @@ async def play_handler_func(client, message):
                     title_text = f"[{trim_title(title)}](https://t.me/{client.me.username}?start=vidid_{video_id})"
                 else:
                     title_text = trim_title(title)
-                await client.send_message(message.chat.id, Messages.QUEUE[int(11)].format(mode, title_text, duration, position), reply_markup=keyboard,link_preview_options=None)
+                await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position), reply_markup=keyboard,link_preview_options=None)
                 try:
                    await message.delete()
                 except:
@@ -1914,9 +1855,7 @@ async def put_queue(
            queues[chat.id] = []
         queues[chat.id].append(put)
 
-def set_gvar(user_id, key, value):
-    set_user_data(user_id, key, value)
-
+# NOTE: these query by bot_id — distinct from tools.py's get_user_data/gvarstatus (user_id)
 async def get_user_data(user_id, key):
     user_data = await user_sessions.find_one({"bot_id": user_id})
     if user_data and key in user_data:
@@ -1928,9 +1867,6 @@ def set_user_data(user_id, key, value):
 
 async def gvarstatus(user_id, key):
     return await get_user_data(user_id, key)
-
-def unset_user_data(user_id, key):
-    db_task(user_sessions.update_one({"bot_id": user_id}, {"$unset": {key: ''}}, upsert=True))
 
 
 def rename_file(old_name, new_name):
@@ -1953,33 +1889,6 @@ import magic
 mime = magic.Magic(mime=True)
 
 
-import psutil
-import os
-StartTime = time.time()
-async def get_readable_time(seconds: int) -> str:
-    count = 0
-    up_time = ""
-    time_list = []
-    time_suffix_list = ["s", "m", "h", "days"]
-
-    while count < 4:
-        count += 1
-        remainder, result = divmod(seconds, 60) if count < 3 else divmod(seconds, 24)
-        if seconds == 0 and remainder == 0:
-            break
-        time_list.append(int(result))
-        seconds = int(remainder)
-
-    for x in range(len(time_list)):
-        time_list[x] = str(time_list[x]) + time_suffix_list[x]
-    if len(time_list) == 4:
-        up_time += time_list.pop() + ", "
-
-    time_list.reverse()
-    up_time += ":".join(time_list)
-    return up_time
-
-
 
 
 
@@ -2000,8 +1909,12 @@ async def get_chat_type(client, chat_id):
 
 async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
     chat_id_key = str(chat_id)
-    cached_chat_type = _chat_type_from_cache(chat_type_cache.get(chat_id_key))
-    if cached_chat_type:
+    chat_type_value = chat_type_cache.get(chat_id_key)
+    if chat_type_value:
+        try:
+            cached_chat_type = enums.ChatType(chat_type_value)
+        except Exception:
+            cached_chat_type = chat_type_value
         return cached_chat_type
 
     chat_type = await get_chat_type(client, chat_id)
@@ -2022,7 +1935,7 @@ async def status(client, message):
     Man = await message.reply_text(Messages.COLLECTING_STATS, link_preview_options=None)
     start = datetime.datetime.now()
     u = g = sg = c = a_chat = play_count = 0
-    user_data = await find_one(collection, {"bot_id": client.me.id})
+    user_data = await collection.find_one({"bot_id": client.me.id})
 
     if user_data:
         # Clean old song entries and get count
@@ -2121,7 +2034,6 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
         return
 
     try:
-        bot_username = client.me.username
 
         # Determine the chat_id based on whether "cend" is used
         chat_id = (
@@ -2184,7 +2096,6 @@ async def end_handler_func(client, message):
   if message.from_user.id in BLOCK:
        return
   try:
-   bot_username = client.me.username
    is_active = await is_active_chat(client, message.chat.id)
    if is_active:
        await remove_active_chat(client, message.chat.id)
@@ -2207,8 +2118,7 @@ link_preview_options=None)
 
 
 
-from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+
 
 
 
@@ -2222,7 +2132,6 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
         return
 
     try:
-        bot_username = client.me.username
 
         chat_id = (
             (await session.get_chat(callback_query.message.chat.id)).linked_chat.id
@@ -2358,7 +2267,6 @@ async def skip_handler_func(client, message):
   if message.from_user.id in BLOCK:
        return
   try:
-   bot_username = client.me.username
    if message.chat.id in queues:
     if len(queues[message.chat.id]) >0:
        next = queues[message.chat.id].pop(0)
@@ -2396,7 +2304,6 @@ async def button_resume_handler(client: Client, callback_query: CallbackQuery):
         return
 
     try:
-        bot_username = client.me.username
 
         chat_id = (
             (await session.get_chat(callback_query.message.chat.id)).linked_chat.id
@@ -2424,7 +2331,6 @@ async def button_pause_handler(client: Client, callback_query: CallbackQuery):
         return
 
     try:
-        bot_username = client.me.username
         chat_id = (
             (await session.get_chat(callback_query.message.chat.id)).linked_chat.id
             if callback_query.data == "cpause"
@@ -2448,7 +2354,6 @@ async def resume_handler_func(client, message):
   if message.from_user.id in BLOCK:
        return
   try:
-   bot_username = client.me.username
    if  await is_active_chat(client, message.chat.id):
        await call_py.resume(message.chat.id)
        await client.send_message(message.chat.id, Messages.RESUMED.format(message.from_user.mention()), link_preview_options=None)
@@ -2464,7 +2369,6 @@ async def pause_handler_func(client, message):
   if message.from_user.id in BLOCK:
        return
   try:
-   bot_username = client.me.username
    if  await is_active_chat(client, message.chat.id):
        await call_py.pause(message.chat.id)
        await client.send_message(message.chat.id, Messages.PAUSED.format(message.from_user.mention()), 
@@ -2493,7 +2397,7 @@ async def broadcast_callback_handler(client, callback_query):
     pin = user_data.get('pin')
     await callback_query.message.delete()
     # Fetch bot data
-    bot_data = await find_one(collection, {"bot_id": client.me.id})
+    bot_data = await collection.find_one({"bot_id": client.me.id})
     message_to_broadcast, forwarding = broadcast_message.get(client.me.id)
     if bot_data and bot:
         X = await callback_query.message.reply(Messages.START_BOT_BROADCAST, link_preview_options=None)
@@ -2617,11 +2521,10 @@ async def broadcast_callback_handler(client, callback_query):
 
 
 async def get_status(client):
-  bot_username = client.me.username
 
   start = datetime.datetime.now()
   u = g = sg = a_chat =  0 # Initialize counters
-  user_data = await find_one(collection, {"bot_id": client.me.id})
+  user_data = await collection.find_one({"bot_id": client.me.id})
   mess=""
 
   if user_data:
@@ -2750,7 +2653,7 @@ async def status_command_handler(client, message):
     admin_file = f"{ggg}/admin.txt"
 
     # Get user data and permissions
-    users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+    users_data = await user_sessions.find_one({"bot_id": client.me.id})
     sudoers = users_data.get("SUDOERS", []) if users_data else []
 
     is_admin = False
@@ -2776,7 +2679,7 @@ async def status_command_handler(client, message):
 async def broadcast_command_handler(client, message):
     user_id = message.from_user.id
     admin_file = f"{ggg}/admin.txt"
-    users_data = await find_one(user_sessions, {"bot_id": client.me.id})
+    users_data = await user_sessions.find_one({"bot_id": client.me.id})
     sudoers = users_data.get("SUDOERS", []) if users_data else []
 
     is_admin = False
@@ -2902,16 +2805,8 @@ async def handle_power_command(client, message):
         if hasattr(bot_member, "custom_title") and bot_member.custom_title:
             power_message += f"\n👑 Custom Title: **{bot_member.custom_title}**"
 
-        # Create inline buttons for refresh and support
-        buttons = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🔄 Refresh", callback_data=f"refresh_power_{message.chat.id}", style=ButtonStyle.PRIMARY),
-            ]
-        ])
-
         await message.reply(
             power_message,
-            #reply_markup=buttons
         link_preview_options=None)
 
     except Exception as e:
@@ -2923,6 +2818,50 @@ async def handle_power_command(client, message):
 
 from pyrogram import Client, enums, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+
+async def _build_and_send_user_info(client, message, user, chat, photo_path, create_copy_markup):
+    """Build user-info response and send with optional profile photo."""
+    response = (
+        "👤 **User Info**\n"
+        f"🆔 **ID**: `{user.id}`\n"
+        f"📛 **Name**: {user.first_name}"
+    )
+    response += f" {user.last_name}\n" if user.last_name else "\n"
+    if user.username:
+        response += f"🌐 **Username**: @{user.username}\n"
+    if user.is_restricted:
+        response += "⚠️ **Account Restricted**: Yes\n"
+        if user.restriction_reason:
+            response += f"📝 **Restriction Reason**: {user.restriction_reason}\n"
+    if user.is_scam:
+        response += "🚫 **Scam Account**: Yes\n"
+    if user.is_fake:
+        response += "🎭 **Impersonator**: Yes\n"
+    if chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        try:
+            member = await client.get_chat_member(chat.id, user.id)
+            status_map = {
+                enums.ChatMemberStatus.OWNER: "👑 Owner",
+                enums.ChatMemberStatus.ADMINISTRATOR: "🔧 Admin",
+                enums.ChatMemberStatus.MEMBER: "👤 Member"
+            }
+            response += f"🎚 **Status**: {status_map.get(member.status, 'Unknown')}\n"
+            if member.joined_date:
+                response += f"📅 **Joined**: {member.joined_date.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            else:
+                response += "📅 **Joined**: Unknown\n"
+        except Exception:
+            response += "🎚 **Status**: ❌ Not in group\n"
+    markup = create_copy_markup(response)
+    if user.photo:
+        try:
+            await client.download_media(user.photo.big_file_id, photo_path)
+            await message.reply_photo(photo_path, caption=response, reply_markup=markup)
+        except Exception:
+            await message.reply(response, reply_markup=markup, link_preview_options=None)
+    else:
+        await message.reply(response, reply_markup=markup, link_preview_options=None)
+
 
 @Client.on_message(filters.command("about"))
 async def info_command(client: Client, message: Message):
@@ -2961,69 +2900,8 @@ async def info_command(client: Client, message: Message):
             return
 
     if target_user:
-        # Handle user specified by argument
         user = target_user
-        response = (
-            "👤 **User Info**\n"
-            f"🆔 **ID**: `{user.id}`\n"
-            f"📛 **Name**: {user.first_name}"
-        )
-        if user.last_name:
-            response += f" {user.last_name}\n"
-        else:
-            response += "\n"
-
-        if user.username:
-            response += f"🌐 **Username**: @{user.username}\n"
-
-        # Add restriction, scam, and fake flags
-        if user.is_restricted:
-            response += "⚠️ **Account Restricted**: Yes\n"
-            if user.restriction_reason:
-                response += f"📝 **Restriction Reason**: {user.restriction_reason}\n"
-        if user.is_scam:
-            response += "🚫 **Scam Account**: Yes\n"
-        if user.is_fake:
-            response += "🎭 **Impersonator**: Yes\n"
-
-        # Add status and join date for group queries
-        if chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-            try:
-                member = await client.get_chat_member(chat.id, user.id)
-                status_map = {
-                    enums.ChatMemberStatus.OWNER: "👑 Owner",
-                    enums.ChatMemberStatus.ADMINISTRATOR: "🔧 Admin",
-                    enums.ChatMemberStatus.MEMBER: "👤 Member"
-                }
-                response += f"🎚 **Status**: {status_map.get(member.status, 'Unknown')}\n"
-
-                if member.joined_date:
-                    join_date = member.joined_date.strftime("%Y-%m-%d %H:%M:%S UTC")
-                    response += f"📅 **Joined**: {join_date}\n"
-                else:
-                    response += "📅 **Joined**: Unknown\n"
-            except Exception:
-                response += "🎚 **Status**: ❌ Not in group\n"
-
-        # Handle profile photo
-        if user.photo:
-            try:
-                await client.download_media(user.photo.big_file_id, photo_path)
-                await message.reply_photo(
-                    photo_path,
-                    caption=response,
-                    reply_markup=create_copy_markup(response)
-                )
-            except Exception:
-                await message.reply(
-                    response,
-                    reply_markup=create_copy_markup(response), 
-                link_preview_options=None)
-        else:
-            await message.reply(
-                response,
-                reply_markup=create_copy_markup(response), 
-            link_preview_options=None)
+        await _build_and_send_user_info(client, message, user, chat, photo_path, create_copy_markup)
         return
 
     # Rest of the original code for replied messages and chat info remains the same
@@ -3054,65 +2932,7 @@ async def info_command(client: Client, message: Message):
 
         else:
             user = await client.get_users(replied.from_user.id)
-
-            response = (
-                "👤 **User Info**\n"
-                f"🆔 **ID**: `{user.id}`\n"
-                f"📛 **Name**: {user.first_name}"
-            )
-            if user.last_name:
-                response += f" {user.last_name}\n"
-            else:
-                response += "\n"
-
-            if user.username:
-                response += f"🌐 **Username**: @{user.username}\n"
-
-            if user.is_restricted:
-                response += "⚠️ **Account Restricted**: Yes\n"
-                if user.restriction_reason:
-                    response += f"📝 **Restriction Reason**: {user.restriction_reason}\n"
-            if user.is_scam:
-                response += "🚫 **Scam Account**: Yes\n"
-            if user.is_fake:
-                response += "🎭 **Impersonator**: Yes\n"
-
-            if chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-                try:
-                    member = await client.get_chat_member(chat.id, user.id)
-                    status_map = {
-                        enums.ChatMemberStatus.OWNER: "👑 Owner",
-                        enums.ChatMemberStatus.ADMINISTRATOR: "🔧 Admin",
-                        enums.ChatMemberStatus.MEMBER: "👤 Member"
-                    }
-                    response += f"🎚 **Status**: {status_map.get(member.status, 'Unknown')}\n"
-
-                    if member.joined_date:
-                        join_date = member.joined_date.strftime("%Y-%m-%d %H:%M:%S UTC")
-                        response += f"📅 **Joined**: {join_date}\n"
-                    else:
-                        response += "📅 **Joined**: Unknown\n"
-                except Exception:
-                    response += "🎚 **Status**: ❌ Not in group\n"
-
-            if user.photo:
-                try:
-                    await client.download_media(user.photo.big_file_id, photo_path)
-                    await message.reply_photo(
-                        photo_path,
-                        caption=response,
-                        reply_markup=create_copy_markup(response)
-                    )
-                except Exception:
-                    await message.reply(
-                        response,
-                        reply_markup=create_copy_markup(response), 
-                    link_preview_options=None)
-            else:
-                await message.reply(
-                    response,
-                    reply_markup=create_copy_markup(response), 
-                link_preview_options=None)
+            await _build_and_send_user_info(client, message, user, chat, photo_path, create_copy_markup)
 
     else:
         if chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
@@ -3145,49 +2965,7 @@ async def info_command(client: Client, message: Message):
 
         else:
             user = await client.get_users(chat.id)
-
-            response = (
-                "👤 **User Info**\n"
-                f"🆔 **ID**: `{user.id}`\n"
-                f"📛 **Name**: {user.first_name}"
-            )
-            if user.last_name:
-                response += f" {user.last_name}\n"
-            else:
-                response += "\n"
-
-            if user.username:
-                response += f"🌐 **Username**: @{user.username}\n"
-
-            if user.is_restricted:
-                response += "⚠️ **Account Restricted**: Yes\n"
-                if user.restriction_reason:
-                    response += f"📝 **Restriction Reason**: {user.restriction_reason}\n"
-
-            if user.is_scam:
-                response += "🚫 **Scam Account**: Yes\n"
-
-            if user.is_fake:
-                response += "🎭 **Impersonator**: Yes\n"
-
-            if user.photo:
-                try:
-                    await client.download_media(user.photo.big_file_id, photo_path)
-                    await message.reply_photo(
-                        photo_path,
-                        caption=response,
-                        reply_markup=create_copy_markup(response)
-                    )
-                except Exception:
-                    await message.reply(
-                        response,
-                        reply_markup=create_copy_markup(response), 
-                    link_preview_options=None)
-            else:
-                await message.reply(
-                    response,
-                    reply_markup=create_copy_markup(response), 
-                link_preview_options=None)
+            await _build_and_send_user_info(client, message, user, chat, photo_path, create_copy_markup)
 
 
 @Client.on_callback_query(filters.regex("^close$"))
@@ -3210,7 +2988,6 @@ async def close_message(client, query):
 
 @Client.on_message(filters.command("kang"))
 async def kang(client, message):
-    bot_username = client.me.username
     client = clients['session']
     user = message.from_user
     if not user:
@@ -3513,9 +3290,7 @@ async def memify(client, message):
     await message.delete()
 
 
-import subprocess
-import os
-from pyrogram import Client, filters
+
 
 
 
@@ -3624,7 +3399,7 @@ async def set_welcome_handler(client, message):
                 error_msg += "• Welcome to {botname}!"
                 return await message.reply_text(error_msg, link_preview_options=None)
 
-            set_gvar(client.me.id, "WELCOME", processed_text)
+            set_user_data(client.me.id, "WELCOME", processed_text)
             updates.append("welcome message")
 
         # Handle media if present
@@ -3743,6 +3518,6 @@ async def resetwelcome(client: Client, message: Message):
     if not sender_id == OWNER_ID:
         return await message.reply_text(Messages.BOT_OWNER_ONLY, link_preview_options=None)
 
-    set_gvar(client.me.id, "WELCOME", None)
-    set_gvar(client.me.id, "LOGO", None)
+    set_user_data(client.me.id, "WELCOME", None)
+    set_user_data(client.me.id, "LOGO", None)
     await message.reply_text(Messages.WELCOME_RESET, link_preview_options=None)
