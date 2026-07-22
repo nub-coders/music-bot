@@ -24,7 +24,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     image2 = image1.convert("RGBA")
 
     # Create premium multi-gradient background
-    background = image2.filter(filter=ImageFilter.GaussianBlur(30))
+    background = image2.filter(filter=ImageFilter.GaussianBlur(15))
     enhancer = ImageEnhance.Brightness(background)
     background = enhancer.enhance(0.3)
 

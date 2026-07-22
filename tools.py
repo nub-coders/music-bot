@@ -230,6 +230,22 @@ def convert_bytes(size: float) -> str:
     return "{:.2f} {}B".format(size, power_dict[t_n])
 
 
+async def run_cmd(cmd: str):
+    """Execute shell command asynchronously and return (stdout, stderr, exit_code, pid)."""
+    process = await asyncio.create_subprocess_shell(
+        cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    return (
+        stdout.decode().strip() if stdout else "",
+        stderr.decode().strip() if stderr else "",
+        process.returncode,
+        process.pid,
+    )
+
+
 async def convert_to_image(message, client) -> [None, str]:
     """Convert Most Media Formats To Raw Image"""
     if not message:
@@ -301,7 +317,7 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
                 cmd_f = f"-filter:v scale={width}:{height}"
         else:
             cmd_f = f"-filter:v scale={width}:{height}"
-        fps_ = float(info_["frame_rate"])
+        fps_ = float(video_track.frame_rate) if video_track and video_track.frame_rate else 30.0
         fps_cmd = "-r 30 " if fps_ > 30 else ""
         cmd = f"ffmpeg -i {media} {cmd_f} -ss 00:00:00 -to 00:00:03 -an -c:v libvpx-vp9 {fps_cmd}-fs 256K {resized_video}"
         _, error, __, ___ = await run_cmd(cmd)

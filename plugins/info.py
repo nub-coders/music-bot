@@ -20,7 +20,7 @@ from tools import (
 )
 from utils.message import Messages
 from utils.lang import get_str, get_lang, LANGUAGES, lang_list_text
-from database import find_one, user_sessions, collection
+from database import user_sessions, collection
 
 logger = logging.getLogger(__name__)
 
@@ -83,13 +83,14 @@ async def active_chats_info(client, message):
 
     active_calls = await cp.calls
     if active_calls:
-        titles = []
-        for chat_id in active_calls:
+        async def _fetch_title(cid):
             try:
-                chat = await client.get_chat(chat_id)
-                titles.append(f"• {chat.title}")
+                chat = await client.get_chat(cid)
+                return f"• {chat.title}"
             except Exception:
-                titles.append(f"• [ID: {chat_id}]")
+                return f"• [ID: {cid}]"
+
+        titles = await asyncio.gather(*[_fetch_title(cid) for cid in active_calls])
         titles_str = "\n".join(titles)
         reply_text = (
             f"<b>Active group calls:</b>\n"

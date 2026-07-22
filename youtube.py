@@ -20,6 +20,16 @@ from typing import List, Tuple, Dict
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 os.makedirs(_CACHE_DIR, exist_ok=True)
 _MEM_CACHE = {}
+_MAX_MEM_CACHE_SIZE = 500
+
+def _mem_cache_set(key, value):
+    """Set in memory cache with size bounds (FIFO eviction)."""
+    if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
+        keys_to_remove = list(_MEM_CACHE.keys())[:100]
+        for k in keys_to_remove:
+            _MEM_CACHE.pop(k, None)
+    _MEM_CACHE[key] = value
+
 logger = logging.getLogger(__name__)
 
 # All config read from config.py (single source of truth)
@@ -232,7 +242,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
             return cached
     cached = _read_cache(url, prefix="audio_")
     if cached:
-        _MEM_CACHE[("audio", url)] = cached
+        _mem_cache_set(("audio", url), cached)
         return cached
     logger.info(f"[AUDIO] No cache, extracting fresh stream...")
     stream = await _run_yt_dlp(
@@ -241,7 +251,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         cookies,
     )
     if stream:
-        _MEM_CACHE[("audio", url)] = stream
+        _mem_cache_set(("audio", url), stream)
         _write_cache(url, stream, prefix="audio_")
     else:
         logger.warning(f"[AUDIO] Extraction returned None for {url}")
@@ -257,7 +267,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
             return cached
     cached = _read_cache(url, prefix="video_")
     if cached:
-        _MEM_CACHE[("video", url)] = cached
+        _mem_cache_set(("video", url), cached)
         return cached
     logger.info(f"[VIDEO] No cache, extracting fresh stream...")
     stream = await _run_yt_dlp(
@@ -266,7 +276,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         cookies,
     )
     if stream:
-        _MEM_CACHE[("video", url)] = stream
+        _mem_cache_set(("video", url), stream)
         _write_cache(url, stream, prefix="video_")
     else:
         logger.warning(f"[VIDEO] Extraction returned None for {url}")
