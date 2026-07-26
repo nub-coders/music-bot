@@ -1,6 +1,13 @@
 import os
 import time
 
+# Load a local .env if present (optional — real deploys set env vars directly).
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # ── Telegram (non-sensitive — safe as defaults) ─────────────────────────────────
 API_ID      = os.getenv("API_ID", "2040")
 API_HASH    = os.getenv("API_HASH", "b18441a1ff607e10a989891a5462e627")
@@ -10,7 +17,12 @@ GROUP       = os.getenv("GROUP", "nub_coder_s")
 # ── Sensitive — must be set via environment, no defaults ────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
 STRING_SESSION = os.getenv("STRING_SESSION", "")
-MONGODB_URI    = os.getenv("MONGODB_URI", "mongodb+srv://nubcoders:nubcoders@music.8rxlsum.mongodb.net/?retryWrites=true&w=majority&appName=music")
+MONGODB_URI    = os.environ["MONGODB_URI"]  # fail fast on startup if unset — never bake in a cluster
+
+# Optional: comma-separated user IDs seeded into the DB admin list on first startup.
+INITIAL_ADMIN_IDS = [
+    int(x) for x in os.getenv("INITIAL_ADMIN_IDS", "").replace(",", " ").split() if x.strip()
+]
 
 # ── Optional ──────────────────────────────────────────────────────────────────────
 LOGGER_ID = os.getenv("LOGGER_ID", None)

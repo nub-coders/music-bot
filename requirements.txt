@@ -2,7 +2,7 @@ aiofiles
 aiohttp
 httpx
 imageio
-https://github.com/KurimuzonAkuma/kurigram/archive/dev.zip
+kurigram==2.2.19
 tgcrypto
 motor
 mutagen
@@ -15,3 +15,4 @@ pymediainfo
 python-magic
 requests
 yt-dlp[default]
+python-dotenv
