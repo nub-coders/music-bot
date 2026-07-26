@@ -39,7 +39,7 @@
     },
     "MONGODB_URI": {
       "description": "MongoDB connection string — e.g. mongodb+srv://user:pass@cluster.mongodb.net/db",
-      "value": "mongodb+srv://nubcoders:nubcoders@music.8rxlsum.mongodb.net/?retryWrites=true&w=majority&appName=music",
+      "value": "",
       "required": true
     },
     "YOUTUBE_API_KEYS": {

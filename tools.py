@@ -114,23 +114,16 @@ broadcast_message = {}
 SUDO = []
 AUTH = {}
 BLOCK = []
+ADMIN = []  # owner-tier admin IDs, loaded from DB at startup (seeded via INITIAL_ADMIN_IDS)
 
-# In-memory cache for admin.txt to avoid repeated disk reads
-_admin_ids_cache = None
-_admin_cache_mtime = 0.0
 
-def get_admin_ids(admin_file: str) -> list:
-    """Return cached admin IDs from admin.txt, refresh only when file changes."""
-    global _admin_ids_cache, _admin_cache_mtime
-    try:
-        mtime = os.path.getmtime(admin_file)
-        if _admin_ids_cache is None or mtime != _admin_cache_mtime:
-            with open(admin_file, "r") as f:
-                _admin_ids_cache = [int(line.strip()) for line in f if line.strip()]
-            _admin_cache_mtime = mtime
-        return _admin_ids_cache
-    except Exception:
-        return []
+def get_admin_ids(admin_file: str = "") -> list:
+    """Return the in-memory admin ID list (DB-backed, populated at startup).
+
+    Keeps the old file-path parameter for call-site compatibility; the argument
+    is ignored — admins live in Mongo now, not admin.txt.
+    """
+    return ADMIN
 
 def clear_directory(directory_path):
     """Clear all files and subdirectories in the given directory."""
@@ -230,10 +223,10 @@ def convert_bytes(size: float) -> str:
     return "{:.2f} {}B".format(size, power_dict[t_n])
 
 
-async def run_cmd(cmd: str):
-    """Execute shell command asynchronously and return (stdout, stderr, exit_code, pid)."""
-    process = await asyncio.create_subprocess_shell(
-        cmd,
+async def run_cmd(args: list):
+    """Execute a command (argv list, no shell) asynchronously and return (stdout, stderr, exit_code, pid)."""
+    process = await asyncio.create_subprocess_exec(
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -273,17 +266,20 @@ async def convert_to_image(message, client) -> [None, str]:
         else:
             path_s = await client.download_media(message.reply_to_message)
             final_path = "lottie_proton.png"
-            cmd = (
-                f"lottie_convert.py --frame 0 -if lottie -of png {path_s} {final_path}"
-            )
-            await run_cmd(cmd)
+            await run_cmd([
+                "lottie_convert.py", "--frame", "0",
+                "-if", "lottie", "-of", "png", path_s, final_path,
+            ])
     elif message.reply_to_message.audio:
         thumb = message.reply_to_message.audio.thumbs[0].file_id
         final_path = await client.download_media(thumb)
     elif message.reply_to_message.video or message.reply_to_message.animation:
         final_path = "fetched_thumb.png"
         vid_path = await client.download_media(message.reply_to_message)
-        await run_cmd(f"ffmpeg -i {vid_path} -filter:v scale=500:500 -an {final_path}")
+        await run_cmd([
+            "ffmpeg", "-i", vid_path,
+            "-filter:v", "scale=500:500", "-an", final_path,
+        ])
     return final_path                                                                                     
 
 
@@ -307,19 +303,23 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
             height, width = -1, 512
 
         resized_video = f"{media}.webm"
-        if fast_forward:
-            if s > 3:
-                fract_ = 3 / s
-                ff_f = round(fract_, 2)
-                set_pts_ = ff_f - 0.01 if ff_f > fract_ else ff_f
-                cmd_f = f"-filter:v 'setpts={set_pts_}*PTS',scale={width}:{height}"
-            else:
-                cmd_f = f"-filter:v scale={width}:{height}"
+        if fast_forward and s > 3:
+            fract_ = 3 / s
+            ff_f = round(fract_, 2)
+            set_pts_ = ff_f - 0.01 if ff_f > fract_ else ff_f
+            vf = f"setpts={set_pts_}*PTS,scale={width}:{height}"
         else:
-            cmd_f = f"-filter:v scale={width}:{height}"
+            vf = f"scale={width}:{height}"
         fps_ = float(video_track.frame_rate) if video_track and video_track.frame_rate else 30.0
-        fps_cmd = "-r 30 " if fps_ > 30 else ""
-        cmd = f"ffmpeg -i {media} {cmd_f} -ss 00:00:00 -to 00:00:03 -an -c:v libvpx-vp9 {fps_cmd}-fs 256K {resized_video}"
+        cmd = [
+            "ffmpeg", "-i", media,
+            "-filter:v", vf,
+            "-ss", "00:00:00", "-to", "00:00:03",
+            "-an", "-c:v", "libvpx-vp9",
+        ]
+        if fps_ > 30:
+            cmd += ["-r", "30"]
+        cmd += ["-fs", "256K", resized_video]
         _, error, __, ___ = await run_cmd(cmd)
         os.remove(media)
         return resized_video
@@ -618,7 +618,7 @@ async def end(client, update):
             logger.info(f"Song queue for chat {update.chat_id} is empty.")
             await client.leave_call(update.chat_id)
             await remove_active_chat(update.chat_id)
-            playing[update.chat_id].clear()
+            playing.pop(update.chat_id, None)
     except Exception as e:
         logger.warning(f"Error in end function: {e}")
 

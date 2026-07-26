@@ -115,6 +115,19 @@ async def main():
         
         BLOCK.clear()
         BLOCK.extend(bot_data.get('busers', []) if bot_data else [])
+
+        # Seed admin list from INITIAL_ADMIN_IDS on first start, then load from DB.
+        ADMIN.clear()
+        db_admins = bot_data.get("admins", []) if bot_data else []
+        seed = [a for a in INITIAL_ADMIN_IDS if a not in db_admins]
+        if seed:
+            await async_collection.update_one(
+                {"bot_id": bot.me.id},
+                {"$addToSet": {"admins": {"$each": seed}}},
+                upsert=True,
+            )
+            db_admins = db_admins + seed
+        ADMIN.extend(db_admins)
         client_name = f"{bot.me.first_name} {bot.me.last_name or ''}".strip()
         logger.info(f"Bot authorized successfully! 🎉 Authorized as: {client_name}")
         db_task(async_user_sessions.update_one(
