@@ -1,4 +1,5 @@
-import os, sys
+import os
+import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
 

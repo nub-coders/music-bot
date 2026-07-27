@@ -194,13 +194,13 @@ async def queue_command(client, message):
     draw = ImageDraw.Draw(img)
     # Draw a subtle accent bar on the left
     for x in range(8):
-        opacity = max(0, 255 - x * 30)
+        _opacity = max(0, 255 - x * 30)
         draw.rectangle([(x, 0), (x, height)], fill=(138, 43, 226))
     # Font
     try:
         font_title = ImageFont.truetype("Poppins-Bold.ttf", 36)
         font_body  = ImageFont.truetype("Poppins-Regular.ttf", 28)
-    except:
+    except Exception:
         font_title = ImageFont.load_default()
         font_body  = font_title
     # Title
@@ -219,7 +219,7 @@ async def queue_command(client, message):
 
     styled_caption = (
         "<u><b>🎵 | ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ</b></u>\n"
-        f"<blockquote expandable>\n"
+        "<blockquote expandable>\n"
         + "\n".join(
             f"<b>{idx}.</b> {item.get('title','Unknown')}  <code>[{item.get('duration','-')}]</code>"
             for idx, item in enumerate(items, 1)
@@ -264,7 +264,7 @@ async def mentionall(client, message):
     usrnum = 0
     usrtxt = ""
     async for usr in client.get_chat_members(chat_id):
-        if not chat_id in spam_chats:
+        if chat_id not in spam_chats:
             break
         usrnum += 1
         usrtxt += f"{usr.user.mention()}, "
@@ -279,7 +279,7 @@ async def mentionall(client, message):
             usrtxt = ""
     try:
         spam_chats.remove(chat_id)
-    except:
+    except Exception:
         pass
 
 
@@ -288,7 +288,7 @@ async def mentionall(client, message):
 async def seek_handler_func(client, message):
     try:
         await message.delete()
-    except:
+    except Exception:
         pass
     # Check if user is banned using global variable
     if message.from_user.id in BLOCK:
@@ -300,7 +300,7 @@ async def seek_handler_func(client, message):
         if len(command_parts) != 2:
             await client.send_message(
                 message.chat.id,
-                Messages.SEEK_NO_ARGS, 
+                Messages.SEEK_NO_ARGS,
             link_preview_options=None)
             return
 
@@ -309,13 +309,13 @@ async def seek_handler_func(client, message):
             if seek_value < 0:
                 await client.send_message(
                     message.chat.id,
-                    Messages.SEEK_NEGATIVE, 
+                    Messages.SEEK_NEGATIVE,
                 link_preview_options=None)
                 return
         except ValueError:
             await client.send_message(
                 message.chat.id,
-                Messages.SEEK_INVALID, 
+                Messages.SEEK_INVALID,
             link_preview_options=None)
             return
 
@@ -336,7 +336,7 @@ async def seek_handler_func(client, message):
             if message.chat.id not in played:
                 await client.send_message(
                     message.chat.id,
-                    "Assistant is not streaming anything!", 
+                    "Assistant is not streaming anything!",
                 link_preview_options=None)
                 return
 
@@ -365,12 +365,12 @@ async def seek_handler_func(client, message):
             # Seek to specified position
             to_seek = format_duration(total_seek)
             yt_link = current_song['yt_link']
-            
+
             # Get stream URL (async-safe, thread-pooled)
             stream_url = await get_stream_url(yt_link)
             if not stream_url:
                 stream_url = yt_link  # Fallback to original link
-            
+
             await call_py.play(
                 message.chat.id,
                 MediaStream(
@@ -390,29 +390,29 @@ async def seek_handler_func(client, message):
 
             await client.send_message(
                 message.chat.id,
-                f"Seeked to {to_seek}!\n\nʙʏ: {message.from_user.mention()}", 
+                f"Seeked to {to_seek}!\n\nʙʏ: {message.from_user.mention()}",
             link_preview_options=None)
         else:
             await client.send_message(
                 message.chat.id,
-                "Assistant is not streaming anything!", 
+                "Assistant is not streaming anything!",
             link_preview_options=None)
     except Exception as e:
         await client.send_message(
             message.chat.id,
-            f"{Messages.ERROR_OCCURRED} {str(e)}", 
+            f"{Messages.ERROR_OCCURRED} {str(e)}",
         link_preview_options=None)
 
 
 @Client.on_message(filters.command("cancel") & filters.group)
 @admin_only()
 async def cancel_spam(client, message):
-    if not message.chat.id in spam_chats:
+    if message.chat.id not in spam_chats:
         return await message.reply(Messages.NO_TAGALL, link_preview_options=None)
     else:
         try:
             spam_chats.remove(message.chat.id)
-        except:
+        except Exception:
             pass
         return await message.reply(Messages.DISMISS_MENTION, link_preview_options=None)
 
@@ -438,7 +438,7 @@ async def delete_message_handler(client, message):
 @admin_only()
 async def auth_user(client, message):
     admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
+    _user_id = message.from_user.id
 
     chat_id = message.chat.id
 
@@ -980,7 +980,7 @@ async def user_client_start_handler(client, message):
     should_log = False
     if user_data:
         users = user_data.get('users', {})
-        if not user_id in users:
+        if user_id not in users:
             asyncio.create_task(push_to_array(collection, {"bot_id": client.me.id}, 'users', user_id, upsert=True))
             should_log = True
     else:
@@ -1040,18 +1040,18 @@ async def user_client_start_handler(client, message):
                     return await message.reply_text(
                         f"❌ Failed to send photo: {str(e)}\n\n{caption}",
                         reply_markup=keyboard,
-                        reply_to_message_id=message.id, 
+                        reply_to_message_id=message.id,
                     link_preview_options=None)
             else:
                 return await message.reply_text(
                     f"❌ Error: {video_info}",
-                    reply_to_message_id=message.id, 
+                    reply_to_message_id=message.id,
                 link_preview_options=None)
 
         except Exception as e:
             return await message.reply_text(
                 f"❌ Error processing video ID: {str(e)}",
-                reply_to_message_id=message.id, 
+                reply_to_message_id=message.id,
             link_preview_options=None)
 
     # Handle logging
@@ -1065,25 +1065,25 @@ async def user_client_start_handler(client, message):
 
     buttons_markup = Buttons.start_markup(client.me.username, ow_id, OWNER_ID, GROUP)
     import psutil
-    uptime = await get_readable_time((time.time() - StartTime))
+    _uptime = await get_readable_time((time.time() - StartTime))
 
 
 
     # Get system resources
     try:
-        cpu_cores = psutil.cpu_count() or "N/A"
+        _cpu_cores = psutil.cpu_count() or "N/A"
         ram = psutil.virtual_memory()
-        ram_total = f"{ram.total / (1024**3):.2f} GB"
+        _ram_total = f"{ram.total / (1024**3):.2f} GB"
         disk = psutil.disk_usage('/')
-        disk_total = f"{disk.total / (1024**3):.2f} GB"
-    except Exception as e:
-        cpu_cores = "N/A"
-        ram_total = "N/A"
-        disk_total = "N/A"
+        _disk_total = f"{disk.total / (1024**3):.2f} GB"
+    except Exception:
+        _cpu_cores = "N/A"
+        _ram_total = "N/A"
+        _disk_total = "N/A"
     try:
-       photu = None
+       _photu = None
        async for photo in client.get_chat_photos(client.me.id):
-           photu = photo.file_id
+           _photu = photo.file_id
 
        # First try to get logo from user_dir
        logo_path_jpg = f"{user_dir}/logo.jpg"
@@ -1146,11 +1146,11 @@ async def format_welcome_message(client, text, chat_id, user_or_chat_name):
 async def commands_handler(client, callback_query):
     data = callback_query.data.split("_", 1)[1]          # Extract page name
     user_id = callback_query.from_user.id
-    admin_file = f"{ggg}/admin.txt"
+    _admin_file = f"{ggg}/admin.txt"
 
     # --- Permission check (owner / admin / sudo) ---
     admin_ids = get_admin_ids(f"{ggg}/admin.txt")
-    is_admin = user_id in admin_ids or str(OWNER_ID) == str(user_id)
+    _is_admin = user_id in admin_ids or str(OWNER_ID) == str(user_id)
     owner = await client.get_users(OWNER_ID)
     ow_id = owner.id if owner.username else None
 
@@ -1280,8 +1280,8 @@ async def commands_handler(client, callback_query):
         await callback_query.message.edit_caption(caption=owner_commands, reply_markup=back_markup)
     elif data == "back":
             await callback_query.answer()
-            name = callback_query.from_user.mention()
-            botname = client.me.mention()
+            _name = callback_query.from_user.mention()
+            _botname = client.me.mention()
             greet_message = await gvarstatus(client.me.id, "WELCOME") or (
                 "👋 <b>ʜᴇʏ {name}!</b>\n\n"
                 "🎵 <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {botname}</b>\n\n"
@@ -1383,7 +1383,7 @@ def generate_thumbnail(video_path, thumb_path):
         image.thumbnail((320, 320))
         image.save(thumb_path, "JPEG")
         return thumb_path
-    except Exception as e:
+    except Exception:
         # Fallback to black thumbnail
         Image.new('RGB', (320, 320), (0, 0, 0)).save(thumb_path, "JPEG")
         return thumb_path
@@ -1449,8 +1449,6 @@ async def progress_bar(current, total, client, msg, type_of, filename, start_tim
         print(f"Progress bar error: {e}")
 
 
-import os
-import cv2
 from mutagen import File
 from mutagen import MutagenError
 
@@ -1488,7 +1486,7 @@ async def play_handler_func(client, message):
     by = message.from_user
     try:
         await message.delete()
-    except:
+    except Exception:
         pass
 
     # Check if user is banned using global BLOCK variable
@@ -1510,7 +1508,7 @@ async def play_handler_func(client, message):
     input_text = message.text.split(" ", 1)
 
     # Determine if we need channel mode
-    chat = message.chat
+    _chat = message.chat
     target_chat_id = message.chat.id
     # For channel commands, check for linked channel
     if channel_mode:
@@ -1521,7 +1519,7 @@ async def play_handler_func(client, message):
         target_chat_id = linked_chat.id
 
     # Check queue for the target chat
-    current_queue = len(queues.get(target_chat_id, [])) if queues else 0
+    _current_queue = len(queues.get(target_chat_id, [])) if queues else 0
 
     massage = await message.reply(Messages.BOLT, link_preview_options=None)
     # Set target chat as active based on channel mode or not
@@ -1532,7 +1530,7 @@ async def play_handler_func(client, message):
     media_info = {}
     track_id = None
     _yt_task = None
-    
+
     # Initialize title with a safe default to prevent unbound variable issues
     title = trim_title("Unknown Media")
 
@@ -1637,8 +1635,8 @@ async def play_handler_func(client, message):
         duration = None
         youtube_link = None
         thumbnail = None
-        channel_name = None
-        views = None
+        _channel_name = None
+        _views = None
         video_id = None
         stream_url = None
 
@@ -1650,7 +1648,7 @@ async def play_handler_func(client, message):
         try:
             await massage.edit(f"{Messages.NO_QUERY_GIVEN}\n`/play query`")
             return await remove_active_chat(client, target_chat_id)
-        except:
+        except Exception:
             return
 
     # Start thumbnail generation in the background so the voice join is not blocked.
@@ -1680,7 +1678,7 @@ async def play_handler_func(client, message):
         try:
             try:
                 joined_chat = await session.get_chat(message.chat.username)
-            except:
+            except Exception:
                 joined_chat = await session.join_chat(message.chat.username)
         except (InviteHashExpired, ChannelPrivate):
             await massage.edit(f"Assistant is banned in this chat.\n\nPlease unban {session.me.username or session.me.id}")
@@ -1791,7 +1789,7 @@ async def play_handler_func(client, message):
                 await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position), reply_markup=keyboard,link_preview_options=None)
                 try:
                    await message.delete()
-                except:
+                except Exception:
                    pass
 
 
@@ -1801,7 +1799,6 @@ async def play_handler_func(client, message):
 
 
 
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 # YouTube functions removed - using imports from youtube.py module
@@ -1824,9 +1821,9 @@ async def put_queue(
     yt_task=None,
 ):
     try:
-        duration_in_seconds = (time_to_seconds(duration) - 3) if duration else 0
+        _duration_in_seconds = (time_to_seconds(duration) - 3) if duration else 0
     except Exception:
-        duration_in_seconds = 0
+        _duration_in_seconds = 0
     put = {
         "message": message,
         "title": trim_title(title),
@@ -2051,17 +2048,17 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
                 await call_py.leave_call(chat_id)
             except Exception as e:
                 logger.warning(f"Error leaving call: {e}")
-            
+
             await callback_query.message.reply(
-                f"QUEUE CLEARED\nStreaming stopped\nRequested by: {callback_query.from_user.mention()}", 
+                f"QUEUE CLEARED\nStreaming stopped\nRequested by: {callback_query.from_user.mention()}",
             link_preview_options=None)
             try:
                 await callback_query.message.delete()
             except Exception as e:
                 logger.warning(f"Could not delete message: {e}")
-            
+
             playing.pop(chat_id, None)
-            
+
             await callback_query.answer(Messages.STREAM_ENDED, show_alert=False)
         else:
             await remove_active_chat(client, chat_id)
@@ -2069,12 +2066,12 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
                 await call_py.leave_call(chat_id)
             except Exception as e:
                 logger.warning(f"Error leaving call: {e}")
-            
+
             await callback_query.message.reply(
-                Messages.NO_STREAM, 
+                Messages.NO_STREAM,
             link_preview_options=None)
             playing.pop(chat_id, None)
-            
+
             await callback_query.answer(Messages.NO_ACTIVE_STREAM, show_alert=False)
     except NotInCallError:
         await remove_active_chat(client, chat_id)
@@ -2090,7 +2087,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
 async def end_handler_func(client, message):
   try:
          await message.delete()
-  except:
+  except Exception:
          pass
   # Use global BLOCK list (already loaded at startup) - no DB query needed
   if message.from_user.id in BLOCK:
@@ -2101,18 +2098,18 @@ async def end_handler_func(client, message):
        await remove_active_chat(client, message.chat.id)
        queues.pop(message.chat.id, None)
        await client.send_message(message.chat.id,
-f"QUEUE CLEARED\nStreaming stopped\nRequested by: {message.from_user.mention()}", 
+f"QUEUE CLEARED\nStreaming stopped\nRequested by: {message.from_user.mention()}",
             link_preview_options=None)
        await call_py.leave_call(message.chat.id)
        playing.pop(message.chat.id, None)
    else:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, 
+     await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
      await remove_active_chat(client, message.chat.id)
      await call_py.leave_call(message.chat.id)
      playing.pop(message.chat.id, None)
   except NotInCallError:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, 
+     await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
      playing.pop(message.chat.id, None)
 
@@ -2143,21 +2140,21 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
             # There's a next song in queue
             next_song = queues[chat_id].pop(0)
             await callback_query.message.reply(Messages.SKIPPING.format(callback_query.from_user.mention()), link_preview_options=None)
-            
+
             try:
                 await clients['call_py'].pause(chat_id)
             except Exception as e:
                 logger.warning(f"Could not pause before skip: {e}")
-            
+
             await join_call(
                 next_song['message'],
-                next_song['title'], 
-                next_song['yt_link'], 
-                next_song['chat'], 
-                next_song['by'], 
-                next_song['duration'], 
-                next_song['mode'], 
-                next_song['thumb'], 
+                next_song['title'],
+                next_song['yt_link'],
+                next_song['chat'],
+                next_song['by'],
+                next_song['duration'],
+                next_song['mode'],
+                next_song['thumb'],
                 next_song.get('stream_url'),
                 yt_task=next_song.get('_yt_task'),
             )
@@ -2168,21 +2165,21 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
                 await clients['call_py'].leave_call(chat_id)
             except Exception as e:
                 logger.warning(f"Error leaving call: {e}")
-            
+
             await remove_active_chat(client, chat_id)
-            
+
             if chat_id in playing:
                 playing[chat_id].clear()
-            
+
             await callback_query.message.reply(Messages.SKIPPED_EMPTY.format(callback_query.from_user.mention()), link_preview_options=None)
-            
+
             try:
                 await callback_query.message.delete()
             except Exception as e:
                 logger.warning(f"Could not delete message: {e}")
-            
+
             await callback_query.answer(Messages.QUEUE_EMPTY_STREAM_ENDED, show_alert=False)
-            
+
     except NotInCallError:
         await remove_active_chat(client, chat_id)
         if chat_id in playing:
@@ -2197,7 +2194,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
 async def loop_handler_func(client, message):
     try:
         await message.delete()
-    except:
+    except Exception:
         pass
     # Use global BLOCK list (already loaded at startup) - no DB query needed
     if message.from_user.id in BLOCK:
@@ -2209,7 +2206,7 @@ async def loop_handler_func(client, message):
         if len(command_parts) != 2:
             await client.send_message(
                 message.chat.id,
-                Messages.LOOP_NO_ARGS, 
+                Messages.LOOP_NO_ARGS,
             link_preview_options=None)
             return
 
@@ -2218,13 +2215,13 @@ async def loop_handler_func(client, message):
             if loop_count <= 0 or loop_count > 20:
                 await client.send_message(
                     message.chat.id,
-                    Messages.LOOP_OUT_OF_BOUNDS, 
+                    Messages.LOOP_OUT_OF_BOUNDS,
                 link_preview_options=None)
                 return
         except ValueError:
             await client.send_message(
                 message.chat.id,
-                Messages.LOOP_INVALID, 
+                Messages.LOOP_INVALID,
             link_preview_options=None)
             return
 
@@ -2242,18 +2239,18 @@ async def loop_handler_func(client, message):
 
             await client.send_message(
                 message.chat.id,
-                f"Current song will be repeated {loop_count} times!\n\nʙʏ: {message.from_user.mention()}", 
+                f"Current song will be repeated {loop_count} times!\n\nʙʏ: {message.from_user.mention()}",
             link_preview_options=None)
         else:
             await client.send_message(
                 message.chat.id,
-                "Assistant is not streaming anything!", 
+                "Assistant is not streaming anything!",
             link_preview_options=None)
 
     except Exception as e:
         await client.send_message(
             message.chat.id,
-            f"❌ An error occurred: {str(e)}", 
+            f"❌ An error occurred: {str(e)}",
         link_preview_options=None)
 
 @Client.on_message(filters.command("skip"))
@@ -2261,7 +2258,7 @@ async def loop_handler_func(client, message):
 async def skip_handler_func(client, message):
   try:
          await message.delete()
-  except:
+  except Exception:
          pass
   # Use global BLOCK list (already loaded at startup) - no DB query needed
   if message.from_user.id in BLOCK:
@@ -2274,7 +2271,7 @@ async def skip_handler_func(client, message):
        playing[message.chat.id] = next
        try:
           await call_py.pause(message.chat.id)
-       except:
+       except Exception:
           pass
        await join_call(next['message'], next['title'], next['yt_link'], next['chat'], next['by'], next['duration'], next['mode'], next['thumb'], next.get('stream_url'), yt_task=next.get('_yt_task'))
     else:
@@ -2289,7 +2286,7 @@ async def skip_handler_func(client, message):
               Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
        playing[message.chat.id].clear()
   except NotInCallError:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, 
+     await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
      playing[message.chat.id].clear()
 
@@ -2314,7 +2311,7 @@ async def button_resume_handler(client: Client, callback_query: CallbackQuery):
         if await is_active_chat(client, chat_id):
             await call_py.resume(chat_id)
             await callback_query.message.reply(
-                f"Song resumed. Use the Pause button to pause again.\n\nʙʏ: {callback_query.from_user.mention()}", 
+                f"Song resumed. Use the Pause button to pause again.\n\nʙʏ: {callback_query.from_user.mention()}",
             link_preview_options=None)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING)
@@ -2340,7 +2337,7 @@ async def button_pause_handler(client: Client, callback_query: CallbackQuery):
         if await is_active_chat(client, chat_id):
             await call_py.pause(chat_id)
             await callback_query.message.reply(
-                f"Song paused. Use the Resume button to continue.\n\nʙʏ: {callback_query.from_user.mention()}", 
+                f"Song paused. Use the Resume button to continue.\n\nʙʏ: {callback_query.from_user.mention()}",
             link_preview_options=None)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING)
@@ -2357,7 +2354,8 @@ async def resume_handler_func(client, message):
    if  await is_active_chat(client, message.chat.id):
        await call_py.resume(message.chat.id)
        await client.send_message(message.chat.id, Messages.RESUMED.format(message.from_user.mention()), link_preview_options=None)
-   else: await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+   else:
+       await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
 
@@ -2371,7 +2369,7 @@ async def pause_handler_func(client, message):
   try:
    if  await is_active_chat(client, message.chat.id):
        await call_py.pause(message.chat.id)
-       await client.send_message(message.chat.id, Messages.PAUSED.format(message.from_user.mention()), 
+       await client.send_message(message.chat.id, Messages.PAUSED.format(message.from_user.mention()),
 link_preview_options=None)
    else:
        await client.send_message(message.chat.id,  Messages.NO_STREAM, link_preview_options=None)
@@ -2379,7 +2377,6 @@ link_preview_options=None)
      await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
 
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
 @Client.on_callback_query(filters.regex("broadcast"))
@@ -2455,7 +2452,7 @@ async def broadcast_callback_handler(client, callback_query):
 
     if userbot and session:
         XX = await callback_query.message.reply(Messages.START_ASSISTANT_BROADCAST, link_preview_options=None)
-        uu, ug, usg, ua_chat = 0, 0, 0, 0
+        uu, ug, usg, _ua_chat = 0, 0, 0, 0
         try:
             # Ensure communication with the bot
             try:
@@ -2522,14 +2519,14 @@ async def broadcast_callback_handler(client, callback_query):
 
 async def get_status(client):
 
-  start = datetime.datetime.now()
+  _start = datetime.datetime.now()
   u = g = sg = a_chat =  0 # Initialize counters
   user_data = await collection.find_one({"bot_id": client.me.id})
   mess=""
 
   if user_data:
     users = user_data.get('users', [])
-    progress_msg = ""
+    _progress_msg = ""
 
     if len(users) > 500:
         mess += (
@@ -2537,7 +2534,7 @@ async def get_status(client):
             f"<blockquote><b>`Stored users = {len(users)}`</b>\n"
             f"<b>`Detailed stats skipped to avoid timeout`</b></blockquote>"
         )
-        mess += (f"\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
+        mess += ("\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
         broadcasts[client.me.id] = mess
         return mess
 
@@ -2585,7 +2582,7 @@ async def get_status(client):
                     enums.ChatMemberStatus.ADMINISTRATOR,
                 ):
                     ua_chat += 1
-        except:
+        except Exception:
             pass
 
     mess += (
@@ -2595,7 +2592,7 @@ async def get_status(client):
 <b>`Super Groups = {usg}`<b>
 <b>`Admin in Chats = {ua_chat}`</b></blockquote>"""
     )
-    mess += (f"\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
+    mess += ("\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
     broadcasts[client.me.id] = mess
     return mess
   else:
@@ -2730,7 +2727,7 @@ async def broadcast_command_handler(client, message):
 
     buttons.append([InlineKeyboardButton("BROADCAST🚀🚀", callback_data="broadcast")])
     if isinstance(message, CallbackQuery):  # If it's a button click (CallbackQuery)
-        if not client.me.id in broadcasts:
+        if client.me.id not in broadcasts:
            await get_status(client)
         await message.edit_message_text(
             broadcasts[client.me.id],
@@ -2816,8 +2813,8 @@ async def handle_power_command(client, message):
 
 
 
-from pyrogram import Client, enums, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram import Client, filters
+from pyrogram.types import Message
 
 async def _build_and_send_user_info(client, message, user, chat, photo_path, create_copy_markup):
     """Build user-info response and send with optional profile photo."""
@@ -2927,7 +2924,7 @@ async def info_command(client: Client, message: Message):
 
             await message.reply(
                 response,
-                reply_markup=create_copy_markup(response), 
+                reply_markup=create_copy_markup(response),
             link_preview_options=None)
 
         else:
@@ -2960,7 +2957,7 @@ async def info_command(client: Client, message: Message):
 
             await message.reply(
                 response,
-                reply_markup=create_copy_markup(response), 
+                reply_markup=create_copy_markup(response),
             link_preview_options=None)
 
         else:
@@ -2976,7 +2973,7 @@ async def close_message(client, query):
         # Send confirmation with mention and remove it after 5 seconds
         closed_msg = await client.send_message(
             query.message.chat.id,
-            f"🗑 Message closed by {query.from_user.mention}", 
+            f"🗑 Message closed by {query.from_user.mention}",
         link_preview_options=None)
         await asyncio.sleep(5)
         await closed_msg.delete()
@@ -3173,7 +3170,7 @@ async def kang(client, message):
                 packname = f"a{user.id}_by_{user.username}_{pack}"
                 packnick = f"{custom_packnick} vol.{pack}"
                 if is_anim:
-                    packname += f"_anim"
+                    packname += "_anim"
                     packnick += " (Animated)"
                 if is_video:
                     packname += "_video"
@@ -3196,7 +3193,7 @@ async def kang(client, message):
                     await asyncio.sleep(2)
                     if is_anim:
                         await client.send_message(
-                            "Stickers", f"<{packnick}>", parse_mode=ParseMode.MARKDOWN, 
+                            "Stickers", f"<{packnick}>", parse_mode=ParseMode.MARKDOWN,
                         link_preview_options=None)
                         await asyncio.sleep(2)
                     await client.send_message("Stickers", "/skip", link_preview_options=None)
@@ -3278,7 +3275,7 @@ async def memify(client, message):
     Man = await message.reply_text(Messages.PROCESSING, link_preview_options=None)
     text = get_arg(message)
     if len(text) < 1:
-        return await Man.edit(f"Please use `/mmf <text>`")
+        return await Man.edit("Please use `/mmf <text>`")
     meme = await add_text_img(file, text)
     await asyncio.gather(
         Man.delete(),

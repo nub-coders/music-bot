@@ -34,8 +34,8 @@ def extract_best_format_url(formats):
 
     # Priority: combined format (video+audio) > video+audio > video only
     for f in formats:
-        if (f.get("acodec") != "none" and 
-            f.get("vcodec") != "none" and 
+        if (f.get("acodec") != "none" and
+            f.get("vcodec") != "none" and
             f.get("url")):
             return f.get("url")
 
@@ -49,13 +49,13 @@ def extract_best_format_url(formats):
 
 async def get_stream_url(youtube_url: str):
     """Get direct stream URL from YouTube link using optimized yt-dlp extraction. Returns input as-is if not a YouTube URL."""
-    
+
     # Check if it's a YouTube URL
     youtube_pattern = r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
     if not re.match(youtube_pattern, youtube_url):
         logger.info(f"Not a YouTube URL, returning as-is: {youtube_url[:50]}...")
         return youtube_url
-    
+
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -70,7 +70,7 @@ async def get_stream_url(youtube_url: str):
         "writesubtitles": False,
         "writeautomaticsub": False,
 
-        # Network optimizations  
+        # Network optimizations
         "http_chunk_size": 10485760,  # 10MB chunks
         "retries": 1,  # Reduce retries for speed
         "fragment_retries": 1,
@@ -91,9 +91,9 @@ async def get_stream_url(youtube_url: str):
         stream_url = await asyncio.to_thread(_sync_extract)
 
         if stream_url:
-            logger.info(f"✅ Successfully extracted stream URL")
+            logger.info("✅ Successfully extracted stream URL")
         else:
-            logger.warning(f"⚠️ Could not extract stream URL")
+            logger.warning("⚠️ Could not extract stream URL")
 
         return stream_url
 
@@ -280,7 +280,7 @@ async def convert_to_image(message, client) -> [None, str]:
             "ffmpeg", "-i", vid_path,
             "-filter:v", "scale=500:500", "-an", final_path,
         ])
-    return final_path                                                                                     
+    return final_path
 
 
 
@@ -456,7 +456,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 except Exception as e:
                     logger.warning(f"[join_call] yt_task result failed: {e}")
             else:
-                logger.warning(f"[join_call] YouTube task not done after 3s — proceeding with None source")
+                logger.warning("[join_call] YouTube task not done after 3s — proceeding with None source")
 
         queue = queues.get(chat_id, [])
         position = len(queue)
@@ -469,12 +469,12 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             logger.info(f"[join_call] Extracting stream URL from YouTube link: {youtube_link}")
             stream_source = await get_stream_url(youtube_link)
             if not stream_source:
-                logger.warning(f"[join_call] Failed to extract stream URL, falling back to youtube_link")
+                logger.warning("[join_call] Failed to extract stream URL, falling back to youtube_link")
                 stream_source = youtube_link
             else:
                 logger.info(f"[join_call] Successfully extracted stream URL: {stream_source[:100]}... (len={len(stream_source)})")
         else:
-            logger.warning(f"[join_call] No stream_url or youtube_link provided")
+            logger.warning("[join_call] No stream_url or youtube_link provided")
             stream_source = None
 
         logger.debug(f"[join_call] Final stream source resolved: {stream_source[:120]}..." if stream_source else "[join_call] Final stream source resolved: None")
@@ -521,11 +521,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             upsert=True
         ))
 
-        logger.debug(f"[join_call] Creating inline keyboard for playback controls")
+        logger.debug("[join_call] Creating inline keyboard for playback controls")
         keyboard = Buttons.playback_markup()
 
 
-        logger.debug(f"[join_call] Constructing message text with play_styles")
+        logger.debug("[join_call] Constructing message text with play_styles")
         mode_formatted = mode
         title_formatted = title
 
@@ -555,13 +555,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             except Exception as photo_err:
                 logger.warning(f"[join_call] Failed to send photo, sending as text instead: {photo_err}")
                 sent_message = await clients["bot"].send_message(
-                    chat_id, message_text, reply_markup=keyboard, 
+                    chat_id, message_text, reply_markup=keyboard,
                 link_preview_options=None)
                 logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
         else:
-            logger.warning(f"[join_call] Thumbnail is None, sending as text message")
+            logger.warning("[join_call] Thumbnail is None, sending as text message")
             sent_message = await clients["bot"].send_message(
-                chat_id, message_text, reply_markup=keyboard, 
+                chat_id, message_text, reply_markup=keyboard,
             link_preview_options=None)
             logger.info(f"[join_call] Playback notification sent as text (no thumbnail), message_id: {sent_message.id}")
         _msg_ms = (time.perf_counter() - _msg_t0) * 1000
@@ -571,9 +571,9 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         asyncio.create_task(update_progress_button(sent_message, duration, chat))
 
         try:
-            logger.debug(f"[join_call] Attempting to delete original message")
+            logger.debug("[join_call] Attempting to delete original message")
             await message.delete()
-            logger.debug(f"[join_call] Original message deleted successfully")
+            logger.debug("[join_call] Original message deleted successfully")
         except Exception as e:
             logger.warning(f"[join_call] Failed to delete original message: {e}")
 
@@ -630,25 +630,25 @@ async def end(client, update):
 def trim_title(title):
     """
     Trim video title to 25 characters or 6 words, whichever is shorter.
-    
+
     Args:
         title (str): The original video title
-        
+
     Returns:
         str: The trimmed title
     """
     if not title:
         return ""
-    
+
     # Split into words and take maximum 6 words
     words = title.split()
     if len(words) > 10:
         title = " ".join(words[:10])
-    
+
     # If still longer than 25 characters, truncate
     if len(title) > 30:
         title = title[:30].rstrip()
-    
+
     return title
 
 

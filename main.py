@@ -53,10 +53,10 @@ async def _cache_cleanup_loop(max_age_hours: int = 6, interval_hours: int = 6):
 
 async def main():
     logger.info("Starting bot initialization...")
-    
+
     # Check and update yt-dlp if needed
     await check_and_update_ytdlp()
-    
+
     # Create and start the bot client
     try:
         bot = Client("bot",
@@ -72,7 +72,7 @@ async def main():
             lang_code="en",
             lang_pack="tdesktop"
         )
-        
+
         # Initialize and store session client
         session = Client("session",
             api_id=API_ID,
@@ -87,32 +87,32 @@ async def main():
             lang_code="en",
             lang_pack="tdesktop"
         )
-        
+
         call_py = PyTgCalls(session)
         call_py.add_handler(end, call_filters.stream_end())
         call_py.add_handler(hd_stream_closed_kicked,
-            call_filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT) | 
+            call_filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT) |
             call_filters.chat_update(ChatUpdate.Status.KICKED)
         )
-        
-        
+
+
         clients["session"] = session
         clients["call_py"] = call_py
         clients["bot"] = bot
-        
+
         # Initialize global variables from database
         await call_py.start()
-        await bot.start() 
+        await bot.start()
         user_data = await async_user_sessions.find_one({"bot_id": bot.me.id})
         bot_data = await async_collection.find_one({"bot_id": bot.me.id})
-        
+
         # Update global variables
         SUDO.clear()
         SUDO.extend(user_data.get("SUDOERS", []) if user_data else [])
-        
+
         AUTH.clear()
         AUTH.update(user_data.get('auth_users', {}) if user_data else {})
-        
+
         BLOCK.clear()
         BLOCK.extend(bot_data.get('busers', []) if bot_data else [])
 

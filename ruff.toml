@@ -1,0 +1,9 @@
+# Lint config shared by local dev and CI.
+# ponytail: the codebase uses `from x import *` pervasively (config/tools/plugins);
+# F401/F403/F405 are noise under that pattern, and E402 mid-file imports are a
+# deliberate pattern here — ignore those, keep the real-bug checks (E722, F841, …).
+line-length = 200
+
+[lint]
+select = ["E", "F", "W"]
+ignore = ["E501", "E402", "F401", "F403", "F405"]

@@ -244,7 +244,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
     if cached:
         _mem_cache_set(("audio", url), cached)
         return cached
-    logger.info(f"[AUDIO] No cache, extracting fresh stream...")
+    logger.info("[AUDIO] No cache, extracting fresh stream...")
     stream = await _run_yt_dlp(
         url,
         "bestaudio[ext=m4a]/bestaudio/best",
@@ -269,7 +269,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     if cached:
         _mem_cache_set(("video", url), cached)
         return cached
-    logger.info(f"[VIDEO] No cache, extracting fresh stream...")
+    logger.info("[VIDEO] No cache, extracting fresh stream...")
     stream = await _run_yt_dlp(
         url,
         "best[ext=mp4][protocol=https]",
@@ -426,7 +426,7 @@ def format_duration(seconds):
         formatted = f"{hours:02d}:{minutes:02d}:{secs:02d}"
     else:
         formatted = f"{minutes:02d}:{secs:02d}"
-    
+
     return formatted
 
 def time_to_seconds(time):
@@ -449,19 +449,19 @@ def is_ytdlp_updated():
         except PackageNotFoundError:
             logger.warning("[youtube.is_ytdlp_updated] yt-dlp not installed via pip")
             return False
-        
+
         # Get latest version from PyPI
         response = requests.get('https://pypi.org/pypi/yt-dlp/json', timeout=10)
         response.raise_for_status()  # better error handling
         latest_version = response.json()['info']['version']
-        
+
         is_current = installed_version == latest_version
         logger.info(
             f"[youtube.is_ytdlp_updated] Installed={installed_version}, "
             f"Latest={latest_version}, UpToDate={is_current}"
         )
         return is_current
-    
+
     except requests.RequestException as e:
         logger.error(f"[youtube.is_ytdlp_updated] PyPI request failed: {e}")
         return False
@@ -476,7 +476,7 @@ def update_ytdlp():
         result = subprocess.run([
             sys.executable, "-m", "pip", "install", "-U", "yt-dlp"
         ], capture_output=True, text=True, timeout=120)
-        
+
         if result.returncode == 0:
             logger.info("[youtube.update_ytdlp] Update successful")
             return True
@@ -543,20 +543,20 @@ async def get_video_details(video_id):
     Returns:
         dict: Video details or error message
     """
-    
+
     # First try API if token is available
     if API_TOKEN:
         try:
             logger.debug(f"[youtube.get_video_details] Using API for video_id='{video_id}'")
             api_result = await get_video_info(video_id)
-            
+
             if api_result and api_result[0] and api_result[0] != "N/A":
                 title, video_id_result, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken = api_result
-                
+
                 # Format duration if it's in seconds
                 if isinstance(duration, int):
                     duration = format_duration(duration)
-                
+
                 return {
                     'title': title,
                     'thumbnail': thumbnail,
@@ -591,7 +591,7 @@ async def get_video_details(video_id):
             "writesubtitles": False,
             "writeautomaticsub": False,
 
-            # Network optimizations  
+            # Network optimizations
             "http_chunk_size": 10485760,  # 10MB chunks
             "retries": 1,  # Reduce retries for speed
             "fragment_retries": 1,
@@ -662,14 +662,14 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
     Returns:
         tuple: (title, duration, youtube_link, thumbnail, channel_name, views, video_id, stream_url)
     """
-    
+
     logger.debug(f"[youtube.handle_youtube] Handling argument='{argument}'")
     details = await get_video_details(argument)
-    
+
     if 'error' in details:
         logger.warning(f"[youtube.handle_youtube] Failed to get details: {details.get('error')}")
         return ("Error", "00:00", None, None, None, None, None, None)
-    
+
     # Convert dict result to tuple format
     result_tuple = (
         details.get('title', 'N/A'),
