@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install system deps
+        run: sudo apt-get install -y libmagic1 ffmpeg
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt pytest pytest-asyncio ruff
+
+      - name: Lint
+        run: ruff check . --select E,F,W --ignore E501
+
+      - name: Test
+        env:
+          MONGODB_URI: mongodb://localhost:27017/test
+        run: pytest tests/ -v
