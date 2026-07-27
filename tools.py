@@ -1,5 +1,6 @@
 import re
 import asyncio
+from dataclasses import dataclass
 import os
 import time
 import shutil
@@ -104,10 +105,36 @@ async def get_stream_url(youtube_url: str):
 
 active = set()  # set for O(1) membership checks
 playing = {}
-queues = {}
+queues = {}  # chat_id -> list[QueueEntry]
 clients = {}
 played = {}
 spam_chats = []
+
+
+@dataclass
+class QueueEntry:
+    """One queued track. Mapping-style reads (entry["title"], entry.get("x", d))
+    are kept alongside attribute access so existing call sites work unchanged
+    during the dict->dataclass transition. Field names match the old dict keys."""
+    message: object
+    title: object
+    duration: object
+    mode: object
+    yt_link: object
+    chat: object
+    by: object
+    session: object
+    thumb: object
+    stream_url: object = None
+    _track_id: object = None
+    _yt_task: object = None
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
 
 broadcasts = {}
 broadcast_message = {}

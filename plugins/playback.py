@@ -471,20 +471,20 @@ async def put_queue(
         _duration_in_seconds = (time_to_seconds(duration) - 3) if duration else 0
     except Exception:
         _duration_in_seconds = 0
-    put = {
-        "message": message,
-        "title": trim_title(title),
-        "duration": duration,
-        "mode": audio_flags,
-        "yt_link": yt_link,
-        "chat": chat,
-        "by": by,
-        "session": client,
-        "thumb": thumb,
-        "stream_url": stream_url,
-        "_track_id": track_id,
-        "_yt_task": yt_task,
-    }
+    put = QueueEntry(
+        message=message,
+        title=trim_title(title),
+        duration=duration,
+        mode=audio_flags,
+        yt_link=yt_link,
+        chat=chat,
+        by=by,
+        session=client,
+        thumb=thumb,
+        stream_url=stream_url,
+        _track_id=track_id,
+        _yt_task=yt_task,
+    )
     if forceplay:
         check = queues.get(chat.id)
         if check:
