@@ -25,3 +25,24 @@ def test_passthrough_never_empty_and_no_network():
     for arg in ["some search text", "https://youtu.be/abc123"]:
         result = asyncio.run(sources.resolve_sources(arg))
         assert result == [(arg, None)]
+
+
+def test_spotify_link_parsing():
+    # The regex must pull (kind, id) from the URL shapes Spotify hands out,
+    # including the intl-xx locale prefix and trailing ?si= query.
+    cases = {
+        "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT": ("track", "4cOdK2wGLETKBW3PvgPWqT"),
+        "https://open.spotify.com/intl-de/album/6akEvsycLGftJxYudPjmqK": ("album", "6akEvsycLGftJxYudPjmqK"),
+        "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc": ("playlist", "37i9dQZF1DXcBWIGoYBM5M"),
+    }
+    for url, expected in cases.items():
+        m = sources._SPOTIFY_RE.search(url)
+        assert m is not None, url
+        assert (m.group(1).lower(), m.group(2)) == expected
+
+
+def test_track_query_formats_artist_and_title():
+    track = {"name": "All I Want", "artists": [{"name": "Tania Bowra"}]}
+    assert sources._track_query(track) == ("Tania Bowra - All I Want", "All I Want")
+    # Missing title -> unusable, must be dropped by callers.
+    assert sources._track_query({"artists": [{"name": "X"}]}) is None

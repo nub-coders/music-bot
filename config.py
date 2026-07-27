@@ -46,6 +46,13 @@ NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "http://api.nubcoders.com
 # Left unset → yt-dlp runs without cookies (the normal path; no silent browser-profile fallback).
 YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE", None)
 
+# Spotify Web API (optional). When both are set, Spotify track/album/playlist
+# links are resolved to "artist - title" searches and played via YouTube.
+# Client Credentials flow — no user login, no redirect. Unset → Spotify links
+# fall back to a plain search. Keep the secret out of git (env only).
+SPOTIFY_CLIENT_ID     = os.getenv("SPOTIFY_CLIENT_ID", None)
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", None)
+
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()
 StartTime = time.time()

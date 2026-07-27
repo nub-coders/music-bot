@@ -36,6 +36,11 @@
    (needed for age-restricted / region-locked videos). Export one from your browser
    and mount it into the container, then point this variable at it. If unset, yt-dlp
    runs without cookies — there is no automatic browser-profile fallback.
+ - Optional: `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` — enable playing Spotify
+   track/album/playlist links (resolved to a YouTube search via the Spotify Web API,
+   Client Credentials flow — no user login). Create an app at
+   https://developer.spotify.com/dashboard and set both. If unset, Spotify links fall
+   back to a plain search. Keep the secret out of git.
 
  Quickstart (local or VPS)
  -------------------------
