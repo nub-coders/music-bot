@@ -398,19 +398,21 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         audio_flags = MediaStream.Flags.IGNORE if mode == "audio" else None
 
         # ── Wait for YouTube task if we have no stream source yet ──────────────
+        # ponytail: await the task we depend on (up to 30s) instead of a 3s poll
+        # that "proceeds with None" — proceeding sourceless just errors below.
+        # shield so a timeout here never cancels the task the queue also holds.
         if not stream_url and not youtube_link and yt_task:
-            for attempt in range(3):
-                if yt_task.done():
-                    break
-                logger.info(
-                    f"[join_call] No stream source yet — "
-                    f"waiting for YouTube task (attempt {attempt + 1}/3)..."
-                )
-                await asyncio.sleep(1)
+            logger.info("[join_call] No stream source yet — awaiting YouTube task (max 30s)...")
+            result = None
+            try:
+                result = await asyncio.wait_for(asyncio.shield(yt_task), timeout=30)
+            except asyncio.TimeoutError:
+                logger.warning("[join_call] YouTube task not done after 30s — proceeding with None source")
+            except Exception as e:
+                logger.warning(f"[join_call] yt_task failed: {e}")
 
-            if yt_task.done() and not yt_task.cancelled():
+            if result:
                 try:
-                    result = yt_task.result()
                     # handle_youtube returns:
                     # (title, duration, youtube_link, thumbnail,
                     #  channel_name, views, video_id, stream_url)
@@ -438,8 +440,6 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                         logger.info(f"[join_call] YouTube task resolved — title='{title}'")
                 except Exception as e:
                     logger.warning(f"[join_call] yt_task result failed: {e}")
-            else:
-                logger.warning("[join_call] YouTube task not done after 3s — proceeding with None source")
 
         queue = state.queues.get(chat_id, [])
         position = len(queue)
