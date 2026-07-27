@@ -36,12 +36,13 @@
    (needed for age-restricted / region-locked videos). Export one from your browser
    and mount it into the container, then point this variable at it. If unset, yt-dlp
    runs without cookies — there is no automatic browser-profile fallback.
- - Optional: `COOKIES_FROM_BROWSER` — a browser name (`firefox`, `chrome`,
-   `chromium`, `edge`, `brave`, `opera`, `vivaldi`, `safari`, `whale`). When set,
-   the bot exports cookies from that browser's profile into `YT_COOKIES_FILE`
-   once at startup (defaulting to `./cookies.txt` if `YT_COOKIES_FILE` is unset).
-   Requires the browser installed and logged in on the host. Best-effort — a
-   missing/locked profile just logs a warning and the bot runs without cookies.
+ - Optional: `COOKIES_FROM_BROWSER` — one or more browser names (`firefox`,
+   `chrome`, `chromium`, `edge`, `brave`, `opera`, `vivaldi`, `safari`, `whale`),
+   comma/space-separated. When set, the bot exports cookies from those browsers'
+   profiles into `YT_COOKIES_FILE` once at startup (defaulting to `./cookies.txt`
+   if `YT_COOKIES_FILE` is unset), trying each in order until one yields a valid
+   file. Requires the browser installed and logged in on the host. Best-effort —
+   a missing/locked profile just logs a warning and the bot runs without cookies.
    Tune with `COOKIES_BOOTSTRAP_URL` (a URL yt-dlp hits so it exits cleanly and
    validates the cookies) and `COOKIES_REFRESH_HOURS` (re-export interval —
    YouTube rotates tokens mid-session; `0` disables the periodic refresh).

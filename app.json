@@ -78,7 +78,7 @@
       "required": false
     },
     "COOKIES_FROM_BROWSER": {
-      "description": "Export cookies from a local browser profile at startup: firefox/chrome/chromium/edge/brave/opera/vivaldi/safari/whale. Needs that browser on the host (not available on Heroku container stack). Optional.",
+      "description": "Export cookies from local browser profile(s) at startup: firefox/chrome/chromium/edge/brave/opera/vivaldi/safari/whale (comma/space-separated, tried in order). Needs that browser on the host (not available on Heroku container stack). Optional.",
       "value": "",
       "required": false
     },

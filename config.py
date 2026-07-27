@@ -49,8 +49,10 @@ YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE", None)
 # Optionally export cookies from a locally-installed browser profile into
 # YT_COOKIES_FILE once at startup (youtube.export_browser_cookies). Set to a
 # browser name yt-dlp understands: firefox, chrome, chromium, edge, brave,
-# opera, vivaldi, safari, whale. Unset → no export. When set but YT_COOKIES_FILE
-# is not, cookies are written to ./cookies.txt.
+# opera, vivaldi, safari, whale. May list several (comma/space-separated) —
+# each is tried in order until one yields a valid cookie file. Unset → no
+# export. When set but YT_COOKIES_FILE is not, cookies are written to
+# ./cookies.txt.
 COOKIES_FROM_BROWSER = os.getenv("COOKIES_FROM_BROWSER", None)
 if COOKIES_FROM_BROWSER and not YT_COOKIES_FILE:
     YT_COOKIES_FILE = os.path.join(os.getcwd(), "cookies.txt")

@@ -527,42 +527,53 @@ async def _export_cookies():
     URL makes yt-dlp exit cleanly and validates the cookies against a real
     request.
 
+    COOKIES_FROM_BROWSER may name several browsers (comma/space-separated); each
+    is tried in order and the first to produce a valid file wins.
+
     Best effort: never raises, and bounded by a timeout so a missing or locked
     browser profile can't hang startup (the reason the old per-call browser
     fallback was removed). Runtime yt-dlp calls already gate on the file
     existing, so a failed export just means "no cookies", not a crash.
     """
-    cmd = [
-        "yt-dlp",
-        "--cookies-from-browser", COOKIES_FROM_BROWSER,
-        "--cookies", YT_COOKIES_FILE,
-        "--skip-download",
-        COOKIES_BOOTSTRAP_URL,
-    ]
-    logger.info(f"[cookies] Exporting {YT_COOKIES_FILE} from {COOKIES_FROM_BROWSER}...")
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
+    browsers = [b for b in re.split(r"[,\s]+", COOKIES_FROM_BROWSER or "") if b]
+    if not browsers or not YT_COOKIES_FILE:
+        return
+    errors = []
+    for browser in browsers:
+        cmd = [
+            "yt-dlp",
+            "--cookies-from-browser", browser,
+            "--cookies", YT_COOKIES_FILE,
+            "--skip-download",
+            COOKIES_BOOTSTRAP_URL,
+        ]
+        logger.info(f"[cookies] Exporting {YT_COOKIES_FILE} from {browser}...")
         try:
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
-        except asyncio.TimeoutError:
-            proc.kill()
-            logger.error("[cookies] Export timed out; continuing without fresh cookies")
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            except asyncio.TimeoutError:
+                proc.kill()
+                errors.append(f"{browser}: timed out")
+                continue
+        except FileNotFoundError:
+            logger.error("[cookies] yt-dlp not found; skipping cookie export")
             return
-    except FileNotFoundError:
-        logger.error("[cookies] yt-dlp not found; skipping cookie export")
-        return
-    except Exception as e:
-        logger.error(f"[cookies] Export failed: {e}")
-        return
+        except Exception as e:
+            errors.append(f"{browser}: {e}")
+            continue
 
-    if os.path.exists(YT_COOKIES_FILE) and os.path.getsize(YT_COOKIES_FILE) > 0:
-        logger.info(f"[cookies] ✅ Cookie file ready ({os.path.getsize(YT_COOKIES_FILE)} bytes)")
-    else:
+        if os.path.exists(YT_COOKIES_FILE) and os.path.getsize(YT_COOKIES_FILE) > 0:
+            logger.info(f"[cookies] ✅ Cookie file ready from {browser} "
+                        f"({os.path.getsize(YT_COOKIES_FILE)} bytes)")
+            return
         tail = (stderr.decode(errors="replace").strip().splitlines() or ["no stderr"])[-1]
-        logger.warning(f"[cookies] ❌ No cookie file produced from {COOKIES_FROM_BROWSER} "
-                       f"(profile not present/locked?) — {tail}")
+        errors.append(f"{browser}: {tail}")
+
+    logger.warning(f"[cookies] ❌ No cookie file produced from any of {browsers} "
+                   f"(profiles not present/locked?) — {'; '.join(errors)}")
 
 
 async def export_browser_cookies():
