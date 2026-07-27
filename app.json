@@ -39,7 +39,7 @@
     },
     "MONGODB_URI": {
       "description": "MongoDB connection string — e.g. mongodb+srv://user:pass@cluster.mongodb.net/db",
-      "value": "mongodb+srv://nubcoders:nubcoders@music.8rxlsum.mongodb.net/?retryWrites=true&w=majority&appName=music",
+      "value": "",
       "required": true
     },
     "YOUTUBE_API_KEYS": {
@@ -69,6 +69,36 @@
     },
     "YT_API_TOKEN": {
       "description": "Auth token for the external YouTube API proxy (optional)",
+      "value": "",
+      "required": false
+    },
+    "YT_COOKIES_FILE": {
+      "description": "Path to a Netscape cookies.txt for yt-dlp (age-restricted/region-locked videos). Optional.",
+      "value": "",
+      "required": false
+    },
+    "COOKIES_FROM_BROWSER": {
+      "description": "Export cookies from local browser profile(s) at startup: firefox/chrome/chromium/edge/brave/opera/vivaldi/safari/whale (comma/space-separated, tried in order). Needs that browser on the host (not available on Heroku container stack). Optional.",
+      "value": "",
+      "required": false
+    },
+    "COOKIES_BOOTSTRAP_URL": {
+      "description": "URL yt-dlp hits during the cookie export so it exits cleanly and validates the cookies. Optional (has a sensible default).",
+      "value": "",
+      "required": false
+    },
+    "COOKIES_REFRESH_HOURS": {
+      "description": "Re-export the cookie file every N hours (YouTube rotates tokens mid-session). 0 disables. Optional.",
+      "value": "",
+      "required": false
+    },
+    "SPOTIFY_CLIENT_ID": {
+      "description": "Spotify app Client ID — play Spotify links via YouTube. Create an app at https://developer.spotify.com/dashboard. Leave blank to disable.",
+      "value": "",
+      "required": false
+    },
+    "SPOTIFY_CLIENT_SECRET": {
+      "description": "Spotify app Client Secret (keep private). Required together with SPOTIFY_CLIENT_ID to enable Spotify links.",
       "value": "",
       "required": false
     }

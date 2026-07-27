@@ -65,22 +65,22 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
 
     try:
         title_font = ImageFont.truetype("Poppins-Bold.ttf", 52)
-    except:
+    except Exception:
         title_font = ImageFont.load_default()
 
     try:
         subtitle_font = ImageFont.truetype("Poppins-Medium.ttf", 28)
-    except:
+    except Exception:
         subtitle_font = ImageFont.load_default()
 
     try:
         info_font = ImageFont.truetype("Poppins-Regular.ttf", 24)
-    except:
+    except Exception:
         info_font = ImageFont.load_default()
 
     try:
         time_font = ImageFont.truetype("Poppins-Medium.ttf", 26)
-    except:
+    except Exception:
         time_font = ImageFont.load_default()
 
     card_x, card_y = 80, 80
@@ -219,7 +219,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
         icons_with_glow.paste(play_icons, (0, 0), play_icons)
         icons_position = (progress_x + (progress_width - icon_width) // 2, time_y + 50)
         background.paste(icons_with_glow, icons_position, icons_with_glow)
-    except:
+    except Exception:
         play_y = time_y + 60
         play_x = progress_x + progress_width // 2
         draw.ellipse(
@@ -241,7 +241,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
         try:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
-        except:
+        except Exception:
             pass
 
     return background_path
@@ -257,15 +257,15 @@ def changeImageSize(maxWidth, maxHeight, image):
 def truncate(text):
     list = text.split(" ")
     text1 = ""
-    text2 = ""    
+    text2 = ""
     for i in list:
-        if len(text1) + len(i) < 30:        
+        if len(text1) + len(i) < 30:
             text1 += " " + i
-        elif len(text2) + len(i) < 30:       
+        elif len(text2) + len(i) < 30:
             text2 += " " + i
 
     text1 = text1.strip()
-    text2 = text2.strip()     
+    text2 = text2.strip()
     return [text1,text2]
 
 def wrap_text_to_width(draw, text, font, max_width, max_lines=2):
@@ -345,43 +345,43 @@ def crop_center_circle(img, output_size, border, border_color, crop_scale=1.5):
             half_the_height + larger_size/2
         )
     )
-    
+
     img = img.resize((output_size - 2*border, output_size - 2*border))
-    
-    
+
+
     final_img = Image.new("RGBA", (output_size, output_size), border_color)
-    
-    
+
+
     mask_main = Image.new("L", (output_size - 2*border, output_size - 2*border), 0)
     draw_main = ImageDraw.Draw(mask_main)
     draw_main.ellipse((0, 0, output_size - 2*border, output_size - 2*border), fill=255)
-    
+
     final_img.paste(img, (border, border), mask_main)
-    
-    
+
+
     mask_border = Image.new("L", (output_size, output_size), 0)
     draw_border = ImageDraw.Draw(mask_border)
     draw_border.ellipse((0, 0, output_size, output_size), fill=255)
-    
+
     result = Image.composite(final_img, Image.new("RGBA", final_img.size, (0, 0, 0, 0)), mask_border)
-    
+
     return result
 
 def draw_text_with_shadow(background, draw, position, text, font, fill, shadow_offset=(3, 3), shadow_blur=5):
-    
+
     shadow = Image.new('RGBA', background.size, (0, 0, 0, 0))
     shadow_draw = ImageDraw.Draw(shadow)
-    
-    
+
+
     shadow_draw.text(position, text, font=font, fill="black")
-    
-    
+
+
     shadow = shadow.filter(ImageFilter.GaussianBlur(radius=shadow_blur))
-    
-    
+
+
     background.paste(shadow, shadow_offset, shadow)
-    
-    
+
+
     draw.text(position, text, font=font, fill=fill)
 
 
@@ -433,7 +433,7 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
             try:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-            except:
+            except Exception:
                 pass
 
         # If provided, notify caller that thumbnail is ready

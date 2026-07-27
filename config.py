@@ -1,6 +1,13 @@
 import os
 import time
 
+# Load a local .env if present (optional — real deploys set env vars directly).
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # ── Telegram (non-sensitive — safe as defaults) ─────────────────────────────────
 API_ID      = os.getenv("API_ID", "2040")
 API_HASH    = os.getenv("API_HASH", "b18441a1ff607e10a989891a5462e627")
@@ -10,7 +17,15 @@ GROUP       = os.getenv("GROUP", "nub_coder_s")
 # ── Sensitive — must be set via environment, no defaults ────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
 STRING_SESSION = os.getenv("STRING_SESSION", "")
-MONGODB_URI    = os.getenv("MONGODB_URI", "mongodb+srv://nubcoders:nubcoders@music.8rxlsum.mongodb.net/?retryWrites=true&w=majority&appName=music")
+try:
+    MONGODB_URI = os.environ["MONGODB_URI"]  # fail fast on startup if unset — never bake in a cluster
+except KeyError:
+    raise SystemExit("MONGODB_URI is not set. Set it via environment (or .env for local dev) — no default cluster is baked in.")
+
+# Optional: comma-separated user IDs seeded into the DB admin list on first startup.
+INITIAL_ADMIN_IDS = [
+    int(x) for x in os.getenv("INITIAL_ADMIN_IDS", "").replace(",", " ").split() if x.strip()
+]
 
 # ── Optional ──────────────────────────────────────────────────────────────────────
 LOGGER_ID = os.getenv("LOGGER_ID", None)
@@ -25,6 +40,37 @@ YOUTUBE_API_KEYS = os.getenv("YOUTUBE_API_KEYS", "")
 # External YouTube proxy (optional)
 YT_API_TOKEN      = os.getenv("YT_API_TOKEN", None)
 NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "http://api.nubcoders.com")
+
+# Optional path to a Netscape-format cookies.txt for yt-dlp (age-restricted / region-locked
+# videos). Export one from your browser and mount it into the container, then set this env var.
+# Left unset → yt-dlp runs without cookies (the normal path; no silent browser-profile fallback).
+YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE", None)
+
+# Optionally export cookies from a locally-installed browser profile into
+# YT_COOKIES_FILE once at startup (youtube.export_browser_cookies). Set to a
+# browser name yt-dlp understands: firefox, chrome, chromium, edge, brave,
+# opera, vivaldi, safari, whale. May list several (comma/space-separated) —
+# each is tried in order until one yields a valid cookie file. Unset → no
+# export. When set but YT_COOKIES_FILE is not, cookies are written to
+# ./cookies.txt.
+COOKIES_FROM_BROWSER = os.getenv("COOKIES_FROM_BROWSER", None)
+if COOKIES_FROM_BROWSER and not YT_COOKIES_FILE:
+    YT_COOKIES_FILE = os.path.join(os.getcwd(), "cookies.txt")
+# URL hit during the export so yt-dlp exits cleanly and the cookies are
+# validated against a real request. And how often to re-export — YouTube rotates
+# tokens mid-session, so a once-at-startup file goes stale. 0 disables refresh.
+COOKIES_BOOTSTRAP_URL = os.getenv("COOKIES_BOOTSTRAP_URL", "https://www.youtube.com/watch?v=jNQXAC9IVRw")
+try:
+    COOKIES_REFRESH_HOURS = float(os.getenv("COOKIES_REFRESH_HOURS", "6"))
+except ValueError:
+    COOKIES_REFRESH_HOURS = 6.0
+
+# Spotify Web API (optional). When both are set, Spotify track/album/playlist
+# links are resolved to "artist - title" searches and played via YouTube.
+# Client Credentials flow — no user login, no redirect. Unset → Spotify links
+# fall back to a plain search. Keep the secret out of git (env only).
+SPOTIFY_CLIENT_ID     = os.getenv("SPOTIFY_CLIENT_ID", None)
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", None)
 
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()

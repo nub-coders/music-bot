@@ -14,8 +14,8 @@ from pyrogram.errors.exceptions import (
 
 from tools import *
 from config import *
-from youtube import check_and_update_ytdlp
-from database import user_sessions as async_user_sessions, collection as async_collection
+from youtube import check_and_update_ytdlp, export_browser_cookies, refresh_cookies_loop
+from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,10 +53,14 @@ async def _cache_cleanup_loop(max_age_hours: int = 6, interval_hours: int = 6):
 
 async def main():
     logger.info("Starting bot initialization...")
-    
+
     # Check and update yt-dlp if needed
     await check_and_update_ytdlp()
-    
+
+    # Optionally refresh the yt-dlp cookie file from a browser profile (no-op
+    # unless COOKIES_FROM_BROWSER is set). Best effort — never blocks startup.
+    await export_browser_cookies()
+
     # Create and start the bot client
     try:
         bot = Client("bot",
@@ -72,7 +76,7 @@ async def main():
             lang_code="en",
             lang_pack="tdesktop"
         )
-        
+
         # Initialize and store session client
         session = Client("session",
             api_id=API_ID,
@@ -87,34 +91,48 @@ async def main():
             lang_code="en",
             lang_pack="tdesktop"
         )
-        
+
         call_py = PyTgCalls(session)
         call_py.add_handler(end, call_filters.stream_end())
         call_py.add_handler(hd_stream_closed_kicked,
-            call_filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT) | 
+            call_filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT) |
             call_filters.chat_update(ChatUpdate.Status.KICKED)
         )
-        
-        
+
+
         clients["session"] = session
         clients["call_py"] = call_py
         clients["bot"] = bot
-        
+
         # Initialize global variables from database
         await call_py.start()
-        await bot.start() 
+        await bot.start()
+        await ensure_indexes()
         user_data = await async_user_sessions.find_one({"bot_id": bot.me.id})
         bot_data = await async_collection.find_one({"bot_id": bot.me.id})
-        
+
         # Update global variables
         SUDO.clear()
         SUDO.extend(user_data.get("SUDOERS", []) if user_data else [])
-        
+
         AUTH.clear()
         AUTH.update(user_data.get('auth_users', {}) if user_data else {})
-        
+
         BLOCK.clear()
         BLOCK.extend(bot_data.get('busers', []) if bot_data else [])
+
+        # Seed admin list from INITIAL_ADMIN_IDS on first start, then load from DB.
+        ADMIN.clear()
+        db_admins = bot_data.get("admins", []) if bot_data else []
+        seed = [a for a in INITIAL_ADMIN_IDS if a not in db_admins]
+        if seed:
+            await async_collection.update_one(
+                {"bot_id": bot.me.id},
+                {"$addToSet": {"admins": {"$each": seed}}},
+                upsert=True,
+            )
+            db_admins = db_admins + seed
+        ADMIN.extend(db_admins)
         client_name = f"{bot.me.first_name} {bot.me.last_name or ''}".strip()
         logger.info(f"Bot authorized successfully! 🎉 Authorized as: {client_name}")
         db_task(async_user_sessions.update_one(
@@ -127,6 +145,7 @@ async def main():
         raise
     logger.info("Bot initialization completed successfully")
     asyncio.create_task(_cache_cleanup_loop())  # periodic cache janitor
+    asyncio.create_task(refresh_cookies_loop())  # periodic cookie re-export (no-op unless enabled)
     await idle()
 # Run the main function
 asyncio.run(main())

@@ -33,7 +33,7 @@ def _mem_cache_set(key, value):
 logger = logging.getLogger(__name__)
 
 # All config read from config.py (single source of truth)
-from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW
+from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW, YT_COOKIES_FILE, COOKIES_FROM_BROWSER, COOKIES_BOOTSTRAP_URL, COOKIES_REFRESH_HOURS
 
 SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -198,12 +198,12 @@ async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
         "-g",
         url,
     ]
+    cookies = cookies or YT_COOKIES_FILE
     if cookies and os.path.exists(cookies):
         cmd.insert(1, "--cookies")
         cmd.insert(2, cookies)
-    else:
-        cmd.insert(1, "--cookies-from-browser")
-        cmd.insert(2, "firefox")
+    # No cookies file → run without cookies. (Previously fell back to a Firefox
+    # browser profile that isn't present in prod, causing a 40s stall per call.)
     logger.info(f"[YT-DLP] Running: {' '.join(cmd)}")
     start = time.time()
     try:
@@ -244,7 +244,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
     if cached:
         _mem_cache_set(("audio", url), cached)
         return cached
-    logger.info(f"[AUDIO] No cache, extracting fresh stream...")
+    logger.info("[AUDIO] No cache, extracting fresh stream...")
     stream = await _run_yt_dlp(
         url,
         "bestaudio[ext=m4a]/bestaudio/best",
@@ -269,7 +269,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     if cached:
         _mem_cache_set(("video", url), cached)
         return cached
-    logger.info(f"[VIDEO] No cache, extracting fresh stream...")
+    logger.info("[VIDEO] No cache, extracting fresh stream...")
     stream = await _run_yt_dlp(
         url,
         "best[ext=mp4][protocol=https]",
@@ -284,10 +284,40 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
 
 
 # New: Get video info using local search and stream extraction
+# Circuit breaker for the external nubcoder resolution API: after N consecutive
+# failures/timeouts, skip it for a cooldown window instead of paying the ~15s
+# timeout on every single call. Resets on the first success.
+_API_FAIL_THRESHOLD = 3
+_API_COOLDOWN_S = 60
+_api_fail_count = 0
+_api_cooldown_until = 0.0
+
+
+def _api_breaker_open() -> bool:
+    return time.time() < _api_cooldown_until
+
+
+def _api_record_success():
+    global _api_fail_count, _api_cooldown_until
+    _api_fail_count = 0
+    _api_cooldown_until = 0.0
+
+
+def _api_record_failure():
+    global _api_fail_count, _api_cooldown_until
+    _api_fail_count += 1
+    if _api_fail_count >= _API_FAIL_THRESHOLD:
+        _api_cooldown_until = time.time() + _API_COOLDOWN_S
+        logger.warning(
+            f"[youtube] nubcoder API circuit breaker OPEN for {_API_COOLDOWN_S}s "
+            f"after {_api_fail_count} consecutive failures"
+        )
+
+
 async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") -> Tuple[str, str, str, str, str, str, str, str, str]:
     """Get video info using nubcoder API, falling back to local search."""
-    # Primary: use the nubcoder /info API endpoint
-    if API_TOKEN and BASE_URL:
+    # Primary: use the nubcoder /info API endpoint (skipped while the breaker is open)
+    if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}' (mode={mode})")
             async with httpx.AsyncClient(timeout=15) as client:
@@ -299,6 +329,7 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
                 data = resp.json()
                 if data.get("stream_url") and data.get("title"):
                     logger.info(f"[youtube.get_video_info] nubcoder API success: title='{data.get('title')}'")
+                    _api_record_success()
                     return (
                         data.get('title', 'N/A'),
                         data.get('video_id', 'N/A'),
@@ -311,8 +342,10 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
                         'api',
                     )
             logger.warning(f"[youtube.get_video_info] nubcoder API returned status {resp.status_code}, falling back")
+            _api_record_failure()
         except Exception as e:
             logger.warning(f"[youtube.get_video_info] nubcoder API failed: {e}, falling back")
+            _api_record_failure()
 
     # Fallback: local YouTube Data API search + stream extraction
     try:
@@ -426,7 +459,7 @@ def format_duration(seconds):
         formatted = f"{hours:02d}:{minutes:02d}:{secs:02d}"
     else:
         formatted = f"{minutes:02d}:{secs:02d}"
-    
+
     return formatted
 
 def time_to_seconds(time):
@@ -449,19 +482,19 @@ def is_ytdlp_updated():
         except PackageNotFoundError:
             logger.warning("[youtube.is_ytdlp_updated] yt-dlp not installed via pip")
             return False
-        
+
         # Get latest version from PyPI
         response = requests.get('https://pypi.org/pypi/yt-dlp/json', timeout=10)
         response.raise_for_status()  # better error handling
         latest_version = response.json()['info']['version']
-        
+
         is_current = installed_version == latest_version
         logger.info(
             f"[youtube.is_ytdlp_updated] Installed={installed_version}, "
             f"Latest={latest_version}, UpToDate={is_current}"
         )
         return is_current
-    
+
     except requests.RequestException as e:
         logger.error(f"[youtube.is_ytdlp_updated] PyPI request failed: {e}")
         return False
@@ -476,7 +509,7 @@ def update_ytdlp():
         result = subprocess.run([
             sys.executable, "-m", "pip", "install", "-U", "yt-dlp"
         ], capture_output=True, text=True, timeout=120)
-        
+
         if result.returncode == 0:
             logger.info("[youtube.update_ytdlp] Update successful")
             return True
@@ -486,6 +519,81 @@ def update_ytdlp():
     except Exception as e:
         logger.error(f"[youtube.update_ytdlp] Error: {e}")
         return False
+
+async def _export_cookies():
+    """Re-export the browser cookie jar into YT_COOKIES_FILE. yt-dlp writes the
+    Netscape file to --cookies after running, so pairing it with
+    --cookies-from-browser persists the browser session to a file. The bootstrap
+    URL makes yt-dlp exit cleanly and validates the cookies against a real
+    request.
+
+    COOKIES_FROM_BROWSER may name several browsers (comma/space-separated); each
+    is tried in order and the first to produce a valid file wins.
+
+    Best effort: never raises, and bounded by a timeout so a missing or locked
+    browser profile can't hang startup (the reason the old per-call browser
+    fallback was removed). Runtime yt-dlp calls already gate on the file
+    existing, so a failed export just means "no cookies", not a crash.
+    """
+    browsers = [b for b in re.split(r"[,\s]+", COOKIES_FROM_BROWSER or "") if b]
+    if not browsers or not YT_COOKIES_FILE:
+        return
+    errors = []
+    for browser in browsers:
+        cmd = [
+            "yt-dlp",
+            "--cookies-from-browser", browser,
+            "--cookies", YT_COOKIES_FILE,
+            "--skip-download",
+            COOKIES_BOOTSTRAP_URL,
+        ]
+        logger.info(f"[cookies] Exporting {YT_COOKIES_FILE} from {browser}...")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            except asyncio.TimeoutError:
+                proc.kill()
+                errors.append(f"{browser}: timed out")
+                continue
+        except FileNotFoundError:
+            logger.error("[cookies] yt-dlp not found; skipping cookie export")
+            return
+        except Exception as e:
+            errors.append(f"{browser}: {e}")
+            continue
+
+        if os.path.exists(YT_COOKIES_FILE) and os.path.getsize(YT_COOKIES_FILE) > 0:
+            logger.info(f"[cookies] ✅ Cookie file ready from {browser} "
+                        f"({os.path.getsize(YT_COOKIES_FILE)} bytes)")
+            return
+        tail = (stderr.decode(errors="replace").strip().splitlines() or ["no stderr"])[-1]
+        errors.append(f"{browser}: {tail}")
+
+    logger.warning(f"[cookies] ❌ No cookie file produced from any of {browsers} "
+                   f"(profiles not present/locked?) — {'; '.join(errors)}")
+
+
+async def export_browser_cookies():
+    """Export browser cookies into YT_COOKIES_FILE once, at startup. No-op unless
+    COOKIES_FROM_BROWSER is set."""
+    if not COOKIES_FROM_BROWSER or not YT_COOKIES_FILE:
+        return
+    await _export_cookies()
+
+
+async def refresh_cookies_loop():
+    """Re-export cookies every COOKIES_REFRESH_HOURS — YouTube rotates tokens
+    mid-session, so the file goes stale. No-op unless enabled."""
+    if not COOKIES_FROM_BROWSER or not YT_COOKIES_FILE or COOKIES_REFRESH_HOURS <= 0:
+        return
+    logger.info(f"[cookies] Refresh every {COOKIES_REFRESH_HOURS}h")
+    while True:
+        await asyncio.sleep(COOKIES_REFRESH_HOURS * 3600)
+        await _export_cookies()
+
 
 async def check_and_update_ytdlp():
     """Check and update yt-dlp if needed"""
@@ -543,20 +651,20 @@ async def get_video_details(video_id):
     Returns:
         dict: Video details or error message
     """
-    
+
     # First try API if token is available
     if API_TOKEN:
         try:
             logger.debug(f"[youtube.get_video_details] Using API for video_id='{video_id}'")
             api_result = await get_video_info(video_id)
-            
+
             if api_result and api_result[0] and api_result[0] != "N/A":
                 title, video_id_result, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken = api_result
-                
+
                 # Format duration if it's in seconds
                 if isinstance(duration, int):
                     duration = format_duration(duration)
-                
+
                 return {
                     'title': title,
                     'thumbnail': thumbnail,
@@ -581,7 +689,7 @@ async def get_video_details(video_id):
             "quiet": True,
             "no_warnings": True,
             "skip_download": True,
-            "cookiesfrombrowser": ("firefox",),
+            **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
 
             # Performance optimizations
             "extract_flat": False,  # We need full info
@@ -591,7 +699,7 @@ async def get_video_details(video_id):
             "writesubtitles": False,
             "writeautomaticsub": False,
 
-            # Network optimizations  
+            # Network optimizations
             "http_chunk_size": 10485760,  # 10MB chunks
             "retries": 1,  # Reduce retries for speed
             "fragment_retries": 1,
@@ -662,14 +770,14 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
     Returns:
         tuple: (title, duration, youtube_link, thumbnail, channel_name, views, video_id, stream_url)
     """
-    
+
     logger.debug(f"[youtube.handle_youtube] Handling argument='{argument}'")
     details = await get_video_details(argument)
-    
+
     if 'error' in details:
         logger.warning(f"[youtube.handle_youtube] Failed to get details: {details.get('error')}")
         return ("Error", "00:00", None, None, None, None, None, None)
-    
+
     # Convert dict result to tuple format
     result_tuple = (
         details.get('title', 'N/A'),

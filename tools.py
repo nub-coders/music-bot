@@ -1,5 +1,6 @@
 import re
 import asyncio
+from dataclasses import dataclass
 import os
 import time
 import shutil
@@ -16,7 +17,7 @@ from pymediainfo import MediaInfo
 
 
 from config import *
-from youtube import extract_video_id
+from youtube import extract_video_id, get_stream
 from database import user_sessions, db_task, collection
 
 import logging
@@ -27,110 +28,85 @@ from utils.button import Buttons
 from thumbnails import get_thumb
 
 
-def extract_best_format_url(formats):
-    """Extract the best available format URL"""
-    if not formats:
-        return None
-
-    # Priority: combined format (video+audio) > video+audio > video only
-    for f in formats:
-        if (f.get("acodec") != "none" and 
-            f.get("vcodec") != "none" and 
-            f.get("url")):
-            return f.get("url")
-
-    # Fallback to first available URL
-    for f in formats:
-        if f.get("url"):
-            return f.get("url")
-
-    return None
-
-
 async def get_stream_url(youtube_url: str):
-    """Get direct stream URL from YouTube link using optimized yt-dlp extraction. Returns input as-is if not a YouTube URL."""
-    
-    # Check if it's a YouTube URL
+    """Direct stream URL for a YouTube link. Non-YouTube URLs are returned as-is.
+
+    Delegates to youtube.get_stream, the single hardened extraction path
+    (exec-arglist, 40s timeout, mem+disk cache, YT_COOKIES_FILE — no silent
+    browser-profile fallback). This used to be a second, inferior yt-dlp
+    Python-API implementation with no timeout or cache.
+    """
     youtube_pattern = r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
     if not re.match(youtube_pattern, youtube_url):
         logger.info(f"Not a YouTube URL, returning as-is: {youtube_url[:50]}...")
         return youtube_url
-    
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "cookiesfrombrowser": ("firefox",),
 
-        # Performance optimizations
-        "extract_flat": False,  # We need full info
-        "writethumbnail": False,
-        "writeinfojson": False,
-        "writedescription": False,
-        "writesubtitles": False,
-        "writeautomaticsub": False,
-
-        # Network optimizations  
-        "http_chunk_size": 10485760,  # 10MB chunks
-        "retries": 1,  # Reduce retries for speed
-        "fragment_retries": 1,
-
-        # Skip unnecessary processing
-        "skip_playlist_after_errors": 1,
-    }
-
-    try:
-        import yt_dlp
-
-        def _sync_extract():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                logger.info(f"📥 Extracting stream URL from YouTube: {youtube_url}")
-                info = ydl.extract_info(youtube_url, download=False)
-                return extract_best_format_url(info.get("formats", []))
-
-        stream_url = await asyncio.to_thread(_sync_extract)
-
-        if stream_url:
-            logger.info(f"✅ Successfully extracted stream URL")
-        else:
-            logger.warning(f"⚠️ Could not extract stream URL")
-
-        return stream_url
-
-    except Exception as e:
-        logger.error(f"❌ Error extracting stream URL: {e}")
-        return None
+    return await get_stream(youtube_url)
 
 
-active = set()  # set for O(1) membership checks
-playing = {}
-queues = {}
+from state import state  # state.queues / playing / played / active now live on this store
+
 clients = {}
-played = {}
 spam_chats = []
+
+
+@dataclass
+class QueueEntry:
+    """One queued track. Mapping-style reads (entry["title"], entry.get("x", d))
+    are kept alongside attribute access so existing call sites work unchanged
+    during the dict->dataclass transition. Field names match the old dict keys."""
+    message: object
+    title: object
+    duration: object
+    mode: object
+    yt_link: object
+    chat: object
+    by: object
+    session: object
+    thumb: object
+    stream_url: object = None
+    _track_id: object = None
+    _yt_task: object = None
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
 
 broadcasts = {}
 broadcast_message = {}
 SUDO = []
 AUTH = {}
 BLOCK = []
+ADMIN = []  # owner-tier admin IDs, loaded from DB at startup (seeded via INITIAL_ADMIN_IDS)
 
-# In-memory cache for admin.txt to avoid repeated disk reads
-_admin_ids_cache = None
-_admin_cache_mtime = 0.0
 
-def get_admin_ids(admin_file: str) -> list:
-    """Return cached admin IDs from admin.txt, refresh only when file changes."""
-    global _admin_ids_cache, _admin_cache_mtime
-    try:
-        mtime = os.path.getmtime(admin_file)
-        if _admin_ids_cache is None or mtime != _admin_cache_mtime:
-            with open(admin_file, "r") as f:
-                _admin_ids_cache = [int(line.strip()) for line in f if line.strip()]
-            _admin_cache_mtime = mtime
-        return _admin_ids_cache
-    except Exception:
-        return []
+# In-memory token bucket for throttling download/render-triggering commands per user.
+# ponytail: single-process in-memory; move to Redis INCR+EXPIRE in Phase 4 for multi-worker.
+_play_buckets = {}  # user_id -> (tokens: float, last_ts: float)
+
+
+def allow_play(user_id: int, capacity: int = 3, refill_per_sec: float = 1 / 3) -> bool:
+    """Token bucket: burst of `capacity`, then one action per ~3s. False = throttled."""
+    now = time.time()
+    tokens, last = _play_buckets.get(user_id, (float(capacity), now))
+    tokens = min(capacity, tokens + (now - last) * refill_per_sec)
+    if tokens < 1:
+        _play_buckets[user_id] = (tokens, now)
+        return False
+    _play_buckets[user_id] = (tokens - 1, now)
+    return True
+
+
+def get_admin_ids(admin_file: str = "") -> list:
+    """Return the in-memory admin ID list (DB-backed, populated at startup).
+
+    Keeps the old file-path parameter for call-site compatibility; the argument
+    is ignored — admins live in Mongo now, not admin.txt.
+    """
+    return ADMIN
 
 def clear_directory(directory_path):
     """Clear all files and subdirectories in the given directory."""
@@ -164,7 +140,7 @@ def get_arg(message):
 
 
 async def remove_active_chat(chat_id):
-    active.discard(chat_id)
+    state.active.discard(chat_id)
     chat_dir = f"{ggg}/user_{clients['bot'].me.id}/{chat_id}"
     os.makedirs(chat_dir, exist_ok=True)
     clear_directory(chat_dir)
@@ -177,13 +153,13 @@ async def update_progress_button(message, duration_str, chat):
         while True:
             # Check elapsed time from pytgcalls
             try:
-                elapsed_seconds = int(time.time() - played[chat.id])
+                elapsed_seconds = int(time.time() - state.played[chat.id])
             except Exception:
                 break  # Song ended or chat removed
 
             # Stop updating if song changed
             try:
-                song = playing.get(chat.id)
+                song = state.playing.get(chat.id)
                 if not song or str(song.get('duration')) != str(duration_str):
                     break
             except Exception:
@@ -230,10 +206,10 @@ def convert_bytes(size: float) -> str:
     return "{:.2f} {}B".format(size, power_dict[t_n])
 
 
-async def run_cmd(cmd: str):
-    """Execute shell command asynchronously and return (stdout, stderr, exit_code, pid)."""
-    process = await asyncio.create_subprocess_shell(
-        cmd,
+async def run_cmd(args: list):
+    """Execute a command (argv list, no shell) asynchronously and return (stdout, stderr, exit_code, pid)."""
+    process = await asyncio.create_subprocess_exec(
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -273,18 +249,21 @@ async def convert_to_image(message, client) -> [None, str]:
         else:
             path_s = await client.download_media(message.reply_to_message)
             final_path = "lottie_proton.png"
-            cmd = (
-                f"lottie_convert.py --frame 0 -if lottie -of png {path_s} {final_path}"
-            )
-            await run_cmd(cmd)
+            await run_cmd([
+                "lottie_convert.py", "--frame", "0",
+                "-if", "lottie", "-of", "png", path_s, final_path,
+            ])
     elif message.reply_to_message.audio:
         thumb = message.reply_to_message.audio.thumbs[0].file_id
         final_path = await client.download_media(thumb)
     elif message.reply_to_message.video or message.reply_to_message.animation:
         final_path = "fetched_thumb.png"
         vid_path = await client.download_media(message.reply_to_message)
-        await run_cmd(f"ffmpeg -i {vid_path} -filter:v scale=500:500 -an {final_path}")
-    return final_path                                                                                     
+        await run_cmd([
+            "ffmpeg", "-i", vid_path,
+            "-filter:v", "scale=500:500", "-an", final_path,
+        ])
+    return final_path
 
 
 
@@ -307,19 +286,23 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
             height, width = -1, 512
 
         resized_video = f"{media}.webm"
-        if fast_forward:
-            if s > 3:
-                fract_ = 3 / s
-                ff_f = round(fract_, 2)
-                set_pts_ = ff_f - 0.01 if ff_f > fract_ else ff_f
-                cmd_f = f"-filter:v 'setpts={set_pts_}*PTS',scale={width}:{height}"
-            else:
-                cmd_f = f"-filter:v scale={width}:{height}"
+        if fast_forward and s > 3:
+            fract_ = 3 / s
+            ff_f = round(fract_, 2)
+            set_pts_ = ff_f - 0.01 if ff_f > fract_ else ff_f
+            vf = f"setpts={set_pts_}*PTS,scale={width}:{height}"
         else:
-            cmd_f = f"-filter:v scale={width}:{height}"
+            vf = f"scale={width}:{height}"
         fps_ = float(video_track.frame_rate) if video_track and video_track.frame_rate else 30.0
-        fps_cmd = "-r 30 " if fps_ > 30 else ""
-        cmd = f"ffmpeg -i {media} {cmd_f} -ss 00:00:00 -to 00:00:03 -an -c:v libvpx-vp9 {fps_cmd}-fs 256K {resized_video}"
+        cmd = [
+            "ffmpeg", "-i", media,
+            "-filter:v", vf,
+            "-ss", "00:00:00", "-to", "00:00:03",
+            "-an", "-c:v", "libvpx-vp9",
+        ]
+        if fps_ > 30:
+            cmd += ["-r", "30"]
+        cmd += ["-fs", "256K", resized_video]
         _, error, __, ___ = await run_cmd(cmd)
         os.remove(media)
         return resized_video
@@ -399,8 +382,8 @@ async def hd_stream_closed_kicked(client, update):
     logger.info(update)
     chat_id = update.chat_id
     await remove_active_chat(chat_id)
-    queues.pop(chat_id, None)
-    playing.pop(chat_id, None)
+    state.queues.pop(chat_id, None)
+    state.playing.pop(chat_id, None)
 
 
 async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None):
@@ -456,9 +439,9 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 except Exception as e:
                     logger.warning(f"[join_call] yt_task result failed: {e}")
             else:
-                logger.warning(f"[join_call] YouTube task not done after 3s — proceeding with None source")
+                logger.warning("[join_call] YouTube task not done after 3s — proceeding with None source")
 
-        queue = queues.get(chat_id, [])
+        queue = state.queues.get(chat_id, [])
         position = len(queue)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"[join_call] chat={chat_id} title='{title}' mode={mode} position={position} thumb={'set' if thumb else 'None'}")
@@ -469,12 +452,12 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             logger.info(f"[join_call] Extracting stream URL from YouTube link: {youtube_link}")
             stream_source = await get_stream_url(youtube_link)
             if not stream_source:
-                logger.warning(f"[join_call] Failed to extract stream URL, falling back to youtube_link")
+                logger.warning("[join_call] Failed to extract stream URL, falling back to youtube_link")
                 stream_source = youtube_link
             else:
                 logger.info(f"[join_call] Successfully extracted stream URL: {stream_source[:100]}... (len={len(stream_source)})")
         else:
-            logger.warning(f"[join_call] No stream_url or youtube_link provided")
+            logger.warning("[join_call] No stream_url or youtube_link provided")
             stream_source = None
 
         logger.debug(f"[join_call] Final stream source resolved: {stream_source[:120]}..." if stream_source else "[join_call] Final stream source resolved: None")
@@ -500,7 +483,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.info(f"[join_call] ⏱ call_py.play() took {_jc_call_ms:.1f}ms for chat {chat_id}")
 
         logger.debug(f"[join_call] Updating playing status for chat {chat_id}")
-        playing[chat_id] = {
+        state.playing[chat_id] = {
             "message": message,
             "title": title,
             "yt_link": youtube_link,
@@ -511,21 +494,21 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             "mode": mode,
             "thumb": thumb
         }
-        played[chat_id] = int(time.time())
-        logger.debug(f"[join_call] Playing status updated, timestamp: {played[chat_id]}")
+        state.played[chat_id] = int(time.time())
+        logger.debug(f"[join_call] Playing status updated, timestamp: {state.played[chat_id]}")
 
         logger.debug(f"[join_call] Scheduling playtime save to database for bot {clients['bot'].me.id}")
         db_task(collection.update_one(
             {"bot_id": clients["bot"].me.id},
-            {"$push": {"dates": datetime.datetime.now()}},
+            {"$push": {"dates": {"$each": [datetime.datetime.now()], "$slice": -5000}}},
             upsert=True
         ))
 
-        logger.debug(f"[join_call] Creating inline keyboard for playback controls")
+        logger.debug("[join_call] Creating inline keyboard for playback controls")
         keyboard = Buttons.playback_markup()
 
 
-        logger.debug(f"[join_call] Constructing message text with play_styles")
+        logger.debug("[join_call] Constructing message text with play_styles")
         mode_formatted = mode
         title_formatted = title
 
@@ -555,13 +538,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             except Exception as photo_err:
                 logger.warning(f"[join_call] Failed to send photo, sending as text instead: {photo_err}")
                 sent_message = await clients["bot"].send_message(
-                    chat_id, message_text, reply_markup=keyboard, 
+                    chat_id, message_text, reply_markup=keyboard,
                 link_preview_options=None)
                 logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
         else:
-            logger.warning(f"[join_call] Thumbnail is None, sending as text message")
+            logger.warning("[join_call] Thumbnail is None, sending as text message")
             sent_message = await clients["bot"].send_message(
-                chat_id, message_text, reply_markup=keyboard, 
+                chat_id, message_text, reply_markup=keyboard,
             link_preview_options=None)
             logger.info(f"[join_call] Playback notification sent as text (no thumbnail), message_id: {sent_message.id}")
         _msg_ms = (time.perf_counter() - _msg_t0) * 1000
@@ -571,9 +554,9 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         asyncio.create_task(update_progress_button(sent_message, duration, chat))
 
         try:
-            logger.debug(f"[join_call] Attempting to delete original message")
+            logger.debug("[join_call] Attempting to delete original message")
             await message.delete()
-            logger.debug(f"[join_call] Original message deleted successfully")
+            logger.debug("[join_call] Original message deleted successfully")
         except Exception as e:
             logger.warning(f"[join_call] Failed to delete original message: {e}")
 
@@ -585,23 +568,23 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         return await remove_active_chat(chat.id)
     except Exception as e:
         logger.error(f"[join_call] Unexpected error in chat {chat.id}: {type(e).__name__} - {e}", exc_info=True)
-        await clients["bot"].send_message(chat.id, f"ERROR: {e}", link_preview_options=None)
+        await clients["bot"].send_message(chat.id, "ERROR: Something went wrong. Please try again.", link_preview_options=None)
         return await remove_active_chat(chat.id)
 
 
 async def end(client, update):
     db_task(collection.update_one(
         {"bot_id": clients["bot"].me.id},
-        {"$push": {'dates': datetime.datetime.now()}},
+        {"$push": {'dates': {"$each": [datetime.datetime.now()], "$slice": -5000}}},
         upsert=True
     ))
     try:
-        if update.chat_id in queues and queues[update.chat_id]:
-            next_song = queues[update.chat_id].pop(0)
-            if update.chat_id in playing:
+        if update.chat_id in state.queues and state.queues[update.chat_id]:
+            next_song = state.queues[update.chat_id].pop(0)
+            if update.chat_id in state.playing:
                 if update.stream_type == StreamEnded.Type.VIDEO:
                     await client.leave_call(update.chat_id)
-            playing[update.chat_id] = next_song
+            state.playing[update.chat_id] = next_song
             await join_call(
                 next_song['message'],
                 next_song['title'],
@@ -618,7 +601,7 @@ async def end(client, update):
             logger.info(f"Song queue for chat {update.chat_id} is empty.")
             await client.leave_call(update.chat_id)
             await remove_active_chat(update.chat_id)
-            playing[update.chat_id].clear()
+            state.playing.pop(update.chat_id, None)
     except Exception as e:
         logger.warning(f"Error in end function: {e}")
 
@@ -630,25 +613,25 @@ async def end(client, update):
 def trim_title(title):
     """
     Trim video title to 25 characters or 6 words, whichever is shorter.
-    
+
     Args:
         title (str): The original video title
-        
+
     Returns:
         str: The trimmed title
     """
     if not title:
         return ""
-    
+
     # Split into words and take maximum 6 words
     words = title.split()
     if len(words) > 10:
         title = " ".join(words[:10])
-    
+
     # If still longer than 25 characters, truncate
     if len(title) > 30:
         title = title[:30].rstrip()
-    
+
     return title
 
 
