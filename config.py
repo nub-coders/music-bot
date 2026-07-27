@@ -54,6 +54,14 @@ YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE", None)
 COOKIES_FROM_BROWSER = os.getenv("COOKIES_FROM_BROWSER", None)
 if COOKIES_FROM_BROWSER and not YT_COOKIES_FILE:
     YT_COOKIES_FILE = os.path.join(os.getcwd(), "cookies.txt")
+# URL hit during the export so yt-dlp exits cleanly and the cookies are
+# validated against a real request. And how often to re-export — YouTube rotates
+# tokens mid-session, so a once-at-startup file goes stale. 0 disables refresh.
+COOKIES_BOOTSTRAP_URL = os.getenv("COOKIES_BOOTSTRAP_URL", "https://www.youtube.com/watch?v=jNQXAC9IVRw")
+try:
+    COOKIES_REFRESH_HOURS = float(os.getenv("COOKIES_REFRESH_HOURS", "6"))
+except ValueError:
+    COOKIES_REFRESH_HOURS = 6.0
 
 # Spotify Web API (optional). When both are set, Spotify track/album/playlist
 # links are resolved to "artist - title" searches and played via YouTube.

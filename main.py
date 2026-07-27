@@ -14,7 +14,7 @@ from pyrogram.errors.exceptions import (
 
 from tools import *
 from config import *
-from youtube import check_and_update_ytdlp, export_browser_cookies
+from youtube import check_and_update_ytdlp, export_browser_cookies, refresh_cookies_loop
 from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes
 
 logging.basicConfig(
@@ -145,6 +145,7 @@ async def main():
         raise
     logger.info("Bot initialization completed successfully")
     asyncio.create_task(_cache_cleanup_loop())  # periodic cache janitor
+    asyncio.create_task(refresh_cookies_loop())  # periodic cookie re-export (no-op unless enabled)
     await idle()
 # Run the main function
 asyncio.run(main())

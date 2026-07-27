@@ -82,6 +82,16 @@
       "value": "",
       "required": false
     },
+    "COOKIES_BOOTSTRAP_URL": {
+      "description": "URL yt-dlp hits during the cookie export so it exits cleanly and validates the cookies. Optional (has a sensible default).",
+      "value": "",
+      "required": false
+    },
+    "COOKIES_REFRESH_HOURS": {
+      "description": "Re-export the cookie file every N hours (YouTube rotates tokens mid-session). 0 disables. Optional.",
+      "value": "",
+      "required": false
+    },
     "SPOTIFY_CLIENT_ID": {
       "description": "Spotify app Client ID — play Spotify links via YouTube. Create an app at https://developer.spotify.com/dashboard. Leave blank to disable.",
       "value": "",

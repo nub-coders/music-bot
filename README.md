@@ -42,6 +42,9 @@
    once at startup (defaulting to `./cookies.txt` if `YT_COOKIES_FILE` is unset).
    Requires the browser installed and logged in on the host. Best-effort — a
    missing/locked profile just logs a warning and the bot runs without cookies.
+   Tune with `COOKIES_BOOTSTRAP_URL` (a URL yt-dlp hits so it exits cleanly and
+   validates the cookies) and `COOKIES_REFRESH_HOURS` (re-export interval —
+   YouTube rotates tokens mid-session; `0` disables the periodic refresh).
  - Optional: `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` — enable playing Spotify
    track/album/playlist links (resolved to a YouTube search via the Spotify Web API,
    Client Credentials flow — no user login). Create an app at
