@@ -10,7 +10,7 @@ async def kang(client, message):
     if not user:
        return await message.reply_text(Messages.USE_COMMAND_AS_USER, link_preview_options=None)
     replied = message.reply_to_message
-    Man = await message.reply_text(Messages.STICKER_LONG, link_preview_options=None)
+    Nub = await message.reply_text(Messages.STICKER_LONG, link_preview_options=None)
     media_ = None
     emoji_ = None
     is_anim = False
@@ -40,7 +40,7 @@ async def kang(client, message):
             ff_vid = True
         elif replied.sticker:
             if not replied.sticker.file_name:
-                await Man.edit(Messages.STICKER_NO_NAME)
+                await Nub.edit(Messages.STICKER_NO_NAME)
                 return
             emoji_ = replied.sticker.emoji
             is_anim = replied.sticker.is_animated
@@ -52,11 +52,11 @@ async def kang(client, message):
                 resize = True
                 ff_vid = True
         else:
-            await Man.edit(Messages.UNSUPPORTED_FILE)
+            await Nub.edit(Messages.UNSUPPORTED_FILE)
             return
         media_ = await client.download_media(replied, file_name=f"{ggg}/user_{client.me.id}/")
     else:
-        await Man.edit(Messages.REPLY_TO_MEDIA)
+        await Nub.edit(Messages.REPLY_TO_MEDIA)
         return
     if media_:
         args = get_arg(message)
@@ -168,7 +168,7 @@ async def kang(client, message):
                 if is_video:
                     packname += f"_video{pack}"
                     packnick += f" (Video){pack}"
-                await Man.edit(
+                await Nub.edit(
                     f"`Create a New Sticker Pack {pack} Because the Sticker Pack is Full`"
                 )
                 continue
@@ -181,7 +181,7 @@ async def kang(client, message):
                 await client.send_message("stickers", "/addsticker", link_preview_options=None)
             except Exception as e:
                 logger.error(f"[kang] Sticker pack step failed: {e}")
-                return await Man.edit("**ERROR:** Failed to create the sticker. Please try again.")
+                return await Nub.edit("**ERROR:** Failed to create the sticker. Please try again.")
             await asyncio.sleep(2)
             await client.send_message("stickers", packname, link_preview_options=None)
             await asyncio.sleep(2)
@@ -196,7 +196,7 @@ async def kang(client, message):
                 if is_video:
                     packname += "_video"
                     packnick += " (Video)"
-                    await Man.edit(
+                    await Nub.edit(
                     f"`Creating a New Sticker Pack {pack} Because the Sticker Pack is Full`"
                 )
                 await client.send_message("stickers", packname, link_preview_options=None)
@@ -221,7 +221,7 @@ async def kang(client, message):
                     await asyncio.sleep(2)
                     await client.send_message("Stickers", packname, link_preview_options=None)
                     await asyncio.sleep(2)
-                    await Man.edit(
+                    await Nub.edit(
                         f"**Sticker Added Successfully!**\n 🔥 **[CLICK HERE](https://t.me/addstickers/{packname})** 🔥\n**To Use Stickers**"
                     )
             await client.send_document("stickers", media_)
@@ -230,7 +230,7 @@ async def kang(client, message):
                 await get_response(message, client)
                 == "Sorry, the file type is invalid."
             ):
-                await Man.edit(
+                await Nub.edit(
                     "**Failed to Add Sticker, Use @Stickers Bot to Add Your Sticker.**"
                 )
                 return
@@ -238,7 +238,7 @@ async def kang(client, message):
             await asyncio.sleep(2)
             await client.send_message("Stickers", "/done", link_preview_options=None)
         else:
-            await Man.edit(Messages.CREATING_STICKER_PACK)
+            await Nub.edit(Messages.CREATING_STICKER_PACK)
             try:
                 await client.send_message("Stickers", cmd, link_preview_options=None)
             except YouBlockedUser:
@@ -253,7 +253,7 @@ async def kang(client, message):
                 await get_response(message, client)
                 == "Sorry, the file type is invalid."
             ):
-                await Man.edit(
+                await Nub.edit(
                     "**Failed to Add Sticker, Use @Stickers Bot to Add Your Sticker.**"
                 )
                 return
@@ -268,7 +268,7 @@ async def kang(client, message):
             await asyncio.sleep(2)
             await client.send_message("Stickers", packname, link_preview_options=None)
             await asyncio.sleep(2)
-        await Man.edit(
+        await Nub.edit(
             f"**Sticker Added Successfully!**\n 🔥 **[CLICK HERE](https://t.me/addstickers/{packname})** 🔥\n**To Use Stickers**"
         )
         if os.path.exists(str(media_)):
@@ -289,13 +289,13 @@ async def memify(client, message):
         await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
         return
     file = await client.download_media(reply_message)
-    Man = await message.reply_text(Messages.PROCESSING, link_preview_options=None)
+    Nub = await message.reply_text(Messages.PROCESSING, link_preview_options=None)
     text = get_arg(message)
     if len(text) < 1:
-        return await Man.edit("Please use `/mmf <text>`")
+        return await Nub.edit("Please use `/mmf <text>`")
     meme = await add_text_img(file, text)
     await asyncio.gather(
-        Man.delete(),
+        Nub.delete(),
         client.send_sticker(
             message.chat.id,                                                                                          sticker=meme,
             reply_to_message_id=reply_message.id,                                                                 ),

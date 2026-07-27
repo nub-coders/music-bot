@@ -228,7 +228,7 @@ async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
     return chat_type
 async def status(client, message):
     """Handles the /status command with song statistics"""
-    Man = await message.reply_text(Messages.COLLECTING_STATS, link_preview_options=None)
+    Nub = await message.reply_text(Messages.COLLECTING_STATS, link_preview_options=None)
     start = datetime.datetime.now()
     u = g = sg = c = a_chat = play_count = 0
     user_data = await collection.find_one({"bot_id": client.me.id})
@@ -246,7 +246,7 @@ async def status(client, message):
         total_users = len(users)
 
         if total_users > 500:
-            await Man.edit_text(
+            await Nub.edit_text(
                 f"<b>📊 Comprehensive Bot Statistics</b>\n"
                 f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
                 f"⏱ <b>Processed in:</b> <code>0s</code>\n\n"
@@ -292,7 +292,7 @@ async def status(client, message):
 ✦ <b>Admin Positions:</b> <code>{a_chat}</code>
 ✦ <b>Songs Played (24h):</b> <code>{play_count}</code>
 """
-                    await Man.edit_text(progress_msg)
+                    await Nub.edit_text(progress_msg)
 
             except Exception as e:
                 logger.info(f"Error processing chat {chat_id}: {e}")
@@ -315,7 +315,7 @@ async def status(client, message):
 <b>━━━━━━━━━━━━━━━━━━━━━━━</b>
 <b>🎶 @{client.me.username} Performance Summary</b>
 """
-        await Man.edit_text(final_stats)
+        await Nub.edit_text(final_stats)
 
     else:
-        await Man.edit_text(Messages.NO_OPERATIONAL_DATA)
+        await Nub.edit_text(Messages.NO_OPERATIONAL_DATA)
