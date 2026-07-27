@@ -32,6 +32,10 @@
  - `OWNER_ID`
  - `MONGODB_URI`
  - Optional: `LOGGER_ID`, `DB_NAME`, `YOUTUBE_API_KEYS`, `YT_API_TOKEN`, `NUB_YT_API_BASE_URL`
+ - Optional: `YT_COOKIES_FILE` — path to a Netscape-format `cookies.txt` for yt-dlp
+   (needed for age-restricted / region-locked videos). Export one from your browser
+   and mount it into the container, then point this variable at it. If unset, yt-dlp
+   runs without cookies — there is no automatic browser-profile fallback.
 
  Quickstart (local or VPS)
  -------------------------

@@ -64,7 +64,8 @@ async def show_sudo_list(client, message):
         await message.reply("\n".join(sudo_list), link_preview_options=None)
 
     except Exception as e:
-        await message.reply(Messages.ERR_FETCH_SUDO.format(str(e)), link_preview_options=None)
+        logger.error(f"[sudolist] Failed to fetch sudo list: {e}")
+        await message.reply(Messages.ERR_FETCH_SUDO, link_preview_options=None)
 
 
 @Client.on_message(filters.command("addsudo"))

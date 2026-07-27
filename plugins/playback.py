@@ -147,6 +147,12 @@ async def play_handler_func(client, message):
     if message.from_user.id in BLOCK:
         return
 
+    # Throttle rapid /play spam per user (owner/sudo exempt).
+    if message.from_user.id != OWNER_ID and message.from_user.id not in SUDO:
+        if not allow_play(message.from_user.id):
+            await message.reply(Messages.RATE_LIMITED, link_preview_options=None)
+            return
+
     command = message.command[0].lower()
     mode = "video" if command.startswith("v") or command.startswith("cv") else "audio"
     force_play = command.endswith("force")
@@ -338,7 +344,8 @@ async def play_handler_func(client, message):
             await massage.edit(f"Assistant is banned in this chat.\n\nPlease unban {session.me.username or session.me.id}")
             return await remove_active_chat(client, target_chat_id)
         except Exception as e:
-            await massage.edit(f"Failed to join the group. Error: {e}")
+            logger.error(f"[play] Failed to join group {target_chat_id}: {e}")
+            await massage.edit("Failed to join the group. Please try again.")
             return await remove_active_chat(client, target_chat_id)
     else:
         # Private group — try to get/join without relying on privileges check.
@@ -375,7 +382,8 @@ async def play_handler_func(client, message):
                 if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
                     await massage.edit(Messages.NEED_INVITE_PERMISSION)
                 else:
-                    await massage.edit(f"Failed to join the group. Error: {e}")
+                    logger.error(f"[play] Failed to join private group {target_chat_id}: {e}")
+                    await massage.edit("Failed to join the group. Please try again.")
                 return await remove_active_chat(client, target_chat_id)
 
 

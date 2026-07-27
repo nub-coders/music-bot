@@ -118,9 +118,10 @@ async def seek_handler_func(client, message):
                 "Assistant is not streaming anything!",
             link_preview_options=None)
     except Exception as e:
+        logger.error(f"[seek] Error: {e}")
         await client.send_message(
             message.chat.id,
-            f"{Messages.ERROR_OCCURRED} {str(e)}",
+            Messages.ERROR_OCCURRED,
         link_preview_options=None)
 
 
@@ -181,7 +182,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
         await callback_query.answer(Messages.STREAM_ENDED_NOT_IN_CALL, show_alert=False)
     except Exception as e:
         logger.error(f"Error in end button handler: {e}")
-        await callback_query.answer(f"Error: {str(e)[:100]}", show_alert=True)
+        await callback_query.answer("An error occurred. Please try again.", show_alert=True)
 
 
 @Client.on_message(filters.command("end"))
@@ -283,7 +284,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
         await callback_query.answer(Messages.STREAM_ENDED_NOT_IN_CALL, show_alert=False)
     except Exception as e:
         logger.error(f"Error in skip button handler: {e}")
-        await callback_query.answer(f"❌ Error: {str(e)[:100]}", show_alert=True)
+        await callback_query.answer("❌ An error occurred. Please try again.", show_alert=True)
 
 
 @Client.on_message(filters.command("loop"))
@@ -345,9 +346,10 @@ async def loop_handler_func(client, message):
             link_preview_options=None)
 
     except Exception as e:
+        logger.error(f"[controls] Error: {e}")
         await client.send_message(
             message.chat.id,
-            f"❌ An error occurred: {str(e)}",
+            "❌ An error occurred. Please try again.",
         link_preview_options=None)
 
 

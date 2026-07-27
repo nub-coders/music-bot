@@ -33,7 +33,7 @@ def _mem_cache_set(key, value):
 logger = logging.getLogger(__name__)
 
 # All config read from config.py (single source of truth)
-from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW
+from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW, YT_COOKIES_FILE
 
 SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -198,12 +198,12 @@ async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
         "-g",
         url,
     ]
+    cookies = cookies or YT_COOKIES_FILE
     if cookies and os.path.exists(cookies):
         cmd.insert(1, "--cookies")
         cmd.insert(2, cookies)
-    else:
-        cmd.insert(1, "--cookies-from-browser")
-        cmd.insert(2, "firefox")
+    # No cookies file → run without cookies. (Previously fell back to a Firefox
+    # browser profile that isn't present in prod, causing a 40s stall per call.)
     logger.info(f"[YT-DLP] Running: {' '.join(cmd)}")
     start = time.time()
     try:
@@ -284,10 +284,40 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
 
 
 # New: Get video info using local search and stream extraction
+# Circuit breaker for the external nubcoder resolution API: after N consecutive
+# failures/timeouts, skip it for a cooldown window instead of paying the ~15s
+# timeout on every single call. Resets on the first success.
+_API_FAIL_THRESHOLD = 3
+_API_COOLDOWN_S = 60
+_api_fail_count = 0
+_api_cooldown_until = 0.0
+
+
+def _api_breaker_open() -> bool:
+    return time.time() < _api_cooldown_until
+
+
+def _api_record_success():
+    global _api_fail_count, _api_cooldown_until
+    _api_fail_count = 0
+    _api_cooldown_until = 0.0
+
+
+def _api_record_failure():
+    global _api_fail_count, _api_cooldown_until
+    _api_fail_count += 1
+    if _api_fail_count >= _API_FAIL_THRESHOLD:
+        _api_cooldown_until = time.time() + _API_COOLDOWN_S
+        logger.warning(
+            f"[youtube] nubcoder API circuit breaker OPEN for {_API_COOLDOWN_S}s "
+            f"after {_api_fail_count} consecutive failures"
+        )
+
+
 async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") -> Tuple[str, str, str, str, str, str, str, str, str]:
     """Get video info using nubcoder API, falling back to local search."""
-    # Primary: use the nubcoder /info API endpoint
-    if API_TOKEN and BASE_URL:
+    # Primary: use the nubcoder /info API endpoint (skipped while the breaker is open)
+    if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}' (mode={mode})")
             async with httpx.AsyncClient(timeout=15) as client:
@@ -299,6 +329,7 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
                 data = resp.json()
                 if data.get("stream_url") and data.get("title"):
                     logger.info(f"[youtube.get_video_info] nubcoder API success: title='{data.get('title')}'")
+                    _api_record_success()
                     return (
                         data.get('title', 'N/A'),
                         data.get('video_id', 'N/A'),
@@ -311,8 +342,10 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
                         'api',
                     )
             logger.warning(f"[youtube.get_video_info] nubcoder API returned status {resp.status_code}, falling back")
+            _api_record_failure()
         except Exception as e:
             logger.warning(f"[youtube.get_video_info] nubcoder API failed: {e}, falling back")
+            _api_record_failure()
 
     # Fallback: local YouTube Data API search + stream extraction
     try:
@@ -581,7 +614,7 @@ async def get_video_details(video_id):
             "quiet": True,
             "no_warnings": True,
             "skip_download": True,
-            "cookiesfrombrowser": ("firefox",),
+            **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
 
             # Performance optimizations
             "extract_flat": False,  # We need full info

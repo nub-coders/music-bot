@@ -114,8 +114,9 @@ async def user_client_start_handler(client, message):
                         reply_to_message_id=message.id
                     )
                 except Exception as e:
+                    logger.error(f"[start] Failed to send photo: {e}")
                     return await message.reply_text(
-                        f"❌ Failed to send photo: {str(e)}\n\n{caption}",
+                        caption,
                         reply_markup=keyboard,
                         reply_to_message_id=message.id,
                     link_preview_options=None)

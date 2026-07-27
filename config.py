@@ -41,6 +41,11 @@ YOUTUBE_API_KEYS = os.getenv("YOUTUBE_API_KEYS", "")
 YT_API_TOKEN      = os.getenv("YT_API_TOKEN", None)
 NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "http://api.nubcoders.com")
 
+# Optional path to a Netscape-format cookies.txt for yt-dlp (age-restricted / region-locked
+# videos). Export one from your browser and mount it into the container, then set this env var.
+# Left unset → yt-dlp runs without cookies (the normal path; no silent browser-profile fallback).
+YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE", None)
+
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()
 StartTime = time.time()

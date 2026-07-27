@@ -180,7 +180,8 @@ async def kang(client, message):
                 await client.unblock_user("stickers")
                 await client.send_message("stickers", "/addsticker", link_preview_options=None)
             except Exception as e:
-                return await Man.edit(f"**ERROR:** `{e}`")
+                logger.error(f"[kang] Sticker pack step failed: {e}")
+                return await Man.edit("**ERROR:** Failed to create the sticker. Please try again.")
             await asyncio.sleep(2)
             await client.send_message("stickers", packname, link_preview_options=None)
             await asyncio.sleep(2)

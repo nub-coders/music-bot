@@ -15,7 +15,7 @@ from pyrogram.errors.exceptions import (
 from tools import *
 from config import *
 from youtube import check_and_update_ytdlp
-from database import user_sessions as async_user_sessions, collection as async_collection
+from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,6 +103,7 @@ async def main():
         # Initialize global variables from database
         await call_py.start()
         await bot.start()
+        await ensure_indexes()
         user_data = await async_user_sessions.find_one({"bot_id": bot.me.id})
         bot_data = await async_collection.find_one({"bot_id": bot.me.id})
 

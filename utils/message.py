@@ -35,7 +35,7 @@ class Messages:
     LOOP_OUT_OF_BOUNDS = "Loop count must be between 1 and 20."
     LOOP_INVALID = "Provide a valid loop count."
 
-    ERROR_OCCURRED = "An error occurred:"
+    ERROR_OCCURRED = "An error occurred. Please try again."
     ERROR_PERMISSIONS = "Failed to check bot permissions."
     ERROR_USER_NOT_FOUND = "User not found. Provide a valid username or ID."
 
@@ -43,7 +43,7 @@ class Messages:
     OWNER_SUDO_CMD = "Owner/Sudo only command."
     NO_TAGALL = "No tag-all session found."
     DISMISS_MENTION = "Mention dismissed."
-    ERROR_DEL_MSG = "Error deleting message: {}"
+    ERROR_DEL_MSG = "Error deleting message."
     REPLY_TO_DEL = "Reply to a message to delete it."
     OWNER_AUTH_ALL = "Owner is already authorized everywhere."
     USER_AUTH = "User {} has been authorized in this chat."
@@ -102,7 +102,7 @@ class Messages:
     PROCESSING = "Processing..."
     ONLY_MEDIA_ALLOWED = "Only photos, videos, GIFs, and stickers are allowed."
     MEDIA_SIZE_EXCEED = "Media size must be below 5 MB."
-    ERROR_MEDIA_PROCESS = "Error processing media: {}"
+    ERROR_MEDIA_PROCESS = "Error processing media. Please try a different file."
     NOTHING_TO_UPDATE = "Nothing to update."
     WELCOME_TOO_LONG = "Welcome message is too long. Max 4096 characters."
     WELCOME_RESET = "Welcome message and logo have been reset."
@@ -121,7 +121,8 @@ class Messages:
 
     PAID_OWNER_CMD = "Paid owner only command."
     NO_SUDO_USERS = "No sudo users found."
-    ERR_FETCH_SUDO = "Error while fetching sudo list: {}"
+    ERR_FETCH_SUDO = "Error while fetching sudo list."
+    RATE_LIMITED = "⏳ You're sending play commands too fast. Please wait a moment."
     OWNER_CMD = "Owner only command."
     ALREADY_OWNER = "This user is already owner."
     USER_ADDED_SUDO = "User {} has been added to sudoers list."

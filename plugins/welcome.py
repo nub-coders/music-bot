@@ -146,9 +146,10 @@ async def set_welcome_handler(client, message):
                     updates.append(f"logo (saved to {target_path})")
 
             except Exception as e:
+                logger.error(f"[setwelcome] Media processing failed: {e}")
                 if m_d and os.path.exists(m_d):
                     os.remove(m_d)
-                return await message.reply_text(Messages.ERROR_MEDIA_PROCESS.format(str(e)), link_preview_options=None)
+                return await message.reply_text(Messages.ERROR_MEDIA_PROCESS, link_preview_options=None)
 
         if not updates:
             return await message.reply_text(Messages.NOTHING_TO_UPDATE, link_preview_options=None)

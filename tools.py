@@ -144,6 +144,23 @@ BLOCK = []
 ADMIN = []  # owner-tier admin IDs, loaded from DB at startup (seeded via INITIAL_ADMIN_IDS)
 
 
+# In-memory token bucket for throttling download/render-triggering commands per user.
+# ponytail: single-process in-memory; move to Redis INCR+EXPIRE in Phase 4 for multi-worker.
+_play_buckets = {}  # user_id -> (tokens: float, last_ts: float)
+
+
+def allow_play(user_id: int, capacity: int = 3, refill_per_sec: float = 1 / 3) -> bool:
+    """Token bucket: burst of `capacity`, then one action per ~3s. False = throttled."""
+    now = time.time()
+    tokens, last = _play_buckets.get(user_id, (float(capacity), now))
+    tokens = min(capacity, tokens + (now - last) * refill_per_sec)
+    if tokens < 1:
+        _play_buckets[user_id] = (tokens, now)
+        return False
+    _play_buckets[user_id] = (tokens - 1, now)
+    return True
+
+
 def get_admin_ids(admin_file: str = "") -> list:
     """Return the in-memory admin ID list (DB-backed, populated at startup).
 
@@ -544,7 +561,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.debug(f"[join_call] Scheduling playtime save to database for bot {clients['bot'].me.id}")
         db_task(collection.update_one(
             {"bot_id": clients["bot"].me.id},
-            {"$push": {"dates": datetime.datetime.now()}},
+            {"$push": {"dates": {"$each": [datetime.datetime.now()], "$slice": -5000}}},
             upsert=True
         ))
 
@@ -612,14 +629,14 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         return await remove_active_chat(chat.id)
     except Exception as e:
         logger.error(f"[join_call] Unexpected error in chat {chat.id}: {type(e).__name__} - {e}", exc_info=True)
-        await clients["bot"].send_message(chat.id, f"ERROR: {e}", link_preview_options=None)
+        await clients["bot"].send_message(chat.id, "ERROR: Something went wrong. Please try again.", link_preview_options=None)
         return await remove_active_chat(chat.id)
 
 
 async def end(client, update):
     db_task(collection.update_one(
         {"bot_id": clients["bot"].me.id},
-        {"$push": {'dates': datetime.datetime.now()}},
+        {"$push": {'dates': {"$each": [datetime.datetime.now()], "$slice": -5000}}},
         upsert=True
     ))
     try:

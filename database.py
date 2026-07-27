@@ -19,6 +19,17 @@ user_sessions = db["user_sessions"]
 collection = db["collection"]
 
 
+async def ensure_indexes():
+    """Create the indexes for fields we actually query. Idempotent — safe to call every startup."""
+    try:
+        await user_sessions.create_index("bot_id")
+        await user_sessions.create_index("user_id")
+        await collection.create_index("bot_id")
+        logger.info("[db] Indexes ensured on user_sessions(bot_id, user_id) and collection(bot_id)")
+    except Exception as e:
+        logger.warning(f"[db] Failed to ensure indexes: {e}")
+
+
 async def _bg_db_task(coro):
     """Fire-and-forget wrapper for low-priority MongoDB writes."""
     try:

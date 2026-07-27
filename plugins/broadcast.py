@@ -129,7 +129,7 @@ async def broadcast_callback_handler(client, callback_query):
 
         except Exception as e:
             logger.info(f"Error with session broadcast: {e}")
-            await XX.reply(f"An error occurred during userbot broadcasting.{e}", link_preview_options=None)
+            await XX.reply("An error occurred during userbot broadcasting.", link_preview_options=None)
 
     # Finalize broadcast summary
         await XX.edit(

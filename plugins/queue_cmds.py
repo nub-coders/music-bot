@@ -120,6 +120,7 @@ async def delete_message_handler(client, message):
         except MessageDeleteForbidden:
               pass
         except Exception as e:
-            await message.reply(Messages.ERROR_DEL_MSG.format(str(e)), link_preview_options=None)
+            logger.error(f"[del] Failed to delete message: {e}")
+            await message.reply(Messages.ERROR_DEL_MSG, link_preview_options=None)
     else:
         await message.reply(Messages.REPLY_TO_DEL, link_preview_options=None)
