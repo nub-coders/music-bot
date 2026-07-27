@@ -2,7 +2,7 @@
 
 Catches import-time regressions cheaply. `main.py` is excluded — it's the entry
 point (creates Clients and blocks on idle/login), not an importable library module.
-`clients` is pre-seeded with mocks in conftest.py so plugins.bots's module-level
+`clients` is pre-seeded with mocks in conftest.py so the plugins' module-level
 `clients["session"]` lookup doesn't KeyError at import.
 """
 import importlib
@@ -10,8 +10,12 @@ import importlib
 import pytest
 
 MODULES = [
-    "config", "database", "tools", "youtube",
-    "thumbnails", "plugins.bots", "plugins.info",
+    "config", "database", "tools", "youtube", "thumbnails",
+    "plugins._common", "plugins.info",
+    "plugins.playback", "plugins.controls", "plugins.queue_cmds",
+    "plugins.admin_auth", "plugins.admin_sudo", "plugins.broadcast",
+    "plugins.start", "plugins.about", "plugins.meme",
+    "plugins.welcome", "plugins.lang_commands",
 ]
 
 
