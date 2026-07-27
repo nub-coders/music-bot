@@ -17,7 +17,10 @@ GROUP       = os.getenv("GROUP", "nub_coder_s")
 # ── Sensitive — must be set via environment, no defaults ────────────────────────
 BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
 STRING_SESSION = os.getenv("STRING_SESSION", "")
-MONGODB_URI    = os.environ["MONGODB_URI"]  # fail fast on startup if unset — never bake in a cluster
+try:
+    MONGODB_URI = os.environ["MONGODB_URI"]  # fail fast on startup if unset — never bake in a cluster
+except KeyError:
+    raise SystemExit("MONGODB_URI is not set. Set it via environment (or .env for local dev) — no default cluster is baked in.")
 
 # Optional: comma-separated user IDs seeded into the DB admin list on first startup.
 INITIAL_ADMIN_IDS = [
