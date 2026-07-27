@@ -17,7 +17,7 @@ from pymediainfo import MediaInfo
 
 
 from config import *
-from youtube import extract_video_id
+from youtube import extract_video_id, get_stream
 from database import user_sessions, db_task, collection
 
 import logging
@@ -28,81 +28,20 @@ from utils.button import Buttons
 from thumbnails import get_thumb
 
 
-def extract_best_format_url(formats):
-    """Extract the best available format URL"""
-    if not formats:
-        return None
-
-    # Priority: combined format (video+audio) > video+audio > video only
-    for f in formats:
-        if (f.get("acodec") != "none" and
-            f.get("vcodec") != "none" and
-            f.get("url")):
-            return f.get("url")
-
-    # Fallback to first available URL
-    for f in formats:
-        if f.get("url"):
-            return f.get("url")
-
-    return None
-
-
 async def get_stream_url(youtube_url: str):
-    """Get direct stream URL from YouTube link using optimized yt-dlp extraction. Returns input as-is if not a YouTube URL."""
+    """Direct stream URL for a YouTube link. Non-YouTube URLs are returned as-is.
 
-    # Check if it's a YouTube URL
+    Delegates to youtube.get_stream, the single hardened extraction path
+    (exec-arglist, 40s timeout, mem+disk cache, YT_COOKIES_FILE — no silent
+    browser-profile fallback). This used to be a second, inferior yt-dlp
+    Python-API implementation with no timeout or cache.
+    """
     youtube_pattern = r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
     if not re.match(youtube_pattern, youtube_url):
         logger.info(f"Not a YouTube URL, returning as-is: {youtube_url[:50]}...")
         return youtube_url
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        # Cookies only when an explicit cookies.txt is configured — no silent
-        # browser-profile fallback. Matches _run_yt_dlp / ydl_opts elsewhere.
-        **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
-
-        # Performance optimizations
-        "extract_flat": False,  # We need full info
-        "writethumbnail": False,
-        "writeinfojson": False,
-        "writedescription": False,
-        "writesubtitles": False,
-        "writeautomaticsub": False,
-
-        # Network optimizations
-        "http_chunk_size": 10485760,  # 10MB chunks
-        "retries": 1,  # Reduce retries for speed
-        "fragment_retries": 1,
-
-        # Skip unnecessary processing
-        "skip_playlist_after_errors": 1,
-    }
-
-    try:
-        import yt_dlp
-
-        def _sync_extract():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                logger.info(f"📥 Extracting stream URL from YouTube: {youtube_url}")
-                info = ydl.extract_info(youtube_url, download=False)
-                return extract_best_format_url(info.get("formats", []))
-
-        stream_url = await asyncio.to_thread(_sync_extract)
-
-        if stream_url:
-            logger.info("✅ Successfully extracted stream URL")
-        else:
-            logger.warning("⚠️ Could not extract stream URL")
-
-        return stream_url
-
-    except Exception as e:
-        logger.error(f"❌ Error extracting stream URL: {e}")
-        return None
+    return await get_stream(youtube_url)
 
 
 from state import state  # state.queues / playing / played / active now live on this store
