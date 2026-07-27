@@ -163,3 +163,4 @@ cython_debug/
 .claude/
 # Local admin seed (use INITIAL_ADMIN_IDS env var instead)
 admin.txt
+cookies.txt

@@ -33,7 +33,7 @@ def _mem_cache_set(key, value):
 logger = logging.getLogger(__name__)
 
 # All config read from config.py (single source of truth)
-from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW, YT_COOKIES_FILE
+from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW, YT_COOKIES_FILE, COOKIES_FROM_BROWSER
 
 SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -519,6 +519,45 @@ def update_ytdlp():
     except Exception as e:
         logger.error(f"[youtube.update_ytdlp] Error: {e}")
         return False
+
+async def export_browser_cookies():
+    """Export cookies from a local browser profile into YT_COOKIES_FILE, once, at
+    startup. yt-dlp writes the Netscape file before it exits non-zero for the
+    missing URL, so we ignore the exit code and validate the file instead.
+
+    Best effort: never raises, and bounded by a timeout so a missing or locked
+    browser profile can't hang startup (the reason the old per-call browser
+    fallback was removed). Runtime yt-dlp calls already gate on the file
+    existing, so a failed export simply means "no cookies", not a crash.
+    """
+    if not COOKIES_FROM_BROWSER or not YT_COOKIES_FILE:
+        return
+    cmd = ["yt-dlp", "--cookies-from-browser", COOKIES_FROM_BROWSER, "--cookies", YT_COOKIES_FILE]
+    logger.info(f"[cookies] Exporting cookies from {COOKIES_FROM_BROWSER} -> {YT_COOKIES_FILE}")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        except asyncio.TimeoutError:
+            proc.kill()
+            logger.error("[cookies] Export timed out; continuing without fresh cookies")
+            return
+    except FileNotFoundError:
+        logger.error("[cookies] yt-dlp not found; skipping cookie export")
+        return
+    except Exception as e:
+        logger.error(f"[cookies] Export failed: {e}")
+        return
+
+    if os.path.exists(YT_COOKIES_FILE) and os.path.getsize(YT_COOKIES_FILE) > 0:
+        logger.info(f"[cookies] Cookie file ready ({os.path.getsize(YT_COOKIES_FILE)} bytes)")
+    else:
+        tail = (stderr.decode(errors="replace").strip().splitlines() or ["no stderr"])[-1]
+        logger.warning(f"[cookies] No cookie file produced from {COOKIES_FROM_BROWSER} "
+                       f"(profile not present/locked?) — {tail}")
+
 
 async def check_and_update_ytdlp():
     """Check and update yt-dlp if needed"""

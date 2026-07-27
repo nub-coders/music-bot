@@ -71,6 +71,26 @@
       "description": "Auth token for the external YouTube API proxy (optional)",
       "value": "",
       "required": false
+    },
+    "YT_COOKIES_FILE": {
+      "description": "Path to a Netscape cookies.txt for yt-dlp (age-restricted/region-locked videos). Optional.",
+      "value": "",
+      "required": false
+    },
+    "COOKIES_FROM_BROWSER": {
+      "description": "Export cookies from a local browser profile at startup: firefox/chrome/chromium/edge/brave/opera/vivaldi/safari/whale. Needs that browser on the host (not available on Heroku container stack). Optional.",
+      "value": "",
+      "required": false
+    },
+    "SPOTIFY_CLIENT_ID": {
+      "description": "Spotify app Client ID — play Spotify links via YouTube. Create an app at https://developer.spotify.com/dashboard. Leave blank to disable.",
+      "value": "",
+      "required": false
+    },
+    "SPOTIFY_CLIENT_SECRET": {
+      "description": "Spotify app Client Secret (keep private). Required together with SPOTIFY_CLIENT_ID to enable Spotify links.",
+      "value": "",
+      "required": false
     }
   },
   "buildpacks": [

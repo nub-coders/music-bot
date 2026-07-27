@@ -36,6 +36,12 @@
    (needed for age-restricted / region-locked videos). Export one from your browser
    and mount it into the container, then point this variable at it. If unset, yt-dlp
    runs without cookies — there is no automatic browser-profile fallback.
+ - Optional: `COOKIES_FROM_BROWSER` — a browser name (`firefox`, `chrome`,
+   `chromium`, `edge`, `brave`, `opera`, `vivaldi`, `safari`, `whale`). When set,
+   the bot exports cookies from that browser's profile into `YT_COOKIES_FILE`
+   once at startup (defaulting to `./cookies.txt` if `YT_COOKIES_FILE` is unset).
+   Requires the browser installed and logged in on the host. Best-effort — a
+   missing/locked profile just logs a warning and the bot runs without cookies.
  - Optional: `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` — enable playing Spotify
    track/album/playlist links (resolved to a YouTube search via the Spotify Web API,
    Client Credentials flow — no user login). Create an app at

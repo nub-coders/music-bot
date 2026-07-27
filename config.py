@@ -46,6 +46,15 @@ NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "http://api.nubcoders.com
 # Left unset → yt-dlp runs without cookies (the normal path; no silent browser-profile fallback).
 YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE", None)
 
+# Optionally export cookies from a locally-installed browser profile into
+# YT_COOKIES_FILE once at startup (youtube.export_browser_cookies). Set to a
+# browser name yt-dlp understands: firefox, chrome, chromium, edge, brave,
+# opera, vivaldi, safari, whale. Unset → no export. When set but YT_COOKIES_FILE
+# is not, cookies are written to ./cookies.txt.
+COOKIES_FROM_BROWSER = os.getenv("COOKIES_FROM_BROWSER", None)
+if COOKIES_FROM_BROWSER and not YT_COOKIES_FILE:
+    YT_COOKIES_FILE = os.path.join(os.getcwd(), "cookies.txt")
+
 # Spotify Web API (optional). When both are set, Spotify track/album/playlist
 # links are resolved to "artist - title" searches and played via YouTube.
 # Client Credentials flow — no user login, no redirect. Unset → Spotify links

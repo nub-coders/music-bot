@@ -14,7 +14,7 @@ from pyrogram.errors.exceptions import (
 
 from tools import *
 from config import *
-from youtube import check_and_update_ytdlp
+from youtube import check_and_update_ytdlp, export_browser_cookies
 from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes
 
 logging.basicConfig(
@@ -56,6 +56,10 @@ async def main():
 
     # Check and update yt-dlp if needed
     await check_and_update_ytdlp()
+
+    # Optionally refresh the yt-dlp cookie file from a browser profile (no-op
+    # unless COOKIES_FROM_BROWSER is set). Best effort — never blocks startup.
+    await export_browser_cookies()
 
     # Create and start the bot client
     try:
