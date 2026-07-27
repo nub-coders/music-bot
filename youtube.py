@@ -320,7 +320,7 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}' (mode={mode})")
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 resp = await client.get(
                     f"{BASE_URL}/info",
                     params={"q": query, "token": API_TOKEN, "mode": mode},

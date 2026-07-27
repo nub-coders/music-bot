@@ -493,7 +493,10 @@ async def play_handler_func(client, message):
 
     else:
       await dend(client, massage, target_chat.id if channel_mode else None)
-    await message.delete()
+    try:
+        await message.delete()
+    except Exception:
+        pass  # ponytail: bot may lack delete rights / service msg — non-fatal
 
 
 async def put_queue(
