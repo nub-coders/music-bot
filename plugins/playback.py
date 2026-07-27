@@ -1,5 +1,6 @@
 """plugins/playback.py — /play command plus its media-download, thumbnail and queue helpers."""
 from plugins._common import *  # noqa: F401,F403
+from sources import resolve_sources
 
 
 async def dend(client, update, channel_id= None):
@@ -192,6 +193,7 @@ async def play_handler_func(client, message):
     media_info = {}
     track_id = None
     _yt_task = None
+    _playlist_rest = []
 
     # Initialize title with a safe default to prevent unbound variable issues
     title = trim_title("Unknown Media")
@@ -289,6 +291,11 @@ async def play_handler_func(client, message):
         }
     elif len(input_text) == 2:
         search_query = input_text[1]
+        # Source seam: a playlist link expands into many per-track queries;
+        # search text or a single video URL stays a one-element list.
+        _sources = await resolve_sources(search_query)
+        search_query = _sources[0][0]
+        _playlist_rest = _sources[1:]
         import uuid as _uuid
         track_id = str(_uuid.uuid4())
 
@@ -418,6 +425,33 @@ async def play_handler_func(client, message):
         track_id=track_id,
         yt_task=_yt_task,
     )
+    # Playlist: queue the remaining tracks behind the first. Each resolves
+    # lazily via its own handle_youtube task when it reaches the queue head
+    # (join_call awaits _yt_task), exactly like any normal queued search.
+    for _url, _ptitle in _playlist_rest:
+        import uuid as _uuid
+        _rest_task = asyncio.create_task(handle_youtube(_url))
+        _rest_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+        await put_queue(
+            massage,
+            trim_title(_ptitle or "Playlist track"),
+            client,
+            None,
+            target_chat,
+            by,
+            None,
+            mode,
+            None,
+            False,
+            None,
+            track_id=str(_uuid.uuid4()),
+            yt_task=_rest_task,
+        )
+    if _playlist_rest:
+        await message.reply(
+            Messages.PLAYLIST_QUEUED.format(len(_playlist_rest) + 1),
+            link_preview_options=None,
+        )
     if is_active and not force_play:
                 if _yt_task and duration is None:
                     try:

@@ -40,6 +40,9 @@ class Messages:
     ERROR_USER_NOT_FOUND = "User not found. Provide a valid username or ID."
 
     QUEUE_EMPTY = "Queue is empty."
+    NOTHING_TO_SHUFFLE = "Need at least 2 tracks in the queue to shuffle."
+    QUEUE_SHUFFLED = "🔀 Shuffled {} upcoming track(s)."
+    PLAYLIST_QUEUED = "➕ Added {} tracks from the playlist to the queue."
     OWNER_SUDO_CMD = "Owner/Sudo only command."
     NO_TAGALL = "No tag-all session found."
     DISMISS_MENTION = "Mention dismissed."

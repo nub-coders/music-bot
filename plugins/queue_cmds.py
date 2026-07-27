@@ -59,6 +59,19 @@ async def queue_command(client, message):
     await message.reply_photo(photo=buf, caption=styled_caption)
 
 
+@Client.on_message(filters.command("shuffle"))
+@admin_only()
+async def shuffle_queue(client, message):
+    chat_id = message.chat.id
+    async with state.lock(chat_id):
+        q = state.queues.get(chat_id)
+        if not q or len(q) < 2:
+            return await message.reply(Messages.NOTHING_TO_SHUFFLE, link_preview_options=None)
+        random.shuffle(q)
+        n = len(q)
+    await message.reply(Messages.QUEUE_SHUFFLED.format(n), link_preview_options=None)
+
+
 @Client.on_message(filters.command("tagall") & filters.group)
 @admin_only()
 async def mentionall(client, message):

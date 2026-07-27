@@ -10,7 +10,7 @@ import importlib
 import pytest
 
 MODULES = [
-    "config", "database", "tools", "youtube", "thumbnails",
+    "config", "database", "tools", "youtube", "thumbnails", "sources", "state",
     "plugins._common", "plugins.info",
     "plugins.playback", "plugins.controls", "plugins.queue_cmds",
     "plugins.admin_auth", "plugins.admin_sudo", "plugins.broadcast",
