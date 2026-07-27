@@ -122,7 +122,7 @@ def admin_only():
                 is_song_owner_skip = False
                 if command in ("skip", "cskip"):
                     _cid = update.message.chat.id if isinstance(update, CallbackQuery) else update.chat.id
-                    song = playing.get(_cid)
+                    song = state.playing.get(_cid)
                     if song and hasattr(song.get("by"), "id") and song["by"].id == user_id:
                         is_song_owner_skip = True
 
@@ -164,11 +164,11 @@ def admin_only():
         return wrapper
     return decorator
 async def is_active_chat(client, chat_id):  # noqa: F811
-    return chat_id in active
+    return chat_id in state.active
 async def add_active_chat(client, chat_id):  # noqa: F811
-    active.add(chat_id)
+    state.active.add(chat_id)
 async def remove_active_chat(client, chat_id):
-    active.discard(chat_id)
+    state.active.discard(chat_id)
     chat_dir = f"{ggg}/user_{client.me.id}/{chat_id}"
     os.makedirs(chat_dir, exist_ok=True)
     clear_directory(chat_dir)

@@ -40,8 +40,8 @@ async def seek_handler_func(client, message):
             return
 
         # Check if there's a song playing
-        if message.chat.id in playing and playing[message.chat.id]:
-            current_song = playing[message.chat.id]
+        if message.chat.id in state.playing and state.playing[message.chat.id]:
+            current_song = state.playing[message.chat.id]
             duration_str = str(current_song['duration'])
 
             # Convert HH:MM:SS to total seconds
@@ -53,14 +53,14 @@ async def seek_handler_func(client, message):
             # Get call client from main.py
 
             # Check if bot is actually streaming by fetching elapsed time
-            if message.chat.id not in played:
+            if message.chat.id not in state.played:
                 await client.send_message(
                     message.chat.id,
                     "Assistant is not streaming anything!",
                 link_preview_options=None)
                 return
 
-            played_in_seconds = int(time.time() - played[message.chat.id])
+            played_in_seconds = int(time.time() - state.played[message.chat.id])
 
             # Check seek boundaries based on command
             is_forward = command_parts[0].lower() == "/seek"
@@ -104,9 +104,9 @@ async def seek_handler_func(client, message):
 
             # Update played time based on command
             if is_forward:
-                played[message.chat.id] -= seek_value
+                state.played[message.chat.id] -= seek_value
             else:  # seekback
-                played[message.chat.id] += seek_value
+                state.played[message.chat.id] += seek_value
 
             await client.send_message(
                 message.chat.id,
@@ -146,7 +146,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
         if is_active:
             # Clear the song queue and end the session
             await remove_active_chat(client, chat_id)
-            queues.pop(chat_id, None)
+            state.queues.pop(chat_id, None)
             try:
                 await call_py.leave_call(chat_id)
             except Exception as e:
@@ -160,7 +160,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             except Exception as e:
                 logger.warning(f"Could not delete message: {e}")
 
-            playing.pop(chat_id, None)
+            state.playing.pop(chat_id, None)
 
             await callback_query.answer(Messages.STREAM_ENDED, show_alert=False)
         else:
@@ -173,12 +173,12 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             await callback_query.message.reply(
                 Messages.NO_STREAM,
             link_preview_options=None)
-            playing.pop(chat_id, None)
+            state.playing.pop(chat_id, None)
 
             await callback_query.answer(Messages.NO_ACTIVE_STREAM, show_alert=False)
     except NotInCallError:
         await remove_active_chat(client, chat_id)
-        playing.pop(chat_id, None)
+        state.playing.pop(chat_id, None)
         await callback_query.answer(Messages.STREAM_ENDED_NOT_IN_CALL, show_alert=False)
     except Exception as e:
         logger.error(f"Error in end button handler: {e}")
@@ -199,22 +199,22 @@ async def end_handler_func(client, message):
    is_active = await is_active_chat(client, message.chat.id)
    if is_active:
        await remove_active_chat(client, message.chat.id)
-       queues.pop(message.chat.id, None)
+       state.queues.pop(message.chat.id, None)
        await client.send_message(message.chat.id,
 f"QUEUE CLEARED\nStreaming stopped\nRequested by: {message.from_user.mention()}",
             link_preview_options=None)
        await call_py.leave_call(message.chat.id)
-       playing.pop(message.chat.id, None)
+       state.playing.pop(message.chat.id, None)
    else:
      await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
      await remove_active_chat(client, message.chat.id)
      await call_py.leave_call(message.chat.id)
-     playing.pop(message.chat.id, None)
+     state.playing.pop(message.chat.id, None)
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
-     playing.pop(message.chat.id, None)
+     state.playing.pop(message.chat.id, None)
 
 
 @Client.on_callback_query(filters.regex(r"^(skip|cskip)$"))
@@ -233,9 +233,9 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
             else callback_query.message.chat.id
         )
 
-        if chat_id in queues and len(queues[chat_id]) > 0:
+        if chat_id in state.queues and len(state.queues[chat_id]) > 0:
             # There's a next song in queue
-            next_song = queues[chat_id].pop(0)
+            next_song = state.queues[chat_id].pop(0)
             await callback_query.message.reply(Messages.SKIPPING.format(callback_query.from_user.mention()), link_preview_options=None)
 
             try:
@@ -265,8 +265,8 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
 
             await remove_active_chat(client, chat_id)
 
-            if chat_id in playing:
-                playing[chat_id].clear()
+            if chat_id in state.playing:
+                state.playing[chat_id].clear()
 
             await callback_query.message.reply(Messages.SKIPPED_EMPTY.format(callback_query.from_user.mention()), link_preview_options=None)
 
@@ -279,8 +279,8 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
 
     except NotInCallError:
         await remove_active_chat(client, chat_id)
-        if chat_id in playing:
-            playing[chat_id].clear()
+        if chat_id in state.playing:
+            state.playing[chat_id].clear()
         await callback_query.answer(Messages.STREAM_ENDED_NOT_IN_CALL, show_alert=False)
     except Exception as e:
         logger.error(f"Error in skip button handler: {e}")
@@ -324,16 +324,16 @@ async def loop_handler_func(client, message):
             return
 
         # Check if there's a song playing
-        if message.chat.id in playing and playing[message.chat.id]:
-            current_song = playing[message.chat.id]
+        if message.chat.id in state.playing and state.playing[message.chat.id]:
+            current_song = state.playing[message.chat.id]
 
             # Initialize queue for this chat if it doesn't exist
-            if message.chat.id not in queues:
-                queues[message.chat.id] = []
+            if message.chat.id not in state.queues:
+                state.queues[message.chat.id] = []
 
             # Add the current song to queue multiple times
             for _ in range(loop_count):
-                queues[message.chat.id].insert(0, current_song)
+                state.queues[message.chat.id].insert(0, current_song)
 
             await client.send_message(
                 message.chat.id,
@@ -364,11 +364,11 @@ async def skip_handler_func(client, message):
   if message.from_user.id in BLOCK:
        return
   try:
-   if message.chat.id in queues:
-    if len(queues[message.chat.id]) >0:
-       next = queues[message.chat.id].pop(0)
+   if message.chat.id in state.queues:
+    if len(state.queues[message.chat.id]) >0:
+       next = state.queues[message.chat.id].pop(0)
        await client.send_message(message.chat.id, Messages.SKIPPING.format(message.from_user.mention()), link_preview_options=None)
-       playing[message.chat.id] = next
+       state.playing[message.chat.id] = next
        try:
           await call_py.pause(message.chat.id)
        except Exception:
@@ -378,17 +378,17 @@ async def skip_handler_func(client, message):
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
        await client.send_message(message.chat.id, Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
-       playing[message.chat.id].clear()
+       state.playing[message.chat.id].clear()
    else:
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
        await client.send_message(message.chat.id,
               Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
-       playing[message.chat.id].clear()
+       state.playing[message.chat.id].clear()
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
-     playing[message.chat.id].clear()
+     state.playing[message.chat.id].clear()
 
 
 @Client.on_callback_query(filters.regex("^(resume|cresume)$"))

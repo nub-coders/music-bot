@@ -12,9 +12,9 @@ async def dend(client, update, channel_id= None):
         return
     try:
         chat_id = int(channel_id or update.chat.id)  # Ensure integer chat_id
-        if chat_id in queues and queues[chat_id]:
-            next_song = queues[chat_id].pop(0)
-            playing[chat_id] = next_song
+        if chat_id in state.queues and state.queues[chat_id]:
+            next_song = state.queues[chat_id].pop(0)
+            state.playing[chat_id] = next_song
             await join_call(
                 next_song['message'],
                 next_song['title'],
@@ -31,8 +31,8 @@ async def dend(client, update, channel_id= None):
             logger.info(f"Song queue for chat {chat_id} is empty.")
             await client.leave_call(chat_id)
             await remove_active_chat(client, chat_id)
-            if chat_id in playing:
-                playing[chat_id].clear()
+            if chat_id in state.playing:
+                state.playing[chat_id].clear()
     except Exception as e:
         logger.error(f"Error in dend function: {e}")
 
@@ -179,12 +179,14 @@ async def play_handler_func(client, message):
         target_chat_id = linked_chat.id
 
     # Check queue for the target chat
-    _current_queue = len(queues.get(target_chat_id, [])) if queues else 0
+    _current_queue = len(state.queues.get(target_chat_id, [])) if state.queues else 0
 
     massage = await message.reply(Messages.BOLT, link_preview_options=None)
-    # Set target chat as active based on channel mode or not
-    is_active = await is_active_chat(client, target_chat_id)
-    await add_active_chat(client, target_chat_id)
+    # Atomic test-and-set under the per-chat lock: of two near-simultaneous /play
+    # calls in the same chat, exactly one sees is_active=False (starts playback);
+    # the other sees True and is routed to the enqueue branch. Closes the race
+    # where both could read "not active" and both try to join/play.
+    is_active = not await state.activate(target_chat_id)
 
     youtube_link = None
     media_info = {}
@@ -426,7 +428,7 @@ async def play_handler_func(client, message):
                             youtube_link = yt_result[2] if yt_result[2] else youtube_link
                     except Exception:
                         duration = "N/A"
-                position = len(queues.get(message.chat.id)) if queues.get(target_chat.id) else 1
+                position = len(state.queues.get(message.chat.id)) if state.queues.get(target_chat.id) else 1
                 keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("▷", callback_data=f"{'c' if channel_mode else ''}resume", style=ButtonStyle.SUCCESS),
@@ -494,15 +496,17 @@ async def put_queue(
         _yt_task=yt_task,
     )
     if forceplay:
-        check = queues.get(chat.id)
-        if check:
-            queues[chat.id].insert(0, put)
-        else:
-            queues[chat.id] = []
-            queues[chat.id].append(put)
+        async with state.lock(chat.id):
+            check = state.queues.get(chat.id)
+            if check:
+                state.queues[chat.id].insert(0, put)
+            else:
+                state.queues[chat.id] = []
+                state.queues[chat.id].append(put)
     else:
-        check = queues.get(chat.id)
+        async with state.lock(chat.id):
+            check = state.queues.get(chat.id)
 
-        if not check:
-           queues[chat.id] = []
-        queues[chat.id].append(put)
+            if not check:
+               state.queues[chat.id] = []
+            state.queues[chat.id].append(put)

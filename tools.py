@@ -61,7 +61,9 @@ async def get_stream_url(youtube_url: str):
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
-        "cookiesfrombrowser": ("firefox",),
+        # Cookies only when an explicit cookies.txt is configured — no silent
+        # browser-profile fallback. Matches _run_yt_dlp / ydl_opts elsewhere.
+        **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
 
         # Performance optimizations
         "extract_flat": False,  # We need full info
@@ -103,11 +105,9 @@ async def get_stream_url(youtube_url: str):
         return None
 
 
-active = set()  # set for O(1) membership checks
-playing = {}
-queues = {}  # chat_id -> list[QueueEntry]
+from state import state  # state.queues / playing / played / active now live on this store
+
 clients = {}
-played = {}
 spam_chats = []
 
 
@@ -201,7 +201,7 @@ def get_arg(message):
 
 
 async def remove_active_chat(chat_id):
-    active.discard(chat_id)
+    state.active.discard(chat_id)
     chat_dir = f"{ggg}/user_{clients['bot'].me.id}/{chat_id}"
     os.makedirs(chat_dir, exist_ok=True)
     clear_directory(chat_dir)
@@ -214,13 +214,13 @@ async def update_progress_button(message, duration_str, chat):
         while True:
             # Check elapsed time from pytgcalls
             try:
-                elapsed_seconds = int(time.time() - played[chat.id])
+                elapsed_seconds = int(time.time() - state.played[chat.id])
             except Exception:
                 break  # Song ended or chat removed
 
             # Stop updating if song changed
             try:
-                song = playing.get(chat.id)
+                song = state.playing.get(chat.id)
                 if not song or str(song.get('duration')) != str(duration_str):
                     break
             except Exception:
@@ -443,8 +443,8 @@ async def hd_stream_closed_kicked(client, update):
     logger.info(update)
     chat_id = update.chat_id
     await remove_active_chat(chat_id)
-    queues.pop(chat_id, None)
-    playing.pop(chat_id, None)
+    state.queues.pop(chat_id, None)
+    state.playing.pop(chat_id, None)
 
 
 async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None):
@@ -502,7 +502,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             else:
                 logger.warning("[join_call] YouTube task not done after 3s — proceeding with None source")
 
-        queue = queues.get(chat_id, [])
+        queue = state.queues.get(chat_id, [])
         position = len(queue)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"[join_call] chat={chat_id} title='{title}' mode={mode} position={position} thumb={'set' if thumb else 'None'}")
@@ -544,7 +544,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.info(f"[join_call] ⏱ call_py.play() took {_jc_call_ms:.1f}ms for chat {chat_id}")
 
         logger.debug(f"[join_call] Updating playing status for chat {chat_id}")
-        playing[chat_id] = {
+        state.playing[chat_id] = {
             "message": message,
             "title": title,
             "yt_link": youtube_link,
@@ -555,8 +555,8 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             "mode": mode,
             "thumb": thumb
         }
-        played[chat_id] = int(time.time())
-        logger.debug(f"[join_call] Playing status updated, timestamp: {played[chat_id]}")
+        state.played[chat_id] = int(time.time())
+        logger.debug(f"[join_call] Playing status updated, timestamp: {state.played[chat_id]}")
 
         logger.debug(f"[join_call] Scheduling playtime save to database for bot {clients['bot'].me.id}")
         db_task(collection.update_one(
@@ -640,12 +640,12 @@ async def end(client, update):
         upsert=True
     ))
     try:
-        if update.chat_id in queues and queues[update.chat_id]:
-            next_song = queues[update.chat_id].pop(0)
-            if update.chat_id in playing:
+        if update.chat_id in state.queues and state.queues[update.chat_id]:
+            next_song = state.queues[update.chat_id].pop(0)
+            if update.chat_id in state.playing:
                 if update.stream_type == StreamEnded.Type.VIDEO:
                     await client.leave_call(update.chat_id)
-            playing[update.chat_id] = next_song
+            state.playing[update.chat_id] = next_song
             await join_call(
                 next_song['message'],
                 next_song['title'],
@@ -662,7 +662,7 @@ async def end(client, update):
             logger.info(f"Song queue for chat {update.chat_id} is empty.")
             await client.leave_call(update.chat_id)
             await remove_active_chat(update.chat_id)
-            playing.pop(update.chat_id, None)
+            state.playing.pop(update.chat_id, None)
     except Exception as e:
         logger.warning(f"Error in end function: {e}")
 

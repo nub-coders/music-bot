@@ -15,7 +15,7 @@ from pyrogram.types import Message
 
 from config import OWNER_ID, ggg, StartTime
 from tools import (
-    queues, playing, played, active, clients, SUDO,
+    state, clients, SUDO,
     get_admin_ids, get_readable_time, convert_bytes,
 )
 from utils.message import Messages
@@ -107,7 +107,7 @@ async def active_chats_info(client, message):
 @Client.on_message(filters.command(["np", "nowplaying"]))
 async def now_playing(client, message):
     chat_id = message.chat.id
-    song = playing.get(chat_id)
+    song = state.playing.get(chat_id)
 
     if not song:
         txt = await get_str(chat_id, "NO_STREAM")
@@ -120,7 +120,7 @@ async def now_playing(client, message):
     yt_link = song.get("yt_link", "")
 
     # Elapsed
-    start_ts = played.get(chat_id)
+    start_ts = state.played.get(chat_id)
     elapsed = ""
     if start_ts:
         elapsed_s = int(time.time() - start_ts)
@@ -144,7 +144,7 @@ async def now_playing(client, message):
     mode_label = "🎵 Audio" if mode == "audio" else "🎬 Video"
     title_link = f'<a href="{yt_link}">{title}</a>' if yt_link else f"<b>{title}</b>"
 
-    queued_count = len(queues.get(chat_id, []))
+    queued_count = len(state.queues.get(chat_id, []))
     queue_info = f"\n<b>ǫᴜᴇᴜᴇ:</b> {queued_count} track(s) up next" if queued_count else ""
 
     text = (

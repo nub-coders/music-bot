@@ -6,7 +6,7 @@ from plugins._common import *  # noqa: F401,F403
 @Client.on_message(filters.command("queue"))
 async def queue_command(client, message):
     chat_id = message.chat.id
-    queue_list = queues.get(chat_id, [])
+    queue_list = state.queues.get(chat_id, [])
     items = queue_list[:20]
     if not items:
         return await message.reply(Messages.QUEUE_EMPTY, link_preview_options=None)
