@@ -64,7 +64,7 @@
     },
     "NUB_YT_API_BASE_URL": {
       "description": "Base URL for external YouTube API proxy (optional)",
-      "value": "http://api.nubcoders.com",
+      "value": "https://api.nubcoders.com",
       "required": false
     },
     "YT_API_TOKEN": {

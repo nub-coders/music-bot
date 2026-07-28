@@ -323,7 +323,8 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 resp = await client.get(
                     f"{BASE_URL}/info",
-                    params={"q": query, "token": API_TOKEN, "mode": mode},
+                    params={"q": query, "mode": mode},
+                    headers={"Authorization": f"Bearer {API_TOKEN}"},
                 )
             if resp.status_code == 200:
                 data = resp.json()
