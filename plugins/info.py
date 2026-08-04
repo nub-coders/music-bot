@@ -50,17 +50,22 @@ async def pingme(client, message):
 
     end = datetime.datetime.now()
     ms = (end - start).microseconds / 1000
-    status = "EXCELLENT 🟢" if ms < 100 else ("GOOD 🟡" if ms < 200 else "MODERATE 🔴")
-    quotes = ["Blazing fast! ⚡", "Speed demon! 🔥", "Lightning quick! ⚡", "Sonic boom! 💨"]
+    status = f"EXCELLENT {EmojiTag.SUCCESS}" if ms < 100 else (f"GOOD {EmojiTag.WARNING}" if ms < 200 else f"MODERATE {EmojiTag.ERROR}")
+    quotes = [
+        f"Blazing fast! {EmojiTag.BOLT}",
+        f"Speed demon! {EmojiTag.FIRE}",
+        f"Lightning quick! {EmojiTag.BOLT}",
+        f"Sonic boom! {EmojiTag.ROCKET}",
+    ]
 
     response = (
         f"╭──────────────────\n"
-        f"│   PONG! 🏓\n"
+        f"│   <b>PONG!</b> {EmojiTag.PING}\n"
         f"├──────────────────\n"
-        f"│ ⌚ Speed: {ms:.2f}ms\n"
-        f"│ 📊 Status: {status}\n"
-        f"│ ⏱️ Uptime: {uptime}\n"
-        f"│ 👑 Owner: {owner.mention()}\n"
+        f"│ {EmojiTag.BOLT} <b>Speed:</b> <code>{ms:.2f}ms</code>\n"
+        f"│ {EmojiTag.STATS} <b>Status:</b> {status}\n"
+        f"│ {EmojiTag.LOADING} <b>Uptime:</b> <code>{uptime}</code>\n"
+        f"│ {EmojiTag.CROWN} <b>Owner:</b> {owner.mention()}\n"
         f"╰──────────────────"
     )
     await msg.edit(response + f"\n<b>{choice(quotes)}</b>")
