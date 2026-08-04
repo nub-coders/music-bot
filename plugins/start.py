@@ -96,10 +96,10 @@ async def user_client_start_handler(client, message):
                 logger.info(video_info['thumbnail'])
                 await loading.delete()
                 caption = (
-                    f"📝 **Title:** {video_info['title']}\n\n"
-                    f"⏱ **Duration:** {video_info['duration']}\n"
-                    f"👁 **Views:** {views}\n"
-                    f"📺 **Channel:** {video_info['channel_name']}\n"
+                    f"{EmojiTag.MUSIC_NOTE} <b>ᴛɪᴛʟᴇ:</b> {video_info['title']}\n\n"
+                    f"<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{video_info['duration']}</code>\n"
+                    f"<b>‣ ᴠɪᴇᴡs:</b> <code>{views}</code>\n"
+                    f"<b>‣ ᴄʜᴀɴɴᴇʟ:</b> <code>{video_info['channel_name']}</code>\n"
                 )
 
                 # Create inline keyboard with YouTube button

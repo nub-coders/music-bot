@@ -481,10 +481,12 @@ async def play_handler_func(client, message):
                 is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
                 video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None
                 if video_id:
-                    title_text = f"[{trim_title(title)}](https://t.me/{client.me.username}?start=vidid_{video_id})"
+                    title_text = f'<a href="https://t.me/{client.me.username}?start=vidid_{video_id}"><b>{trim_title(title)}</b></a>'
+                elif youtube_link and youtube_link.startswith("http"):
+                    title_text = f'<a href="{youtube_link}"><b>{trim_title(title)}</b></a>'
                 else:
-                    title_text = trim_title(title)
-                await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position), reply_markup=keyboard,link_preview_options=None)
+                    title_text = f'<b>{trim_title(title)}</b>'
+                await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position), reply_markup=keyboard, link_preview_options=None)
                 try:
                    await message.delete()
                 except Exception:

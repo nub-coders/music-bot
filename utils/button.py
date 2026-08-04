@@ -1,9 +1,5 @@
 """
 utils/button.py — Inline keyboard definitions for NUB Music Bot.
-
-Button label styling inspired by:
-  • TheTeamAlexa/AlexaMusic → Unicode small-caps labels
-  • AnonymousX1025/AnonXMusic → clean playback symbol buttons (▷ II ‣‣I ▢)
 """
 
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -85,3 +81,20 @@ class Buttons:
         return InlineKeyboardMarkup([[
             InlineKeyboardButton("🎬 sᴛʀᴇᴀᴍ ᴏɴ ʏᴏᴜᴛᴜʙᴇ", url=youtube_url, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.ROCKET),
         ]])
+
+    @staticmethod
+    def font_markup():
+        """Generates the markup for font selection command."""
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("sᴍᴀʟʟ ᴄᴀᴘs", callback_data="font_small_caps", style=ButtonStyle.PRIMARY),
+                InlineKeyboardButton("𝐁𝐨𝐥𝐝 𝐒𝐞𝐫𝐢𝐟", callback_data="font_bold_serif", style=ButtonStyle.PRIMARY),
+            ],
+            [
+                InlineKeyboardButton("𝗕𝗼𝗹𝗱 𝗦𝗮𝗻𝘀",  callback_data="font_bold_sans",  style=ButtonStyle.PRIMARY),
+                InlineKeyboardButton("𝙼𝚘𝚗𝚘𝚜𝚙𝚊𝚌𝚎",  callback_data="font_monospace",  style=ButtonStyle.PRIMARY),
+            ],
+            [
+                InlineKeyboardButton("✖ ᴄʟᴏsᴇ", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),
+            ],
+        ])

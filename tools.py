@@ -512,7 +512,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         mode_formatted = mode
         title_formatted = title
 
-        display_title = f"[{title_formatted}](https://t.me/{clients['bot'].me.username}?start=vidid_{extract_video_id(youtube_link)})" if youtube_link and not os.path.exists(youtube_link) else title_formatted
+        video_id = extract_video_id(youtube_link) if youtube_link and not os.path.exists(youtube_link) else None
+        if video_id:
+            display_title = f'<a href="https://t.me/{clients["bot"].me.username}?start=vidid_{video_id}"><b>{title_formatted}</b></a>'
+        elif youtube_link and youtube_link.startswith("http"):
+            display_title = f'<a href="{youtube_link}"><b>{title_formatted}</b></a>'
+        else:
+            display_title = f'<b>{title_formatted}</b>'
 
         message_text = Messages.PLAY.format(
             mode_formatted,
