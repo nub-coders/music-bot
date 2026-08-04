@@ -48,7 +48,7 @@ async def queue_command(client, message):
     buf.seek(0)
 
     styled_caption = (
-        "<u><b>🎵 | ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ</b></u>\n"
+        f"<u><b>{EmojiTag.MUSIC_NOTE} | ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ</b></u>\n"
         "<blockquote expandable>\n"
         + "\n".join(
             f"<b>{idx}.</b> {item.get('title','Unknown')}  <code>[{item.get('duration','-')}]</code>"

@@ -92,3 +92,65 @@ class Emoji:
     AUTH_ICON      = 6005570495603282482   # 🔑  TgAndroidIcons
     BLOCKLIST_ICON = 5877413297170419326   # 🚫  TgAndroidIcons
     HELP           = 5879785854284599288   # ℹ️  TgAndroidIcons
+
+
+class EmojiTag:
+    """Pre-formatted HTML custom emoji tags for messages."""
+    MUSIC_NOTE     = f'<emoji id="{Emoji.MUSIC_NOTE}">🎵</emoji>'
+    MUSIC_NOTES    = f'<emoji id="{Emoji.MUSIC_NOTES}">🎶</emoji>'
+    HEADPHONES     = f'<emoji id="{Emoji.HEADPHONES}">🎧</emoji>'
+    MIC            = f'<emoji id="{Emoji.MIC}">🎤</emoji>'
+    BROADCAST      = f'<emoji id="{Emoji.BROADCAST}">📢</emoji>'
+    PLAY           = f'<emoji id="{Emoji.PLAY}">▶️</emoji>'
+    SKIP           = f'<emoji id="{Emoji.SKIP}">⏭</emoji>'
+    RESUME         = f'<emoji id="{Emoji.RESUME}">⏯</emoji>'
+    PAUSE          = f'<emoji id="{Emoji.PAUSE}">⏸</emoji>'
+    STOP           = f'<emoji id="{Emoji.STOP}">⏹</emoji>'
+    LOOP           = f'<emoji id="{Emoji.LOOP}">🔁</emoji>'
+    BOLT           = f'<emoji id="{Emoji.BOLT}">⚡</emoji>'
+
+    NOW_PLAYING    = f'<emoji id="{Emoji.NOW_PLAYING}">🎵</emoji>'
+    QUEUE_ICON     = f'<emoji id="{Emoji.QUEUE_ICON}">🗃</emoji>'
+    LOADING        = f'<emoji id="{Emoji.LOADING}">⚙️</emoji>'
+    SETTINGS       = f'<emoji id="{Emoji.SETTINGS}">⚙️</emoji>'
+    INFO           = f'<emoji id="{Emoji.INFO}">ℹ️</emoji>'
+    STATS          = f'<emoji id="{Emoji.STATS}">📊</emoji>'
+    PING           = f'<emoji id="{Emoji.PING}">⚡</emoji>'
+
+    SUCCESS        = f'<emoji id="{Emoji.SUCCESS}">✅</emoji>'
+    ERROR          = f'<emoji id="{Emoji.ERROR}">❌</emoji>'
+    WARNING        = f'<emoji id="{Emoji.WARNING}">⚠️</emoji>'
+    BLOCKED        = f'<emoji id="{Emoji.BLOCKED}">🚫</emoji>'
+    LOCK           = f'<emoji id="{Emoji.LOCK}">🔐</emoji>'
+    UNLOCK         = f'<emoji id="{Emoji.UNLOCK}">🔓</emoji>'
+    SHIELD         = f'<emoji id="{Emoji.SHIELD}">🛡</emoji>'
+
+    CROWN          = f'<emoji id="{Emoji.CROWN}">👑</emoji>'
+    DIAMOND        = f'<emoji id="{Emoji.DIAMOND}">💎</emoji>'
+    STAR           = f'<emoji id="{Emoji.STAR}">⭐️</emoji>'
+    USER           = f'<emoji id="{Emoji.USER}">👤</emoji>'
+    USERS          = f'<emoji id="{Emoji.USERS}">👥</emoji>'
+    KEY            = f'<emoji id="{Emoji.KEY}">🔑</emoji>'
+    FIRE           = f'<emoji id="{Emoji.FIRE}">🔥</emoji>'
+    SPARKLE_STAR   = f'<emoji id="{Emoji.SPARKLE_STAR}">🌟</emoji>'
+
+    BACK           = f'<emoji id="{Emoji.BACK}">◀️</emoji>'
+    CLOSE          = f'<emoji id="{Emoji.CLOSE}">❌</emoji>'
+    HOME           = f'<emoji id="{Emoji.HOME}">🏠</emoji>'
+    REFRESH        = f'<emoji id="{Emoji.REFRESH}">🔄</emoji>'
+    REPO           = f'<emoji id="{Emoji.REPO}">🔗</emoji>'
+    NEXT           = f'<emoji id="{Emoji.NEXT}">➡️</emoji>'
+    ADD            = f'<emoji id="{Emoji.ADD}">➕</emoji>'
+    PIN            = f'<emoji id="{Emoji.PIN}">📌</emoji>'
+
+    CHAT           = f'<emoji id="{Emoji.CHAT}">💬</emoji>'
+    SEND           = f'<emoji id="{Emoji.SEND}">✉️</emoji>'
+    ROCKET         = f'<emoji id="{Emoji.ROCKET}">🚀</emoji>'
+    GLOBE          = f'<emoji id="{Emoji.GLOBE}">🌐</emoji>'
+    LINK           = f'<emoji id="{Emoji.LINK}">🔗</emoji>'
+    TOOLS          = f'<emoji id="{Emoji.TOOLS}">🛠️</emoji>'
+    KANG           = f'<emoji id="{Emoji.KANG}">🎨</emoji>'
+    SUDO           = f'<emoji id="{Emoji.SUDO}">👑</emoji>'
+    OWNER          = f'<emoji id="{Emoji.OWNER}">⚙️</emoji>'
+    HELP           = f'<emoji id="{Emoji.HELP}">ℹ️</emoji>'
+

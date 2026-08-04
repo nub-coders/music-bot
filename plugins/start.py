@@ -183,15 +183,12 @@ async def user_client_start_handler(client, message):
            if 'video' in mime.from_file(alive_logo):
                alive_logo = rename_file(alive_logo, logo_path_mp4)
 
-
-
-
        greet_message = await gvarstatus(client.me.id, "WELCOME") or (
-           "👋 <b>ʜᴇʏ {name}!</b>\n\n"
-           "🎵 <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {botname}</b>\n\n"
-           "<i>ᴀ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ & ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ sᴛʀᴇᴀᴍɪɴɢ.</i>\n\n"
-           "<b><i>ᴜsᴇ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ.</i></b>"
-       )
+            f"{EmojiTag.USER} <b>ʜᴇʏ {{name}}!</b>\n\n"
+            f"{EmojiTag.MUSIC_NOTE} <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {{botname}}</b>\n\n"
+            "<i>ᴀ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ & ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ sᴛʀᴇᴀᴍɪɴɢ.</i>\n\n"
+            "<b><i>ᴜsᴇ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ.</i></b>"
+        )
 
        send = client.send_video if alive_logo.endswith(".mp4") else client.send_photo
        await editing.delete()
@@ -208,25 +205,18 @@ async def user_client_start_handler(client, message):
 async def format_welcome_message(client, text, chat_id, user_or_chat_name):
     """Helper function to format welcome message with real data"""
     try:
-        # Ensure user_or_chat_name is a string, even if None is passed
-        user_or_chat_name = str(user_or_chat_name) if user_or_chat_name is not None else ""
-        formatted_text = text
-        formatted_text = formatted_text.replace("{name}", user_or_chat_name)
-        formatted_text = formatted_text.replace("{id}", str(chat_id))
-        formatted_text = formatted_text.replace("{botname}", client.me.mention())
+        botname = client.me.mention()
+        formatted_text = text.format(name=user_or_chat_name, botname=botname)
         return formatted_text
     except Exception as e:
-        logging.error(f"Error formatting welcome message: {str(e)}")
-        return text  # Return original text if formatting fails
+        logger.info(f"Error formatting welcome message: {e}")
+        return text
 
 
-@Client.on_callback_query(filters.regex(r"commands_(.*)"))
-async def commands_handler(client, callback_query):
-    data = callback_query.data.split("_", 1)[1]          # Extract page name
+@Client.on_callback_query(filters.regex("^commands_"))
+async def commands_callback(client: Client, callback_query: CallbackQuery):
+    data = callback_query.data.split("_")[1]
     user_id = callback_query.from_user.id
-    _admin_file = f"{ggg}/admin.txt"
-
-    # --- Permission check (owner / admin / sudo) ---
     admin_ids = get_admin_ids(f"{ggg}/admin.txt")
     _is_admin = user_id in admin_ids or str(OWNER_ID) == str(user_id)
     owner = await client.get_users(OWNER_ID)
@@ -234,7 +224,7 @@ async def commands_handler(client, callback_query):
 
     # ---------- Command pages (text blocks) ----------
     playback_commands = (
-        "<u><b>🎵 | ᴘʟᴀʏʙᴀᴄᴋ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.MUSIC_NOTE} | ᴘʟᴀʏʙᴀᴄᴋ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /play  /vplay        — ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ\n"
         "‣ /queue               — sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)\n"
@@ -251,7 +241,7 @@ async def commands_handler(client, callback_query):
     )
 
     auth_commands = (
-        "<u><b>🔐 | ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.LOCK} | ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /auth &lt;reply|id&gt;   — ᴀʟʟᴏᴡ ᴜsᴇʀ ᴛᴏ ᴜsᴇ ᴘʟᴀʏᴇʀ\n"
         "‣ /unauth &lt;reply|id&gt; — ʀᴇᴍᴏᴠᴇ ᴛʜᴀᴛ ᴘᴇʀᴍɪssɪᴏɴ\n"
@@ -260,7 +250,7 @@ async def commands_handler(client, callback_query):
     )
 
     blocklist_commands = (
-        "<u><b>🚫 | ʙʟᴏᴄᴋʟɪsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.BLOCKED} | ʙʟᴏᴄᴋʟɪsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /block &lt;reply|id&gt;   — ʙʟᴏᴄᴋ ᴜsᴇʀ ꜰʀᴏᴍ ʙᴏᴛ\n"
         "‣ /unblock &lt;reply|id&gt; — ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ\n"
@@ -269,7 +259,7 @@ async def commands_handler(client, callback_query):
     )
 
     sudo_commands = (
-        "<u><b>🔑 | sᴜᴅᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.KEY} | sᴜᴅᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /addsudo &lt;reply|id&gt; — ᴀᴅᴅ sᴜᴅᴏ ᴜsᴇʀ\n"
         "‣ /rmsudo &lt;reply|id&gt;  — ʀᴇᴍᴏᴠᴇ sᴜᴅᴏ ᴜsᴇʀ\n"
@@ -278,7 +268,7 @@ async def commands_handler(client, callback_query):
     )
 
     broadcast_commands = (
-        "<u><b>📢 | ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.BROADCAST} | ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /broadcast  — ᴄᴏᴘʏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
         "‣ /fbroadcast — ꜰᴏʀᴡᴀʀᴅ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
@@ -286,7 +276,7 @@ async def commands_handler(client, callback_query):
     )
 
     tools_commands = (
-        "<u><b>🛠️ | ᴛᴏᴏʟs ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.TOOLS} | ᴛᴏᴏʟs ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /del    — ᴅᴇʟᴇᴛᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ\n"
         "‣ /tagall — ᴍᴇɴᴛɪᴏɴ ᴀʟʟ ᴍᴇᴍʙᴇʀs\n"
@@ -296,7 +286,7 @@ async def commands_handler(client, callback_query):
     )
 
     kang_commands = (
-        "<u><b>🎨 | sᴛɪᴄᴋᴇʀ & ᴍᴇᴍᴇ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.KANG} | sᴛɪᴄᴋᴇʀ & ᴍᴇᴍᴇ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /kang         — ᴄʟᴏɴᴇ sᴛɪᴄᴋᴇʀ/ᴘʜᴏᴛᴏ ᴛᴏ ʏᴏᴜʀ ᴘᴀᴄᴋ\n"
         "‣ /mmf &lt;text&gt; — ᴡʀɪᴛᴇ ᴛᴇxᴛ ᴏɴ ɪᴍᴀɢᴇ/sᴛɪᴄᴋᴇʀ\n"
@@ -304,7 +294,7 @@ async def commands_handler(client, callback_query):
     )
 
     status_commands = (
-        "<u><b>📊 | sᴛᴀᴛᴜs & ɪɴꜰᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.STATS} | sᴛᴀᴛᴜs & ɪɴꜰᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /ping  — ʟᴀᴛᴇɴᴄʏ & ᴜᴘᴛɪᴍᴇ\n"
         "‣ /stats — ʙᴏᴛ ᴜsᴀɢᴇ sᴛᴀᴛs\n"
@@ -314,7 +304,7 @@ async def commands_handler(client, callback_query):
     )
 
     owner_commands = (
-        "<u><b>⚙️ | ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
+        f"<u><b>{EmojiTag.SETTINGS} | ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
         "‣ /reboot       — ʀᴇsᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ\n"
         "‣ /setwelcome   — sᴇᴛ ᴄᴜsᴛᴏᴍ /start ᴍᴇssᴀɢᴇ\n"
@@ -334,9 +324,6 @@ async def commands_handler(client, callback_query):
     }
 
     # ---------- Navigation buttons ----------
-    # --- Category Buttons replaced by Buttons.HELP_HOME ---
-
-
     back_markup = Buttons.BACK
 
 
@@ -344,7 +331,7 @@ async def commands_handler(client, callback_query):
     if data == "all":
         await callback_query.answer()
         await callback_query.message.edit_caption(
-            caption="<u><b>📜 | sᴇʟᴇᴄᴛ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ</b></u>",
+            caption=f"<u><b>{EmojiTag.INFO} | sᴇʟᴇᴄᴛ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ</b></u>",
             reply_markup=Buttons.HELP_HOME,
         )
     elif data in category_pages:

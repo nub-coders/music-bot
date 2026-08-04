@@ -45,7 +45,7 @@ from tools import trim_title, join_call
 from utils.message import Messages
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
-from utils.emoji import Emoji
+from utils.emoji import Emoji, EmojiTag
 from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task
 from thumbnails import get_thumb
 from PIL import Image

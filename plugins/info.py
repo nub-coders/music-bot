@@ -18,6 +18,7 @@ from tools import (
     state, clients, SUDO,
     get_admin_ids, get_readable_time, convert_bytes,
 )
+from utils.emoji import EmojiTag
 from utils.message import Messages
 from utils.lang import get_str, get_lang, LANGUAGES, lang_list_text
 from database import user_sessions, collection
@@ -148,7 +149,7 @@ async def now_playing(client, message):
     queue_info = f"\n<b>ǫᴜᴇᴜᴇ:</b> {queued_count} track(s) up next" if queued_count else ""
 
     text = (
-        f"<u><b>🎶 | ɴᴏᴡ ᴘʟᴀʏɪɴɢ</b></u>\n\n"
+        f"<u><b>{EmojiTag.NOW_PLAYING} | ɴᴏᴡ ᴘʟᴀʏɪɴɢ</b></u>\n\n"
         f"<b>ᴛʀᴀᴄᴋ:</b> {title_link}\n"
         f"<b>ᴍᴏᴅᴇ:</b> {mode_label}\n"
         f"<b>ʀᴇQᴜᴇsᴛᴇᴅ ʙʏ:</b> {mention}"
@@ -165,7 +166,7 @@ async def lang_info_handler(client, message):
     code = await get_lang(chat_id)
     meta = LANGUAGES.get(code, {"name": code, "flag": "🏳️"})
     text = (
-        f"<u><b>🌐 | ʟᴀɴɢᴜᴀɢᴇ sᴇᴛᴛɪɴɢs</b></u>\n\n"
+        f"<u><b>{EmojiTag.GLOBE} | ʟᴀɴɢᴜᴀɢᴇ sᴇᴛᴛɪɴɢs</b></u>\n\n"
         f"<b>ᴄᴜʀʀᴇɴᴛ:</b> {meta['flag']} <code>{code}</code> — {meta['name']}\n\n"
         f"<b>ᴀᴠᴀɪʟᴀʙʟᴇ ʟᴀɴɢᴜᴀɢᴇs:</b>\n{lang_list_text()}\n\n"
         f"<i>ᴜsᴇ <code>/setlang &lt;code&gt;</code> ᴛᴏ ᴄʜᴀɴɢᴇ (ᴀᴅᴍɪɴ ᴏɴʟʏ)</i>"

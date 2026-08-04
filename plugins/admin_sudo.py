@@ -232,15 +232,15 @@ async def handle_power_command(client, message):
         # Add permission statuses
         for perm, display_name in permissions.items():
             status = getattr(bot_member.privileges, perm, False)
-            emoji = "✅" if status else "❌"
+            emoji = EmojiTag.SUCCESS if status else EmojiTag.ERROR
             power_message += f"{emoji} {display_name}\n"
 
         # Add administrative status
-        power_message += "\n📊 **Status:**\n"
+        power_message += f"\n<b>{EmojiTag.STATS} Status:</b>\n"
         if bot_member.status == enums.ChatMemberStatus.ADMINISTRATOR:
-            power_message += "✨ Bot is an **Administrator**"
+            power_message += f"{EmojiTag.SPARKLE_STAR} Bot is an <b>Administrator</b>"
         elif bot_member.status == enums.ChatMemberStatus.MEMBER:
-            power_message += "👤 Bot is a **Regular Member**"
+            power_message += f"{EmojiTag.USER} Bot is a <b>Regular Member</b>"
         else:
             power_message += "❓ Bot Status: " + str(bot_member.status).title()
 
