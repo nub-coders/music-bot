@@ -226,89 +226,89 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     playback_commands = (
         f"<u><b>{EmojiTag.MUSIC_NOTE} | ᴘʟᴀʏʙᴀᴄᴋ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /play  /vplay        — ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ\n"
-        "‣ /queue               — sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)\n"
-        "‣ /playforce /vplayforce — ꜰᴏʀᴄᴇ ᴘʟᴀʏ (sᴋɪᴘ ᴄᴜʀʀᴇɴᴛ)\n"
-        "‣ /cplay /cvplay       — ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ\n"
-        "‣ /pause               — ᴘᴀᴜsᴇ sᴛʀᴇᴀᴍ\n"
-        "‣ /resume              — ʀᴇsᴜᴍᴇ sᴛʀᴇᴀᴍ\n"
-        "‣ /skip  /cskip        — ɴᴇxᴛ ᴛʀᴀᴄᴋ\n"
-        "‣ /end  /cend          — sᴛᴏᴘ & ᴄʟᴇᴀʀ ǫᴜᴇᴜᴇ\n"
-        "‣ /seek &lt;sec&gt;    — ᴊᴜᴍᴘ ꜰᴏʀᴡᴀʀᴅ\n"
-        "‣ /seekback &lt;sec&gt; — ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ\n"
-        "‣ /loop &lt;1-20&gt;   — ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ\n"
+        f"{EmojiTag.PLAY} /play  /vplay        — ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ\n"
+        f"{EmojiTag.QUEUE_ICON} /queue               — sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)\n"
+        f"{EmojiTag.ROCKET} /playforce /vplayforce — ꜰᴏʀᴄᴇ ᴘʟᴀʏ (sᴋɪᴘ ᴄᴜʀʀᴇɴᴛ)\n"
+        f"{EmojiTag.GLOBE} /cplay /cvplay       — ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ\n"
+        f"{EmojiTag.PAUSE} /pause               — ᴘᴀᴜsᴇ sᴛʀᴇᴀᴍ\n"
+        f"{EmojiTag.RESUME} /resume              — ʀᴇsᴜᴍᴇ sᴛʀᴇᴀᴍ\n"
+        f"{EmojiTag.SKIP} /skip  /cskip        — ɴᴇxᴛ ᴛʀᴀᴄᴋ\n"
+        f"{EmojiTag.STOP} /end  /cend          — sᴛᴏᴘ & ᴄʟᴇᴀʀ ǫᴜᴇᴜᴇ\n"
+        f"{EmojiTag.NEXT} /seek &lt;sec&gt;    — ᴊᴜᴍᴘ ꜰᴏʀᴡᴀʀᴅ\n"
+        f"{EmojiTag.BACK} /seekback &lt;sec&gt; — ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ\n"
+        f"{EmojiTag.LOOP} /loop &lt;1-20&gt;   — ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ\n"
         "</blockquote>"
     )
 
     auth_commands = (
         f"<u><b>{EmojiTag.LOCK} | ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /auth &lt;reply|id&gt;   — ᴀʟʟᴏᴡ ᴜsᴇʀ ᴛᴏ ᴜsᴇ ᴘʟᴀʏᴇʀ\n"
-        "‣ /unauth &lt;reply|id&gt; — ʀᴇᴍᴏᴠᴇ ᴛʜᴀᴛ ᴘᴇʀᴍɪssɪᴏɴ\n"
-        "‣ /authlist              — ʟɪsᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs\n"
+        f"{EmojiTag.LOCK} /auth &lt;reply|id&gt;   — ᴀʟʟᴏᴡ ᴜsᴇʀ ᴛᴏ ᴜsᴇ ᴘʟᴀʏᴇʀ\n"
+        f"{EmojiTag.UNLOCK} /unauth &lt;reply|id&gt; — ʀᴇᴍᴏᴠᴇ ᴛʜᴀᴛ ᴘᴇʀᴍɪssɪᴏɴ\n"
+        f"{EmojiTag.USER} /authlist              — ʟɪsᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs\n"
         "</blockquote>"
     )
 
     blocklist_commands = (
         f"<u><b>{EmojiTag.BLOCKED} | ʙʟᴏᴄᴋʟɪsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /block &lt;reply|id&gt;   — ʙʟᴏᴄᴋ ᴜsᴇʀ ꜰʀᴏᴍ ʙᴏᴛ\n"
-        "‣ /unblock &lt;reply|id&gt; — ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ\n"
-        "‣ /blocklist              — ᴠɪᴇᴡ ʙʟᴏᴄᴋᴇᴅ ʟɪsᴛ\n"
+        f"{EmojiTag.BLOCKED} /block &lt;reply|id&gt;   — ʙʟᴏᴄᴋ ᴜsᴇʀ ꜰʀᴏᴍ ʙᴏᴛ\n"
+        f"{EmojiTag.SUCCESS} /unblock &lt;reply|id&gt; — ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ\n"
+        f"{EmojiTag.USERS} /blocklist              — ᴠɪᴇᴡ ʙʟᴏᴄᴋᴇᴅ ʟɪsᴛ\n"
         "</blockquote>"
     )
 
     sudo_commands = (
         f"<u><b>{EmojiTag.KEY} | sᴜᴅᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /addsudo &lt;reply|id&gt; — ᴀᴅᴅ sᴜᴅᴏ ᴜsᴇʀ\n"
-        "‣ /rmsudo &lt;reply|id&gt;  — ʀᴇᴍᴏᴠᴇ sᴜᴅᴏ ᴜsᴇʀ\n"
-        "‣ /sudolist               — ʟɪsᴛ sᴜᴅᴏ ᴜsᴇʀs\n"
+        f"{EmojiTag.KEY} /addsudo &lt;reply|id&gt; — ᴀᴅᴅ sᴜᴅᴏ ᴜsᴇʀ\n"
+        f"{EmojiTag.CLOSE} /rmsudo &lt;reply|id&gt;  — ʀᴇᴍᴏᴠᴇ sᴜᴅᴏ ᴜsᴇʀ\n"
+        f"{EmojiTag.CROWN} /sudolist               — ʟɪsᴛ sᴜᴅᴏ ᴜsᴇʀs\n"
         "</blockquote>"
     )
 
     broadcast_commands = (
         f"<u><b>{EmojiTag.BROADCAST} | ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /broadcast  — ᴄᴏᴘʏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
-        "‣ /fbroadcast — ꜰᴏʀᴡᴀʀᴅ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
+        f"{EmojiTag.BROADCAST} /broadcast  — ᴄᴏᴘʏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
+        f"{EmojiTag.SEND} /fbroadcast — ꜰᴏʀᴡᴀʀᴅ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
         "</blockquote>"
     )
 
     tools_commands = (
         f"<u><b>{EmojiTag.TOOLS} | ᴛᴏᴏʟs ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /del    — ᴅᴇʟᴇᴛᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ\n"
-        "‣ /tagall — ᴍᴇɴᴛɪᴏɴ ᴀʟʟ ᴍᴇᴍʙᴇʀs\n"
-        "‣ /cancel — ᴀʙᴏʀᴛ ʀᴜɴɴɪɴɢ ᴛᴀɢᴀʟʟ\n"
-        "‣ /powers — sʜᴏᴡ ʙᴏᴛ ᴘᴇʀᴍɪssɪᴏɴs\n"
+        f"{EmojiTag.CLOSE} /del    — ᴅᴇʟᴇᴛᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ\n"
+        f"{EmojiTag.USERS} /tagall — ᴍᴇɴᴛɪᴏɴ ᴀʟʟ ᴍᴇᴍʙᴇʀs\n"
+        f"{EmojiTag.ERROR} /cancel — ᴀʙᴏʀᴛ ʀᴜɴɴɪɴɢ ᴛᴀɢᴀʟʟ\n"
+        f"{EmojiTag.SHIELD} /powers — sʜᴏᴡ ʙᴏᴛ ᴘᴇʀᴍɪssɪᴏɴs\n"
         "</blockquote>"
     )
 
     kang_commands = (
         f"<u><b>{EmojiTag.KANG} | sᴛɪᴄᴋᴇʀ & ᴍᴇᴍᴇ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /kang         — ᴄʟᴏɴᴇ sᴛɪᴄᴋᴇʀ/ᴘʜᴏᴛᴏ ᴛᴏ ʏᴏᴜʀ ᴘᴀᴄᴋ\n"
-        "‣ /mmf &lt;text&gt; — ᴡʀɪᴛᴇ ᴛᴇxᴛ ᴏɴ ɪᴍᴀɢᴇ/sᴛɪᴄᴋᴇʀ\n"
+        f"{EmojiTag.KANG} /kang         — ᴄʟᴏɴᴇ sᴛɪᴄᴋᴇʀ/ᴘʜᴏᴛᴏ ᴛᴏ ʏᴏᴜʀ ᴘᴀᴄᴋ\n"
+        f"{EmojiTag.TOOLS} /mmf &lt;text&gt; — ᴡʀɪᴛᴇ ᴛᴇxᴛ ᴏɴ ɪᴍᴀɢᴇ/sᴛɪᴄᴋᴇʀ\n"
         "</blockquote>"
     )
 
     status_commands = (
         f"<u><b>{EmojiTag.STATS} | sᴛᴀᴛᴜs & ɪɴꜰᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /ping  — ʟᴀᴛᴇɴᴄʏ & ᴜᴘᴛɪᴍᴇ\n"
-        "‣ /stats — ʙᴏᴛ ᴜsᴀɢᴇ sᴛᴀᴛs\n"
-        "‣ /ac    — ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs\n"
-        "‣ /about — ᴜsᴇʀ / ɢʀᴏᴜᴘ / ᴄʜᴀɴɴᴇʟ ɪɴꜰᴏ\n"
+        f"{EmojiTag.PING} /ping  — ʟᴀᴛᴇɴᴄʏ & ᴜᴘᴛɪᴍᴇ\n"
+        f"{EmojiTag.STATS} /stats — ʙᴏᴛ ᴜsᴀɢᴇ sᴛᴀᴛs\n"
+        f"{EmojiTag.CHAT} /ac    — ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs\n"
+        f"{EmojiTag.INFO} /about — ᴜsᴇʀ / ɢʀᴏᴜᴘ / ᴄʜᴀɴɴᴇʟ ɪɴꜰᴏ\n"
         "</blockquote>"
     )
 
     owner_commands = (
         f"<u><b>{EmojiTag.SETTINGS} | ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        "‣ /reboot       — ʀᴇsᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ\n"
-        "‣ /setwelcome   — sᴇᴛ ᴄᴜsᴛᴏᴍ /start ᴍᴇssᴀɢᴇ\n"
-        "‣ /resetwelcome — ʀᴇsᴇᴛ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ & ʟᴏɢᴏ\n"
+        f"{EmojiTag.REFRESH} /reboot       — ʀᴇsᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ\n"
+        f"{EmojiTag.PIN} /setwelcome   — sᴇᴛ ᴄᴜsᴛᴏᴍ /start ᴍᴇssᴀɢᴇ\n"
+        f"{EmojiTag.CLOSE} /resetwelcome — ʀᴇsᴇᴛ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ & ʟᴏɢᴏ\n"
         "</blockquote>"
     )
 
