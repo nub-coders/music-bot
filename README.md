@@ -1,5 +1,11 @@
  # nub-music-bot
 
+[![License](https://img.shields.io/github/license/nub-coders/nub-music-bot?color=0f766e)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
+[![Issues](https://img.shields.io/github/issues/nub-coders/nub-music-bot?color=0f766e)](https://github.com/nub-coders/nub-music-bot/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/nub-coders/nub-music-bot?color=0f766e)](https://github.com/nub-coders/nub-music-bot/pulls)
+[![Last Commit](https://img.shields.io/github/last-commit/nub-coders/nub-music-bot)](https://github.com/nub-coders/nub-music-bot/commits/main)
+
  Telegram music/voice-chat bot for streaming audio (and video) into group voice chats.
 
  ![Bot Logo](https://raw.githubusercontent.com/nub-coders/nub-music-bot/refs/heads/main/music.jpg)
