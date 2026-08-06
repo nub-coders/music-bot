@@ -22,7 +22,7 @@ async def font_command_handler(client: Client, message: Message):
         return await message.reply_text(help_text, reply_to_message_id=message.id)
 
     target_text = args[1]
-    
+
     # Generate samples for all 4 clean font styles
     styled_lines = [
         f"{EmojiTag.STAR} <b>ꜰᴏɴᴛ sᴛʏʟᴇs ꜰᴏʀ:</b> <i>{target_text}</i>\n"
