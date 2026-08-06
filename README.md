@@ -75,6 +75,62 @@
  python3 main.py
  ```
 
+ Commands
+ --------
+ Send these in a group where the bot and assistant are present. Prefix with `/`.
+
+ **Playback**
+
+ | Command | Description |
+ |---|---|
+ | `/play <query\|url>` | Queue and stream YouTube audio |
+ | `/vplay <query\|url>` | Queue and stream YouTube video |
+ | `/playforce` · `/vplayforce` | Force play now (skip current) |
+ | `/cplay` · `/cvplay` | Play into a linked channel's voice chat |
+ | `/cplayforce` · `/cvplayforce` | Force channel play |
+
+ **Controls**
+
+ | Command | Description |
+ |---|---|
+ | `/pause` · `/resume` | Pause / resume playback |
+ | `/skip` | Skip to next track in queue |
+ | `/seek <sec>` · `/seekback <sec>` | Seek forward / backward |
+ | `/loop <n>` | Loop current track n times (`0` disables) |
+ | `/end` | Stop playback and clear the queue |
+
+ **Queue**
+
+ | Command | Description |
+ |---|---|
+ | `/queue` | Show the current queue |
+ | `/shuffle` | Shuffle the queue |
+ | `/del <n>` | Remove item n from the queue |
+ | `/cancel` | Cancel the active download/search |
+
+ **Info & tools**
+
+ | Command | Description |
+ |---|---|
+ | `/start` · `/ping` | Health check and welcome |
+ | `/np` · `/nowplaying` | Show the current track |
+ | `/lang` · `/setlang` · `/language` | Get/set group language |
+ | `/kang` | Steal a sticker into your pack |
+ | `/mmf` · `/font` · `/style` | Meme/text styling utilities |
+
+ **Admin & sudo** *(owner/sudo only)*
+
+ | Command | Description |
+ |---|---|
+ | `/auth` · `/unauth` · `/authlist` | Manage authorized users |
+ | `/block` · `/unblock` · `/blocklist` | Manage blocked users |
+ | `/addsudo` · `/rmsudo` · `/sudolist` | Manage sudo users |
+ | `/tagall` | Mention everyone in the group |
+ | `/broadcast` · `/fbroadcast` · `/stats` | Broadcast to chats / show stats |
+ | `/reboot` | Restart the bot |
+
+ > Tip: `/start` opens an inline menu that lists these commands by category.
+
  Deploy
 ------
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nub-coders/nub-music-bot)
