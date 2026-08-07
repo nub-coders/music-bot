@@ -8,7 +8,7 @@
 
  Telegram music/voice-chat bot for streaming audio (and video) into group voice chats.
 
- ![Bot Logo](https://raw.githubusercontent.com/nub-coders/nub-music-bot/refs/heads/main/music.jpg)
+ ![Bot Logo](music.jpg)
 
  Summary
  -------
