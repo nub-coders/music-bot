@@ -108,15 +108,15 @@ def _detect_and_strip_button_emoji(text, icon_id):
     if not isinstance(text, str) or not text:
         return text, icon_id
 
-    # 1. Handle exact playback controls
+    # 1. Handle exact playback controls (keep text as fallback)
     if text == "▷":
-        return "\u200b", Emoji.RESUME
+        return "▷", Emoji.RESUME
     if text == "II":
-        return "\u200b", Emoji.PAUSE
+        return "II", Emoji.PAUSE
     if text == "‣‣I":
-        return "\u200b", Emoji.SKIP
+        return "‣‣I", Emoji.SKIP
     if text == "▢":
-        return "\u200b", Emoji.STOP
+        return "▢", Emoji.STOP
 
     # 2. Strip leading 📌 if present (e.g. "📌Pɪɴ ✅")
     if text.startswith("📌"):
