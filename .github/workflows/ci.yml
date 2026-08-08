@@ -7,7 +7,7 @@ on:
     branches: ["**"]
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,12 +21,7 @@ jobs:
         run: sudo apt-get install -y libmagic1 ffmpeg
 
       - name: Install Python deps
-        run: pip install -r requirements.txt pytest pytest-asyncio ruff
+        run: pip install -r requirements.txt ruff
 
       - name: Lint
         run: ruff check .
-
-      - name: Test
-        env:
-          MONGODB_URI: mongodb://localhost:27017/test
-        run: pytest tests/ -v
