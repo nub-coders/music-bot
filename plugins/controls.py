@@ -287,6 +287,78 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
         await callback_query.answer("❌ An error occurred. Please try again.", show_alert=True)
 
 
+@Client.on_callback_query(filters.regex(r"^c?playnow_"))
+async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
+    """Jump straight to a queued track — the button on its 'added to queue' card.
+
+    Admins, plus whoever queued *this* track: same rule the skip button uses for
+    the currently-playing song. Not @admin_only() because the exemption depends
+    on the entry's `by`, which is only known after we look it up.
+    """
+    user = callback_query.from_user
+    if not user or user.id in BLOCK:
+        await callback_query.answer(Messages.NO_PERM_SKIP, show_alert=True)
+        return
+    if user.id != OWNER_ID and user.id not in SUDO and not allow_play(user.id):
+        await callback_query.answer(Messages.RATE_LIMITED, show_alert=True)
+        return
+
+    data = callback_query.data
+    try:
+        # The button lives in the group; for cplay the queue lives under the
+        # linked channel. Authorize against the group, pop from the queue's chat.
+        auth_chat_id = callback_query.message.chat.id
+        chat_id = (
+            (await session.get_chat(auth_chat_id)).linked_chat.id
+            if data.startswith("c")
+            else auth_chat_id
+        )
+        track_id = data.split("_", 1)[1]
+
+        # Peek before claiming: the requester exemption needs the entry's `by`,
+        # and a track that vanishes between peek and pop just reports TRACK_GONE.
+        queued_by = next(
+            (e.get("by") for e in (state.queues.get(chat_id) or [])
+             if e.get("_track_id") == track_id),
+            None,
+        )
+        if getattr(queued_by, "id", None) != user.id and not await is_authorized(
+            client, auth_chat_id, user.id
+        ):
+            await callback_query.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
+            return
+
+        song = await state.pop_track(chat_id, track_id)
+        if not song:
+            await callback_query.answer(Messages.TRACK_GONE, show_alert=True)
+            return
+
+        await callback_query.answer()
+        await callback_query.message.reply(
+            Messages.PLAYING_NOW.format(user.mention()), link_preview_options=None)
+
+        try:
+            await call_py.pause(chat_id)
+        except Exception as e:
+            logger.warning(f"Could not pause before play-now: {e}")
+
+        await join_call(
+            song['message'],
+            song['title'],
+            song['yt_link'],
+            song['chat'],
+            song['by'],
+            song['duration'],
+            song['mode'],
+            song['thumb'],
+            song.get('stream_url'),
+            yt_task=song.get('_yt_task'),
+        )
+    except Exception as e:
+        logger.error(f"Error in play-now button handler: {e}")
+        await callback_query.answer(Messages.ERROR_OCCURRED, show_alert=True)
+
+
 @Client.on_message(filters.command("loop"))
 @admin_only()
 async def loop_handler_func(client, message):

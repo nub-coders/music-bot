@@ -46,6 +46,53 @@ logger = logging.getLogger(__name__)
 PREMIUM_REQUIRED_ERRORS = (PremiumAccountRequired, PremiumAccountRequiredForbidden)
 
 _EMOJI_TAG_RE = re.compile(r'<emoji id="\d+">(.*?)</emoji>')
+_LEADING_EMOJI_RE = re.compile(r'^([\u2139]|[^\w\s\d])[\ufe0f\ufe0e]*\s+')
+
+
+def strip_unicode_emoji_markup(markup):
+    """Returns a NEW InlineKeyboardMarkup with leading unicode emoji removed
+    from the text of every button that has an icon_custom_emoji_id set.
+    Never mutates the input markup or its buttons."""
+    if not isinstance(markup, InlineKeyboardMarkup):
+        return markup
+    stripped_rows = []
+    for row in markup.inline_keyboard:
+        stripped_rows.append([
+            InlineKeyboardButton(
+                text=_LEADING_EMOJI_RE.sub("", btn.text) if btn.icon_custom_emoji_id else btn.text,
+                callback_data=btn.callback_data,
+                url=btn.url,
+                web_app=btn.web_app,
+                login_url=btn.login_url,
+                user_id=btn.user_id,
+                switch_inline_query=btn.switch_inline_query,
+                switch_inline_query_current_chat=btn.switch_inline_query_current_chat,
+                callback_game=btn.callback_game,
+                requires_password=btn.requires_password,
+                pay=btn.pay,
+                copy_text=btn.copy_text,
+                icon_custom_emoji_id=btn.icon_custom_emoji_id,
+                style=btn.style,
+            )
+            for btn in row
+        ])
+    return InlineKeyboardMarkup(stripped_rows)
+
+
+def _patch_button_init_for_premium():
+    _original_init = InlineKeyboardButton.__init__
+
+    def _patched_init(self, text, *args, **kwargs):
+        icon_id = kwargs.get("icon_custom_emoji_id")
+        if icon_id is None and len(args) >= 12:
+            icon_id = args[11]
+
+        if icon_id:
+            text = _LEADING_EMOJI_RE.sub("", text)
+
+        _original_init(self, text, *args, **kwargs)
+
+    InlineKeyboardButton.__init__ = _patched_init
 
 
 def strip_custom_emoji_text(text):
@@ -151,6 +198,14 @@ def apply_premium_emoji(available):
     """
     if available:
         logger.info("Premium emoji available — messages will use custom emoji.")
+        # Monkey-patch InlineKeyboardButton.__init__ to strip leading emojis
+        _patch_button_init_for_premium()
+
+        # Strip leading unicode emoji from already built markups (e.g. Buttons.HELP_HOME, .BACK)
+        from utils.button import Buttons
+        for name, value in list(vars(Buttons).items()):
+            if isinstance(value, InlineKeyboardMarkup):
+                setattr(Buttons, name, strip_unicode_emoji_markup(value))
         return True
 
     # EmojiTag.X -> plain glyph. Templates that f-string EmojiTag at call time

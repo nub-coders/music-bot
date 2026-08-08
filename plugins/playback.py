@@ -1,4 +1,6 @@
 """plugins/playback.py — /play command plus its media-download, thumbnail and queue helpers."""
+import uuid
+
 from plugins._common import *  # noqa: F401,F403
 from sources import resolve_sources
 
@@ -191,7 +193,6 @@ async def play_handler_func(client, message):
 
     youtube_link = None
     media_info = {}
-    track_id = None
     _yt_task = None
     _playlist_rest = []
 
@@ -296,8 +297,6 @@ async def play_handler_func(client, message):
         _sources = await resolve_sources(search_query)
         search_query = _sources[0][0]
         _playlist_rest = _sources[1:]
-        import uuid as _uuid
-        track_id = str(_uuid.uuid4())
 
         # Placeholder values — join_call will wait for the task to resolve
         title = trim_title(search_query[:25])
@@ -410,7 +409,7 @@ async def play_handler_func(client, message):
         # For regular mode, use the joined chat
         target_chat = joined_chat
 
-    await put_queue(
+    track_id = await put_queue(
         massage,
         trim_title(title),
         client,
@@ -422,14 +421,12 @@ async def play_handler_func(client, message):
         thumb,
         force_play,
         stream_url,
-        track_id=track_id,
         yt_task=_yt_task,
     )
     # Playlist: queue the remaining tracks behind the first. Each resolves
     # lazily via its own handle_youtube task when it reaches the queue head
     # (join_call awaits _yt_task), exactly like any normal queued search.
     for _url, _ptitle in _playlist_rest:
-        import uuid as _uuid
         _rest_task = asyncio.create_task(handle_youtube(_url))
         _rest_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
         await put_queue(
@@ -444,7 +441,6 @@ async def play_handler_func(client, message):
             None,
             False,
             None,
-            track_id=str(_uuid.uuid4()),
             yt_task=_rest_task,
         )
     if _playlist_rest:
@@ -463,21 +459,7 @@ async def play_handler_func(client, message):
                     except Exception:
                         duration = "N/A"
                 position = len(state.queues.get(message.chat.id)) if state.queues.get(target_chat.id) else 1
-                keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("▷", callback_data=f"{'c' if channel_mode else ''}resume", style=ButtonStyle.SUCCESS),
-                InlineKeyboardButton("II", callback_data=f"{'c' if channel_mode else ''}pause", style=ButtonStyle.DEFAULT),
-                InlineKeyboardButton("‣‣I", callback_data=f"{'c' if channel_mode else ''}skip", style=ButtonStyle.PRIMARY),
-                InlineKeyboardButton("▢", callback_data=f"{'c' if channel_mode else ''}end", style=ButtonStyle.DANGER),
-            ],
-        [
-            InlineKeyboardButton(
-                text="✖ Close",
-                callback_data="close",
-                style=ButtonStyle.DANGER
-            )
-        ],
-        ])
+                keyboard = Buttons.queue_markup(track_id, channel_mode)
                 is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
                 video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None
                 if video_id:
@@ -520,6 +502,7 @@ async def put_queue(
         _duration_in_seconds = (time_to_seconds(duration) - 3) if duration else 0
     except Exception:
         _duration_in_seconds = 0
+    track_id = track_id or uuid.uuid4().hex[:12]
     put = QueueEntry(
         message=message,
         title=trim_title(title),
@@ -549,3 +532,4 @@ async def put_queue(
             if not check:
                state.queues[chat.id] = []
             state.queues[chat.id].append(put)
+    return track_id

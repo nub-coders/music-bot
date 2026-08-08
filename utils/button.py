@@ -76,6 +76,16 @@ class Buttons:
         ])
 
     @staticmethod
+    def queue_markup(track_id, channel_mode=False):
+        """Playback controls plus a Play Now jump for this freshly queued track."""
+        prefix = 'c' if channel_mode else ''
+        rows = list(Buttons.playback_markup(channel_mode).inline_keyboard)
+        rows.insert(1, [
+            InlineKeyboardButton("‣ ᴘʟᴀʏ ɴᴏᴡ", callback_data=f"{prefix}playnow_{track_id}", style=ButtonStyle.SUCCESS, icon_custom_emoji_id=Emoji.PLAY),
+        ])
+        return InlineKeyboardMarkup(rows)
+
+    @staticmethod
     def force_play_markup(youtube_url):
         """Generates the markup for the force play results."""
         return InlineKeyboardMarkup([[

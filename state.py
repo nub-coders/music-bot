@@ -35,5 +35,15 @@ class SessionStore:
             self.active.add(chat_id)
             return not was_active
 
+    async def pop_track(self, chat_id, track_id):
+        """Remove and return the queued entry with this _track_id, or None if it
+        is already gone (played, skipped, or claimed by another Play Now tap)."""
+        async with self.lock(chat_id):
+            queue = self.queues.get(chat_id) or []
+            for i, entry in enumerate(queue):
+                if entry.get("_track_id") == track_id:
+                    return queue.pop(i)
+        return None
+
 
 state = SessionStore()

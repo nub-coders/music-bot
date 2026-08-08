@@ -108,6 +108,8 @@ class Messages:
     ASSISTANT_NOT_STREAMING = f"{EmojiTag.INFO} <b>ᴀssɪsᴛᴀɴᴛ ɪs ɴᴏᴛ sᴛʀᴇᴀᴍɪɴɢ ᴀɴʏᴛʜɪɴɢ.</b>"
     NO_ACTIVE_STREAM = f"{EmojiTag.ERROR} <b>ɴᴏ ᴀᴄᴛɪᴠᴇ sᴛʀᴇᴀᴍ ꜰᴏᴜɴᴅ.</b>"
     SKIPPED_SUCCESS = f"{EmojiTag.SUCCESS} <b>sᴋɪᴘᴘᴇᴅ ᴛᴏ ɴᴇxᴛ ᴛʀᴀᴄᴋ.</b>"
+    PLAYING_NOW = f"{EmojiTag.PLAY} <b>ᴊᴜᴍᴘɪɴɢ ᴛᴏ ᴛʜɪs ᴛʀᴀᴄᴋ...</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
+    TRACK_GONE = f"{EmojiTag.INFO} <b>ᴛʜɪs ᴛʀᴀᴄᴋ ɪs ɴᴏ ʟᴏɴɢᴇʀ ɪɴ ᴛʜᴇ ǫᴜᴇᴜᴇ.</b>"
     QUEUE_EMPTY_STREAM_ENDED = f"{EmojiTag.QUEUE_ICON} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ. sᴛʀᴇᴀᴍ sᴛᴏᴘᴘᴇᴅ.</b>"
 
     NO_MSG_FOR_BROADCAST = f"{EmojiTag.WARNING} <b>ɴᴏ ᴍᴇssᴀɢᴇ ᴀᴠᴀɪʟᴀʙʟᴇ ꜰᴏʀ ʙʀᴏᴀᴅᴄᴀsᴛ.</b>"

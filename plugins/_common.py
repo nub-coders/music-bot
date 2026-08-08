@@ -73,6 +73,30 @@ def _is_admin_member_status(status):
         ChatMemberStatus.OWNER.value,
         ChatMemberStatus.ADMINISTRATOR.value,
     )
+async def is_authorized(client, chat_id, user_id, allow_auth_users=True):
+    """May this user drive transport controls in this chat?
+
+    Owner / sudo / bot-admin / chat-AUTH user / Telegram chat admin. The shared
+    answer behind @admin_only() and any handler that needs the same call plus an
+    exemption of its own. In-memory checks first; the cached get_chat_member
+    round-trip only happens when none of them matched.
+    """
+    if user_id in get_admin_ids(f"{ggg}/admin.txt"):
+        return True
+    if str(OWNER_ID) == str(user_id) or user_id in SUDO:
+        return True
+    if allow_auth_users and user_id in AUTH.get(str(chat_id), []):
+        return True
+
+    cache_key = (chat_id, user_id)
+    now = time.time()
+    cached_member = _admin_member_cache.get(cache_key)
+    if cached_member and cached_member[1] > now:
+        return _is_admin_member_status(cached_member[0])
+    chat_member = await client.get_chat_member(chat_id, user_id)
+    status_value = _chat_type_value(chat_member.status)
+    _admin_member_cache[cache_key] = (status_value, now + 60)
+    return _is_admin_member_status(status_value)
 def admin_only():
     def decorator(func):
         @wraps(func)
@@ -102,48 +126,19 @@ def admin_only():
                         await update.reply(Messages.ADMIN_UNKNOWN_USER, reply_to_message_id=reply_id, link_preview_options=None)
                     return
 
-                # --- Fast in-memory checks first (no network I/O) ---
-                is_admin = user_id in get_admin_ids(f"{ggg}/admin.txt")
-                is_owner = str(OWNER_ID) == str(user_id)
-                is_sudo = user_id in SUDO
-
-                is_auth_user = False
-                chat_key = str(chat_id)
-                if chat_key in AUTH:
-                    is_auth_user = user_id in AUTH[chat_key]
-
-                if not isinstance(update, CallbackQuery):
-                    if command and str(command).endswith('del'):
-                        is_auth_user = False
-
-                is_authorized = is_admin or is_owner or is_sudo or is_auth_user
-
-                # --- Song-owner skip check (in-memory, no I/O) ---
-                is_song_owner_skip = False
+                # --- Song-owner skip: whoever queued the current track may skip
+                # it, admin or not (in-memory, no I/O). ---
                 if command in ("skip", "cskip"):
-                    _cid = update.message.chat.id if isinstance(update, CallbackQuery) else update.chat.id
-                    song = state.playing.get(_cid)
-                    if song and hasattr(song.get("by"), "id") and song["by"].id == user_id:
-                        is_song_owner_skip = True
+                    song = state.playing.get(chat_id)
+                    if song and getattr(song.get("by"), "id", None) == user_id:
+                        logger.info(f"User {user_id} authorized for {func.__name__} (song owner)")
+                        return await func(client, update)
 
-                # --- Short-circuit: skip network call if already authorized ---
-                if is_authorized or is_song_owner_skip:
-                    logger.info(f"User {user_id} authorized for {func.__name__} (fast-path)")
-                    return await func(client, update)
-
-                # --- Fallback: check Telegram group admin status (1 network call) ---
-                cache_key = (chat_id, user_id)
-                now = time.time()
-                cached_member = _admin_member_cache.get(cache_key)
-                if cached_member and cached_member[1] > now:
-                    is_chat_admin = _is_admin_member_status(cached_member[0])
-                else:
-                    chat_member = await client.get_chat_member(chat_id, user_id)
-                    status_value = _chat_type_value(chat_member.status)
-                    _admin_member_cache[cache_key] = (status_value, now + 60)
-                    is_chat_admin = _is_admin_member_status(status_value)
-
-                if not is_chat_admin:
+                # AUTH-listed users are trusted for everything except /*del.
+                allow_auth_users = isinstance(update, CallbackQuery) or not (
+                    command and str(command).endswith('del')
+                )
+                if not await is_authorized(client, chat_id, user_id, allow_auth_users):
                     logger.warning(f"User {user_id} not authorized for command {command}")
                     if isinstance(update, CallbackQuery):
                         await update.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
