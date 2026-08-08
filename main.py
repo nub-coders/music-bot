@@ -16,6 +16,7 @@ from tools import *
 from config import *
 from youtube import check_and_update_ytdlp, export_browser_cookies, refresh_cookies_loop
 from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes
+from utils.premium_emoji import setup_premium_emoji
 
 logging.basicConfig(
     level=logging.INFO,
@@ -135,6 +136,11 @@ async def main():
         ADMIN.extend(db_admins)
         client_name = f"{bot.me.first_name} {bot.me.last_name or ''}".strip()
         logger.info(f"Bot authorized successfully! 🎉 Authorized as: {client_name}")
+
+        # Ask Telegram once whether this bot may send premium/custom emoji, then
+        # bake the answer into the emoji constants. Everything built after this
+        # line — messages, buttons — is already correct; nothing re-checks.
+        await setup_premium_emoji(bot, LOGGER_ID, OWNER_ID)
         db_task(async_user_sessions.update_one(
             {"bot_id": bot.me.id},
             {"$setOnInsert": {"bot_id": bot.me.id}},
