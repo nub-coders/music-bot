@@ -32,12 +32,12 @@ class Emoji:
     HEADPHONES     = 6007938409857815902   # 🎧  TgAndroidIcons
     MIC            = 5897554554894946515   # 🎤  TgAndroidIcons
     BROADCAST      = 5771695636411847302   # 📢  TgAndroidIcons
-    PLAY           = 5857290546459973028   # 🚀  DMJUnigramAnimationEmoji (used as Play)
-    SKIP           = 5886451926995833684   # ⬇️  TgAndroidIcons (next)
-    RESUME         = 5825794181183836432   # ✔️  TgAndroidIcons (resume)
-    PAUSE          = 5909201569898827582   # 🔔  TgAndroidIcons (pause indicator)
-    STOP           = 5877413297170419326   # 🚫  TgAndroidIcons (stop/end)
-    LOOP           = 6005843436479975944   # 🔁  TgAndroidIcons
+    PLAY           = 5775981206319402773   # 🎞  TgAndroidIcons
+    SKIP           = 5875506366050734240   # ➡️  TgAndroidIcons
+    RESUME         = 5775981206319402773   # 🎞  TgAndroidIcons
+    PAUSE          = 5890838600433536921   # 🔇  TgAndroidIcons
+    STOP           = 5872829476143894491   # 🚫  TgAndroidIcons
+    LOOP           = 5839200986022812209   # 🔄  TgAndroidIcons
     BOLT           = 5843553939672274145   # ⚡️  TgAndroidIcons
 
     # ── Status / Info ─────────────────────────────────────────────────────────
@@ -101,12 +101,12 @@ class EmojiTag:
     HEADPHONES     = f'<emoji id="{Emoji.HEADPHONES}">🎧</emoji>'
     MIC            = f'<emoji id="{Emoji.MIC}">🎤</emoji>'
     BROADCAST      = f'<emoji id="{Emoji.BROADCAST}">📢</emoji>'
-    PLAY           = f'<emoji id="{Emoji.PLAY}">▶️</emoji>'
-    SKIP           = f'<emoji id="{Emoji.SKIP}">⏭</emoji>'
-    RESUME         = f'<emoji id="{Emoji.RESUME}">⏯</emoji>'
-    PAUSE          = f'<emoji id="{Emoji.PAUSE}">⏸</emoji>'
-    STOP           = f'<emoji id="{Emoji.STOP}">⏹</emoji>'
-    LOOP           = f'<emoji id="{Emoji.LOOP}">🔁</emoji>'
+    PLAY           = f'<emoji id="{Emoji.PLAY}">🎞</emoji>'
+    SKIP           = f'<emoji id="{Emoji.SKIP}">➡️</emoji>'
+    RESUME         = f'<emoji id="{Emoji.RESUME}">🎞</emoji>'
+    PAUSE          = f'<emoji id="{Emoji.PAUSE}">🔇</emoji>'
+    STOP           = f'<emoji id="{Emoji.STOP}">🚫</emoji>'
+    LOOP           = f'<emoji id="{Emoji.LOOP}">🔄</emoji>'
     BOLT           = f'<emoji id="{Emoji.BOLT}">⚡</emoji>'
 
     NOW_PLAYING    = f'<emoji id="{Emoji.NOW_PLAYING}">🎵</emoji>'

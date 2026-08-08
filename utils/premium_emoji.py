@@ -65,7 +65,7 @@ _UNICODE_TO_EMOJI_ID = {
     "✅": Emoji.SUCCESS,
     "❌": Emoji.ERROR,
     "⚠️": Emoji.WARNING,
-    "🚫": Emoji.BLOCKED,
+    "🚫": Emoji.STOP,
     "🔐": Emoji.LOCK,
     "🔒": Emoji.LOCK,
     "🔓": Emoji.UNLOCK,
@@ -81,9 +81,9 @@ _UNICODE_TO_EMOJI_ID = {
     "◀️": Emoji.BACK,
     "✖": Emoji.CLOSE,
     "🏠": Emoji.HOME,
-    "🔄": Emoji.REFRESH,
+    "🔄": Emoji.LOOP,
     "🔗": Emoji.REPO,
-    "➡️": Emoji.NEXT,
+    "➡️": Emoji.SKIP,
     "➕": Emoji.ADD,
     "📌": Emoji.PIN,
     "💬": Emoji.CHAT,
@@ -101,6 +101,8 @@ _UNICODE_TO_EMOJI_ID = {
     "⬇️": Emoji.SKIP,
     "⬇": Emoji.SKIP,
     "‣": Emoji.PLAY,
+    "🎞": Emoji.PLAY,
+    "🔇": Emoji.PAUSE,
 }
 
 
