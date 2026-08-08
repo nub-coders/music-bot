@@ -48,6 +48,109 @@ PREMIUM_REQUIRED_ERRORS = (PremiumAccountRequired, PremiumAccountRequiredForbidd
 _EMOJI_TAG_RE = re.compile(r'<emoji id="\d+">(.*?)</emoji>')
 _LEADING_EMOJI_RE = re.compile(r'^([\u2139]|[^\w\s\d])[\ufe0f\ufe0e]*\s+')
 
+_UNICODE_TO_EMOJI_ID = {
+    "🎵": Emoji.MUSIC_NOTE,
+    "🎶": Emoji.MUSIC_NOTES,
+    "🎧": Emoji.HEADPHONES,
+    "🎤": Emoji.MIC,
+    "📢": Emoji.BROADCAST,
+    "🚀": Emoji.ROCKET,
+    "▶️": Emoji.PLAY,
+    "▷": Emoji.RESUME,
+    "II": Emoji.PAUSE,
+    "‣‣I": Emoji.SKIP,
+    "▢": Emoji.STOP,
+    "🔁": Emoji.LOOP,
+    "⚡": Emoji.PING,
+    "✅": Emoji.SUCCESS,
+    "❌": Emoji.ERROR,
+    "⚠️": Emoji.WARNING,
+    "🚫": Emoji.BLOCKED,
+    "🔐": Emoji.LOCK,
+    "🔒": Emoji.LOCK,
+    "🔓": Emoji.UNLOCK,
+    "🛡": Emoji.SHIELD,
+    "👑": Emoji.CROWN,
+    "💎": Emoji.DIAMOND,
+    "⭐️": Emoji.STAR,
+    "👤": Emoji.USER,
+    "👥": Emoji.USERS,
+    "🔑": Emoji.KEY,
+    "🔥": Emoji.FIRE,
+    "🌟": Emoji.SPARKLE_STAR,
+    "◀️": Emoji.BACK,
+    "✖": Emoji.CLOSE,
+    "🏠": Emoji.HOME,
+    "🔄": Emoji.REFRESH,
+    "🔗": Emoji.REPO,
+    "➡️": Emoji.NEXT,
+    "➕": Emoji.ADD,
+    "📌": Emoji.PIN,
+    "💬": Emoji.CHAT,
+    "✉️": Emoji.SEND,
+    "🌐": Emoji.GLOBE,
+    "🛠️": Emoji.TOOLS,
+    "🛠": Emoji.TOOLS,
+    "🎨": Emoji.KANG,
+    "⚙️": Emoji.SETTINGS,
+    "⚙": Emoji.SETTINGS,
+    "ℹ️": Emoji.HELP,
+    "ℹ": Emoji.HELP,
+    "📊": Emoji.STATS,
+    "🎬": Emoji.ROCKET,
+    "⬇️": Emoji.SKIP,
+    "⬇": Emoji.SKIP,
+    "‣": Emoji.PLAY,
+}
+
+
+def _detect_and_strip_button_emoji(text, icon_id):
+    if not isinstance(text, str) or not text:
+        return text, icon_id
+
+    # 1. Handle exact playback controls
+    if text == "▷":
+        return "\u200b", Emoji.RESUME
+    if text == "II":
+        return "\u200b", Emoji.PAUSE
+    if text == "‣‣I":
+        return "\u200b", Emoji.SKIP
+    if text == "▢":
+        return "\u200b", Emoji.STOP
+
+    # 2. Strip leading 📌 if present (e.g. "📌Pɪɴ ✅")
+    if text.startswith("📌"):
+        text = text[1:].strip()
+        icon_id = Emoji.PIN
+
+    # 3. Detect trailing toggle checkmarks/crosses (e.g. "Group ✅", "From bot ⬇️", "BROADCAST🚀🚀")
+    for k, val in _UNICODE_TO_EMOJI_ID.items():
+        if text.endswith(k) or (k in text and text.endswith(f" {k}")):
+            clean_text = text.rsplit(k, 1)[0].strip()
+            while clean_text.endswith(k):
+                clean_text = clean_text[:-len(k)].strip()
+            if clean_text:
+                text = clean_text
+                icon_id = val
+                break
+
+    # 4. If we already have an icon_id, strip any remaining leading emoji/space
+    if icon_id:
+        text = _LEADING_EMOJI_RE.sub("", text)
+        return text, icon_id
+
+    # 5. Otherwise, detect leading emoji (e.g. "🎵 Playback")
+    match = _LEADING_EMOJI_RE.match(text)
+    if match:
+        emoji_char = match.group(1)
+        for k, val in _UNICODE_TO_EMOJI_ID.items():
+            if emoji_char == k or text.startswith(k):
+                icon_id = val
+                text = _LEADING_EMOJI_RE.sub("", text)
+                break
+
+    return text, icon_id
+
 
 def strip_unicode_emoji_markup(markup):
     """Returns a NEW InlineKeyboardMarkup with leading unicode emoji removed
@@ -57,25 +160,28 @@ def strip_unicode_emoji_markup(markup):
         return markup
     stripped_rows = []
     for row in markup.inline_keyboard:
-        stripped_rows.append([
-            InlineKeyboardButton(
-                text=_LEADING_EMOJI_RE.sub("", btn.text) if btn.icon_custom_emoji_id else btn.text,
-                callback_data=btn.callback_data,
-                url=btn.url,
-                web_app=btn.web_app,
-                login_url=btn.login_url,
-                user_id=btn.user_id,
-                switch_inline_query=btn.switch_inline_query,
-                switch_inline_query_current_chat=btn.switch_inline_query_current_chat,
-                callback_game=btn.callback_game,
-                requires_password=btn.requires_password,
-                pay=btn.pay,
-                copy_text=btn.copy_text,
-                icon_custom_emoji_id=btn.icon_custom_emoji_id,
-                style=btn.style,
+        stripped_row = []
+        for btn in row:
+            text, icon_id = _detect_and_strip_button_emoji(btn.text, btn.icon_custom_emoji_id)
+            stripped_row.append(
+                InlineKeyboardButton(
+                    text=text,
+                    callback_data=btn.callback_data,
+                    url=btn.url,
+                    web_app=btn.web_app,
+                    login_url=btn.login_url,
+                    user_id=btn.user_id,
+                    switch_inline_query=btn.switch_inline_query,
+                    switch_inline_query_current_chat=btn.switch_inline_query_current_chat,
+                    callback_game=btn.callback_game,
+                    requires_password=btn.requires_password,
+                    pay=btn.pay,
+                    copy_text=btn.copy_text,
+                    icon_custom_emoji_id=icon_id,
+                    style=btn.style,
+                )
             )
-            for btn in row
-        ])
+        stripped_rows.append(stripped_row)
     return InlineKeyboardMarkup(stripped_rows)
 
 
@@ -84,11 +190,19 @@ def _patch_button_init_for_premium():
 
     def _patched_init(self, text, *args, **kwargs):
         icon_id = kwargs.get("icon_custom_emoji_id")
+        is_positional = False
         if icon_id is None and len(args) >= 12:
             icon_id = args[11]
+            is_positional = True
 
-        if icon_id:
-            text = _LEADING_EMOJI_RE.sub("", text)
+        text, icon_id = _detect_and_strip_button_emoji(text, icon_id)
+
+        if is_positional:
+            args = list(args)
+            args[11] = icon_id
+            args = tuple(args)
+        else:
+            kwargs["icon_custom_emoji_id"] = icon_id
 
         _original_init(self, text, *args, **kwargs)
 
