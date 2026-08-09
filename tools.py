@@ -146,7 +146,7 @@ async def remove_active_chat(chat_id):
     clear_directory(chat_dir)
 
 
-async def update_progress_button(message, duration_str, chat):
+async def update_progress_button(message, duration_str, chat, markup):
     try:
         total_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(duration_str.split(":"))))
 
@@ -174,7 +174,10 @@ async def update_progress_button(message, duration_str, chat):
             progress_text = f"{elapsed_str} {progress_bar} {duration_str}"
 
             # Update keyboard in-place (insert progress bar between first and last rows)
-            keyboard = message.reply_markup.inline_keyboard
+            # Uses the markup we built, not message.reply_markup: an icon only
+            # survives a read-back if the echoed button still carries its style,
+            # and the emoji vanishing on the first edit says it does not.
+            keyboard = markup.inline_keyboard
             progress_row = [InlineKeyboardButton(text=progress_text, callback_data="ignore")]
             updated_keyboard = keyboard[:1] + [progress_row] + keyboard[1:]
 
@@ -557,7 +560,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.info(f"[join_call] ⏱ Now-playing message sent in {_msg_ms:.1f}ms for chat {chat_id}")
 
         logger.debug(f"[join_call] Creating progress update task for duration: {duration}")
-        asyncio.create_task(update_progress_button(sent_message, duration, chat))
+        asyncio.create_task(update_progress_button(sent_message, duration, chat, keyboard))
 
         try:
             logger.debug("[join_call] Attempting to delete original message")
