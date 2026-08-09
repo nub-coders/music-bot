@@ -159,15 +159,11 @@ def _detect_and_strip_button_emoji(text, icon_id):
     if not isinstance(text, str) or not text:
         return text, icon_id
 
-    # 1. Handle exact playback controls (keep text as fallback)
-    if text == "▷":
-        return "▷", Emoji.RESUME
-    if text == "II":
-        return "II", Emoji.PAUSE
-    if text == "‣‣I":
-        return "‣‣I", Emoji.SKIP
-    if text == "▢":
-        return "▢", Emoji.STOP
+    # 1. A button whose whole label is one of the fallback shapes: the icon
+    #    replaces it, so the label goes blank — zero-width space, because
+    #    Telegram rejects "". Non-premium never gets here and keeps the shape.
+    if text in _BUTTON_ONLY_GLYPHS:
+        return "​", _UNICODE_TO_EMOJI_ID[text]
 
     # 2. Strip leading 📌 if present (e.g. "📌Pɪɴ ✅")
     if text.startswith("📌"):
@@ -417,7 +413,9 @@ if __name__ == "__main__":  # python -m utils.premium_emoji
     b = InlineKeyboardButton("🎵 ᴘʟᴀʏʙᴀᴄᴋ", callback_data="x", icon_custom_emoji_id=NOTE)
     assert (b.text, b.icon_custom_emoji_id) == ("ᴘʟᴀʏʙᴀᴄᴋ", NOTE), b.text
     b = InlineKeyboardButton("▷", callback_data="x", icon_custom_emoji_id=Emoji.RESUME)
-    assert (b.text, b.icon_custom_emoji_id) == ("▷", Emoji.RESUME)
+    assert (b.text, b.icon_custom_emoji_id) == ("​", Emoji.RESUME), repr(b.text)
+    b = InlineKeyboardButton("‣ ᴘʟᴀʏ ɴᴏᴡ", callback_data="x", icon_custom_emoji_id=Emoji.PLAY)
+    assert (b.text, b.icon_custom_emoji_id) == ("ᴘʟᴀʏ ɴᴏᴡ", Emoji.PLAY), repr(b.text)
     assert _upgrade_unicode_emoji("hi 🎵") == f'hi <emoji id="{NOTE}">🎵</emoji>'
     assert _upgrade_unicode_emoji(EmojiTag.MUSIC_NOTE) == EmojiTag.MUSIC_NOTE  # no double wrap
     assert _upgrade_unicode_emoji("<code>🎵</code>") == "<code>🎵</code>"      # entity would nest
@@ -430,6 +428,8 @@ if __name__ == "__main__":  # python -m utils.premium_emoji
     assert PREMIUM_EMOJI is False
     b = InlineKeyboardButton("🎵 ᴘʟᴀʏʙᴀᴄᴋ", callback_data="x", icon_custom_emoji_id=NOTE)
     assert (b.text, b.icon_custom_emoji_id) == ("🎵 ᴘʟᴀʏʙᴀᴄᴋ", None), b.text
+    b = InlineKeyboardButton("▷", callback_data="x", icon_custom_emoji_id=Emoji.RESUME)
+    assert (b.text, b.icon_custom_emoji_id) == ("▷", None), repr(b.text)
     assert Emoji.MUSIC_NOTE is None and "<emoji" not in EmojiTag.MUSIC_NOTE
     out = parse(f'<emoji id="{NOTE}">🎵</emoji> hi')
     assert out["message"] == "🎵 hi" and not out["entities"], out
