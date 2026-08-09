@@ -15,7 +15,7 @@ class Messages:
         f"{EmojiTag.ADD} <b>ᴀᴅᴅᴇᴅ ᴛᴏ ǫᴜᴇᴜᴇ</b>\n\n"
         "<b>‣ ᴛɪᴛʟᴇ:</b> {1}\n"
         "<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{2}</code>\n"
-        "<b>‣ ᴘᴏsɪᴛɪᴏɴ:</b> <code>#{3}</code>\n"
+        "<b>‣ ᴘᴏsɪᴛɪᴏɴ:</b> {3}\n"
         "<b>‣ ᴍᴏᴅᴇ:</b> <code>{0}</code>"
     )
 

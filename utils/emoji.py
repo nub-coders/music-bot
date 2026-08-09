@@ -93,6 +93,21 @@ class Emoji:
     BLOCKLIST_ICON = 5877413297170419326   # 🚫  TgAndroidIcons
     HELP           = 5879785854284599288   # ℹ️  TgAndroidIcons
 
+    # ── Digits ────────────────────────────────────────────────────────────────
+    # Indexed by the digit itself, so any number renders by composing them.
+    DIGITS = {
+        "0": 5794310013614824017,           # 0️⃣  TgAndroidIcons
+        "1": 5794182096603847292,           # 1️⃣
+        "2": 5794303034292968945,           # 2️⃣
+        "3": 5794031944547178894,           # 3️⃣
+        "4": 5793901252987330401,           # 4️⃣
+        "5": 5794066823976592976,           # 5️⃣
+        "6": 5794235255414069703,           # 6️⃣
+        "7": 5794030595927448202,           # 7️⃣
+        "8": 5794426162415409242,           # 8️⃣
+        "9": 5793905801357695657,           # 9️⃣
+    }
+
 
 class EmojiTag:
     """Pre-formatted HTML custom emoji tags for messages."""
@@ -153,4 +168,10 @@ class EmojiTag:
     SUDO           = f'<emoji id="{Emoji.SUDO}">👑</emoji>'
     OWNER          = f'<emoji id="{Emoji.OWNER}">⚙️</emoji>'
     HELP           = f'<emoji id="{Emoji.HELP}">ℹ️</emoji>'
+
+
+def keycaps(number):
+    """123 -> '1️⃣2️⃣3️⃣'. Plain keycaps; HTML.parse upgrades them to the custom
+    digit emoji when the bot may send those (see utils/premium_emoji.py)."""
+    return "".join(f"{d}️⃣" for d in str(number))
 

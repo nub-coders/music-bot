@@ -47,7 +47,7 @@ from pyrogram.errors.exceptions.forbidden_403 import (
 from pyrogram.parser.html import HTML
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from utils.emoji import Emoji, EmojiTag
+from utils.emoji import Emoji, EmojiTag, keycaps
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +128,17 @@ _UNICODE_TO_EMOJI_ID = {
 # may only cover an actual emoji, so message text never upgrades these.
 _BUTTON_ONLY_GLYPHS = {"II", "‣‣I", "▷", "▢", "‣"}
 
-# Longest match first, so "⚙️" (with the variation selector) beats "⚙".
+# Keycap digits ("1️⃣") get their own ids, and Telegram sends them with or
+# without the variation selector — accept both spellings.
+_MESSAGE_EMOJI_IDS = {
+    **{g: i for g, i in _UNICODE_TO_EMOJI_ID.items() if g not in _BUTTON_ONLY_GLYPHS},
+    **{f"{d}️⃣": i for d, i in Emoji.DIGITS.items()},
+    **{f"{d}⃣": i for d, i in Emoji.DIGITS.items()},
+}
+
+# Longest match first, so "1️⃣" beats "1⃣" and "⚙️" beats "⚙".
 _UPGRADE_RE = re.compile("|".join(
-    re.escape(g)
-    for g in sorted(set(_UNICODE_TO_EMOJI_ID) - _BUTTON_ONLY_GLYPHS, key=len, reverse=True)
+    re.escape(g) for g in sorted(_MESSAGE_EMOJI_IDS, key=len, reverse=True)
 ))
 
 # Spans the upgrade must leave alone: already-tagged emoji (would nest twice)
@@ -149,7 +156,7 @@ def _upgrade_unicode_emoji(text):
     parts = _NO_UPGRADE_RE.split(text)
     for i in range(0, len(parts), 2):  # odd indices are the skipped spans
         parts[i] = _UPGRADE_RE.sub(
-            lambda m: f'<emoji id="{_UNICODE_TO_EMOJI_ID[m.group(0)]}">{m.group(0)}</emoji>',
+            lambda m: f'<emoji id="{_MESSAGE_EMOJI_IDS[m.group(0)]}">{m.group(0)}</emoji>',
             parts[i],
         )
     return "".join(parts)
@@ -420,6 +427,9 @@ if __name__ == "__main__":  # python -m utils.premium_emoji
     assert _upgrade_unicode_emoji(EmojiTag.MUSIC_NOTE) == EmojiTag.MUSIC_NOTE  # no double wrap
     assert _upgrade_unicode_emoji("<code>🎵</code>") == "<code>🎵</code>"      # entity would nest
     assert _upgrade_unicode_emoji("▷ II ‣") == "▷ II ‣"                        # not real emoji
+    assert _upgrade_unicode_emoji(keycaps(12)) == (
+        f'<emoji id="{Emoji.DIGITS["1"]}">1️⃣</emoji><emoji id="{Emoji.DIGITS["2"]}">2️⃣</emoji>'
+    )
     out = parse("hi 🎵")
     assert out["message"] == "hi 🎵"
     assert any(e.QUALNAME.endswith("MessageEntityCustomEmoji") for e in out["entities"])
