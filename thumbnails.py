@@ -11,6 +11,19 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def draw_heart(draw, center_x, center_y, size, outline_color, fill_color=None, width=2):
+    import math
+    points = []
+    scale = size / 32.0
+    y_offset = 3.75 * scale
+    for degree in range(0, 360, 5):
+        t = math.radians(degree)
+        x = 16 * (math.sin(t) ** 3)
+        y = -(13 * math.cos(t) - 5 * math.cos(2*t) - 2 * math.cos(3*t) - math.cos(4*t))
+        points.append((center_x + x * scale, center_y + y * scale - y_offset))
+    draw.polygon(points, outline=outline_color, fill=fill_color, width=width)
+
+
 def render_thumb(image_path, title, duration, channel, views, videoid, random_id):
     """Render the final thumbnail image from a local source file."""
     temp_files_to_delete = []
@@ -26,7 +39,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     # Create premium multi-gradient background
     background = image2.filter(filter=ImageFilter.GaussianBlur(15))
     enhancer = ImageEnhance.Brightness(background)
-    background = enhancer.enhance(0.3)
+    background = enhancer.enhance(0.08)
 
     # Create sophisticated tri-color gradient
     gradient_colors = [
@@ -44,7 +57,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
 
     gradient_arr = np.zeros((720, 1280, 4), dtype=np.uint8)
     y_range = np.arange(720)
-    alphas = (180 * y_range / 720).astype(np.uint8)
+    alphas = (40 * y_range / 720).astype(np.uint8)
     for c, (pc, sc) in enumerate(zip(primary_color, secondary_color)):
         gradient_arr[:, :, c] = np.clip(
             (pc + (sc - pc) * y_range / 720), 0, 255
@@ -92,16 +105,25 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     glass_draw.rounded_rectangle(
         [(0, 0), (card_width, card_height)],
         radius=corner_radius,
-        fill=(255, 255, 255, 25),
-        outline=(255, 255, 255, 80),
+        fill=(15, 15, 15, 160),
+        outline=(255, 255, 255, 35),
         width=2
     )
     glass_card = glass_card.filter(ImageFilter.GaussianBlur(2))
     background.paste(glass_card, (card_x, card_y), glass_card)
 
+    # Draw heart icon outline in the upper-right corner of the player card
+    heart_center_x = card_x + card_width - 65
+    heart_center_y = card_y + 55
+    heart_size = 28
+    # Heart Shadow
+    draw_heart(draw, heart_center_x + 2, heart_center_y + 2, heart_size, outline_color=(0, 0, 0, 150), width=2)
+    # Heart Outline
+    draw_heart(draw, heart_center_x, heart_center_y, heart_size, outline_color=(255, 255, 255, 220), width=2)
+
     album_size = 340
     album_border = 8
-    neon_glow_color = primary_color
+    neon_glow_color = (255, 255, 255)
 
     for glow_layer in range(3, 0, -1):
         glow_size = album_size + (glow_layer * 20)
@@ -127,8 +149,34 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     text_area_width = card_width - album_size - 180
     title1 = wrap_text_to_width(draw, title, title_font, text_area_width, max_lines=2)
     title_y = card_y + 100
+
+    # Draw active audio waveform icon
+    waveform_x = text_x
+    waveform_width = 25
+    y_center = (title_y - 45) + 12
+    bar_heights = [10, 20, 15, 8]
+    bar_width = 3
+    bar_gap = 3
+    
+    # Waveform Shadow
+    for i, h in enumerate(bar_heights):
+        bx1 = waveform_x + i * (bar_width + bar_gap) + 2
+        by1 = y_center - h // 2 + 2
+        bx2 = bx1 + bar_width
+        by2 = y_center + h // 2 + 2
+        draw.rounded_rectangle([(bx1, by1), (bx2, by2)], radius=1, fill=(0, 0, 0, 150))
+        
+    # Main Waveform
+    for i, h in enumerate(bar_heights):
+        bx1 = waveform_x + i * (bar_width + bar_gap)
+        by1 = y_center - h // 2
+        bx2 = bx1 + bar_width
+        by2 = y_center + h // 2
+        draw.rounded_rectangle([(bx1, by1), (bx2, by2)], radius=1, fill=(255, 255, 255))
+
     label_text = "NOW PLAYING"
-    draw_text_with_shadow(background, draw, (text_x, title_y - 45), label_text, info_font, neon_glow_color, shadow_offset=(2, 2), shadow_blur=3)
+    label_text_x = text_x + waveform_width + 10
+    draw_text_with_shadow(background, draw, (label_text_x, title_y - 45), label_text, info_font, (255, 255, 255), shadow_offset=(2, 2), shadow_blur=3)
     draw_text_with_shadow(background, draw, (text_x, title_y), title1[0], title_font, (255, 255, 255), shadow_offset=(3, 3), shadow_blur=6)
     if title1[1]:
         draw_text_with_shadow(background, draw, (text_x, title_y + 60), title1[1], title_font, (255, 255, 255), shadow_offset=(3, 3), shadow_blur=6)
@@ -136,6 +184,28 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     artist_y = title_y + 140
     artist_text = f"{channel}"
     draw_text_with_shadow(background, draw, (text_x, artist_y), artist_text, subtitle_font, (220, 220, 255), shadow_offset=(2, 2), shadow_blur=4)
+
+    # Draw verified checkmark badge
+    artist_bbox = draw.textbbox((0, 0), artist_text, font=subtitle_font)
+    artist_width = artist_bbox[2] - artist_bbox[0]
+    badge_x = text_x + artist_width + 12
+    badge_y = artist_y + 16
+    badge_radius = 9
+    # Shadow
+    draw.ellipse(
+        [badge_x - badge_radius + 2, badge_y - badge_radius + 2,
+         badge_x + badge_radius + 2, badge_y + badge_radius + 2],
+        fill=(0, 0, 0, 150)
+    )
+    # Badge circle
+    draw.ellipse(
+        [badge_x - badge_radius, badge_y - badge_radius,
+         badge_x + badge_radius, badge_y + badge_radius],
+        fill=(255, 255, 255, 200)
+    )
+    # Checkmark lines inside circle
+    draw.line([(badge_x - 4, badge_y), (badge_x - 1, badge_y + 3)], fill=(40, 40, 40), width=2)
+    draw.line([(badge_x - 1, badge_y + 3), (badge_x + 4, badge_y - 3)], fill=(40, 40, 40), width=2)
 
     views_text = f"{views[:23]} views"
     draw_text_with_shadow(background, draw, (text_x, artist_y + 40), views_text, info_font, (200, 200, 230), shadow_offset=(2, 2), shadow_blur=3)
@@ -157,16 +227,13 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     if duration != "Live":
         progress_percentage = random.uniform(0.15, 0.85)
         filled_width = int(progress_width * progress_percentage)
-        progress_arr = np.zeros((progress_height + 20, filled_width, 4), dtype=np.uint8)
-        x_range = np.arange(filled_width)
-        for c, (pc, sc) in enumerate(zip(primary_color, secondary_color)):
-            progress_arr[10:10+progress_height, :, c] = np.clip(
-                pc + (sc - pc) * x_range / max(filled_width, 1), 0, 255
-            ).astype(np.uint8)
-        progress_arr[10:10+progress_height, :, 3] = 255
-        progress_bar = Image.fromarray(progress_arr, 'RGBA')
-        progress_bar = progress_bar.filter(ImageFilter.GaussianBlur(1))
-        background.paste(progress_bar, (progress_x, progress_y), progress_bar)
+        
+        # Draw filled progress bar in solid white
+        draw.rounded_rectangle(
+            [(progress_x, progress_y + 10), (progress_x + filled_width, progress_y + 10 + progress_height)],
+            radius=progress_height // 2,
+            fill=(255, 255, 255, 255)
+        )
 
         indicator_x = progress_x + filled_width
         indicator_y = progress_y + 13
@@ -176,7 +243,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
             draw.ellipse(
                 [indicator_x - glow_radius, indicator_y - glow_radius,
                  indicator_x + glow_radius, indicator_y + glow_radius],
-                fill=primary_color + (30,)
+                fill=(255, 255, 255, 30)
             )
         draw.ellipse(
             [indicator_x - indicator_radius, indicator_y - indicator_radius,
