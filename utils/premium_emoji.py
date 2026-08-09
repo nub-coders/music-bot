@@ -13,17 +13,27 @@ It posts one probe message carrying a custom emoji, checks whether Telegram
 kept the entity, and deletes the probe either way — trying LOGGER_ID first,
 then OWNER_ID, stopping at the first conclusive answer.
 
-If the answer is NO, apply_premium_emoji() rewrites the emoji constants in
-place so everything built afterwards is plain Unicode:
+The answer is stored in PREMIUM_EMOJI and enforced from the two places every
+emoji is born, so no send site has to know about it:
+
+    InlineKeyboardButton.__init__   every button, whenever it is built
+    HTML.parse                      every message text and caption
+                                    (Markdown.parse delegates to it)
+
+    PREMIUM_EMOJI = True   buttons drop their unicode text emoji for the custom
+                           icon; message glyphs upgrade to <emoji> tags
+    PREMIUM_EMOJI = False  buttons never carry an icon id; <emoji> tags collapse
+                           back to the plain glyph
+
+On a NO verdict the constants are also rewritten in place, so anything that
+reads them without going through a parser is already correct:
 
     EmojiTag.*   '<emoji id="123">🎵</emoji>'  ->  '🎵'
     Messages.*   the 112 templates already f-string-built at import
     Emoji.*      the custom-emoji document ids  ->  None
     Buttons.*    the markups already built at import
 
-Nothing is checked again after this. Templates read EmojiTag/Emoji at call
-time, so mutating the classes is what makes the ~180 send sites in plugins/
-and tools.py correct without touching any of them.
+Nothing is probed again after startup.
 """
 
 import re
@@ -34,11 +44,19 @@ from pyrogram.errors import PremiumAccountRequired
 from pyrogram.errors.exceptions.forbidden_403 import (
     PremiumAccountRequired as PremiumAccountRequiredForbidden,
 )
+from pyrogram.parser.html import HTML
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from utils.emoji import Emoji, EmojiTag
 
 logger = logging.getLogger(__name__)
+
+# The verdict. Set once by apply_premium_emoji(), read on every button build
+# and every message parse. Starts True: an inconclusive probe keeps custom
+# emoji on, which is the bot's long-standing behaviour.
+PREMIUM_EMOJI = True
+
+_patched = False
 
 # kurigram registers PREMIUM_ACCOUNT_REQUIRED under BOTH 400 and 403 as two
 # unrelated classes, and pyrogram.errors exports only the 400 one — catching
@@ -106,6 +124,37 @@ _UNICODE_TO_EMOJI_ID = {
 }
 
 
+# Button-only fallback glyphs — plain shapes, not emoji. A custom-emoji entity
+# may only cover an actual emoji, so message text never upgrades these.
+_BUTTON_ONLY_GLYPHS = {"II", "‣‣I", "▷", "▢", "‣"}
+
+# Longest match first, so "⚙️" (with the variation selector) beats "⚙".
+_UPGRADE_RE = re.compile("|".join(
+    re.escape(g)
+    for g in sorted(set(_UNICODE_TO_EMOJI_ID) - _BUTTON_ONLY_GLYPHS, key=len, reverse=True)
+))
+
+# Spans the upgrade must leave alone: already-tagged emoji (would nest twice)
+# and code/pre (Telegram rejects a custom-emoji entity inside them).
+_NO_UPGRADE_RE = re.compile(
+    r'(<emoji\b[^>]*>.*?</emoji>|<code\b[^>]*>.*?</code>|<pre\b[^>]*>.*?</pre>)',
+    re.S,
+)
+
+
+def _upgrade_unicode_emoji(text):
+    """'🎵' -> '<emoji id="...">🎵</emoji>' for every glyph we hold an id for."""
+    if not isinstance(text, str) or not text:
+        return text
+    parts = _NO_UPGRADE_RE.split(text)
+    for i in range(0, len(parts), 2):  # odd indices are the skipped spans
+        parts[i] = _UPGRADE_RE.sub(
+            lambda m: f'<emoji id="{_UNICODE_TO_EMOJI_ID[m.group(0)]}">{m.group(0)}</emoji>',
+            parts[i],
+        )
+    return "".join(parts)
+
+
 def _detect_and_strip_button_emoji(text, icon_id):
     if not isinstance(text, str) or not text:
         return text, icon_id
@@ -154,78 +203,14 @@ def _detect_and_strip_button_emoji(text, icon_id):
     return text, icon_id
 
 
-def strip_unicode_emoji_markup(markup):
-    """Returns a NEW InlineKeyboardMarkup with leading unicode emoji removed
-    from the text of every button that has an icon_custom_emoji_id set.
-    Never mutates the input markup or its buttons."""
+def _rebuild_markup(markup):
+    """Markups built at import (Buttons.HELP_HOME, .BACK) were constructed
+    before the patch existed, so their buttons never saw the verdict. Re-run
+    them through the constructor. Never mutates the input markup."""
     if not isinstance(markup, InlineKeyboardMarkup):
         return markup
-    stripped_rows = []
-    for row in markup.inline_keyboard:
-        stripped_row = []
-        for btn in row:
-            text, icon_id = _detect_and_strip_button_emoji(btn.text, btn.icon_custom_emoji_id)
-            stripped_row.append(
-                InlineKeyboardButton(
-                    text=text,
-                    callback_data=btn.callback_data,
-                    url=btn.url,
-                    web_app=btn.web_app,
-                    login_url=btn.login_url,
-                    user_id=btn.user_id,
-                    switch_inline_query=btn.switch_inline_query,
-                    switch_inline_query_current_chat=btn.switch_inline_query_current_chat,
-                    callback_game=btn.callback_game,
-                    requires_password=btn.requires_password,
-                    pay=btn.pay,
-                    copy_text=btn.copy_text,
-                    icon_custom_emoji_id=icon_id,
-                    style=btn.style,
-                )
-            )
-        stripped_rows.append(stripped_row)
-    return InlineKeyboardMarkup(stripped_rows)
-
-
-def _patch_button_init_for_premium():
-    _original_init = InlineKeyboardButton.__init__
-
-    def _patched_init(self, text, *args, **kwargs):
-        icon_id = kwargs.get("icon_custom_emoji_id")
-        is_positional = False
-        if icon_id is None and len(args) >= 12:
-            icon_id = args[11]
-            is_positional = True
-
-        text, icon_id = _detect_and_strip_button_emoji(text, icon_id)
-
-        if is_positional:
-            args = list(args)
-            args[11] = icon_id
-            args = tuple(args)
-        else:
-            kwargs["icon_custom_emoji_id"] = icon_id
-
-        _original_init(self, text, *args, **kwargs)
-
-    InlineKeyboardButton.__init__ = _patched_init
-
-
-def strip_custom_emoji_text(text):
-    """Collapses <emoji id="...">X</emoji> down to just X. Returns a new string."""
-    if not isinstance(text, str):
-        return text
-    return _EMOJI_TAG_RE.sub(r"\1", text)
-
-
-def strip_custom_emoji_markup(markup):
-    """Returns a NEW InlineKeyboardMarkup with icon_custom_emoji_id removed
-    from every button. Never mutates the input markup or its buttons."""
-    if not isinstance(markup, InlineKeyboardMarkup):
-        return markup
-    stripped_rows = []
-    for row in markup.inline_keyboard:
-        stripped_rows.append([
+    return InlineKeyboardMarkup([
+        [
             InlineKeyboardButton(
                 text=btn.text,
                 callback_data=btn.callback_data,
@@ -239,12 +224,65 @@ def strip_custom_emoji_markup(markup):
                 requires_password=btn.requires_password,
                 pay=btn.pay,
                 copy_text=btn.copy_text,
-                icon_custom_emoji_id=None,
+                icon_custom_emoji_id=btn.icon_custom_emoji_id,
                 style=btn.style,
             )
             for btn in row
-        ])
-    return InlineKeyboardMarkup(stripped_rows)
+        ]
+        for row in markup.inline_keyboard
+    ])
+
+
+def _install_patches():
+    """Enforce PREMIUM_EMOJI at the two choke points, once. Both read the flag
+    at call time, so the verdict can be baked after the patches are in."""
+    global _patched
+    if _patched:
+        return
+    _patched = True
+
+    _original_init = InlineKeyboardButton.__init__
+
+    def _patched_init(self, text, *args, **kwargs):
+        icon_id = kwargs.get("icon_custom_emoji_id")
+        is_positional = False
+        if icon_id is None and len(args) >= 12:
+            icon_id = args[11]
+            is_positional = True
+
+        if PREMIUM_EMOJI:
+            text, icon_id = _detect_and_strip_button_emoji(text, icon_id)
+        else:
+            icon_id = None
+
+        if is_positional:
+            args = list(args)
+            args[11] = icon_id
+            args = tuple(args)
+        else:
+            kwargs["icon_custom_emoji_id"] = icon_id
+
+        _original_init(self, text, *args, **kwargs)
+
+    InlineKeyboardButton.__init__ = _patched_init
+
+    _original_parse = HTML.parse
+
+    async def _patched_parse(self, text):
+        # ponytail: HTML.parse only — Markdown.parse ends by delegating here,
+        # so both modes are covered. ParseMode.DISABLED bypasses it, and the
+        # baked constants cover that case.
+        text = _upgrade_unicode_emoji(text) if PREMIUM_EMOJI else strip_custom_emoji_text(text)
+        return await _original_parse(self, text)
+
+    HTML.parse = _patched_parse
+
+
+def strip_custom_emoji_text(text):
+    """Collapses <emoji id="...">X</emoji> down to just X. Returns a new string."""
+    if not isinstance(text, str):
+        return text
+    return _EMOJI_TAG_RE.sub(r"\1", text)
 
 
 def _as_chat_id(value):
@@ -306,53 +344,46 @@ async def probe_premium_emoji(client, *chat_ids):
 
 def apply_premium_emoji(available):
     """
-    Bake the verdict into the emoji constants. Called once, at startup.
-
-    available=True is a no-op: the templates are authored with <emoji> tags
-    already. available=False rewrites the four places custom emoji can hide.
-    Iterates over list(vars(...)) because it reassigns while walking.
+    Store the verdict and install the patches that enforce it. Called once, at
+    startup. Iterates over list(vars(...)) because it reassigns while walking.
     """
-    if available:
-        logger.info("Premium emoji available — messages will use custom emoji.")
-        # Monkey-patch InlineKeyboardButton.__init__ to strip leading emojis
-        _patch_button_init_for_premium()
+    global PREMIUM_EMOJI
+    PREMIUM_EMOJI = bool(available)
+    _install_patches()
 
-        # Strip leading unicode emoji from already built markups (e.g. Buttons.HELP_HOME, .BACK)
-        from utils.button import Buttons
-        for name, value in list(vars(Buttons).items()):
-            if isinstance(value, InlineKeyboardMarkup):
-                setattr(Buttons, name, strip_unicode_emoji_markup(value))
-        return True
+    if not PREMIUM_EMOJI:
+        # EmojiTag.X -> plain glyph. Templates that f-string EmojiTag at call
+        # time (plugins/info.py, plugins/font_cmd.py, ...) pick this up
+        # automatically.
+        for name, value in list(vars(EmojiTag).items()):
+            if not name.startswith("_") and isinstance(value, str):
+                setattr(EmojiTag, name, strip_custom_emoji_text(value))
 
-    # EmojiTag.X -> plain glyph. Templates that f-string EmojiTag at call time
-    # (plugins/info.py, plugins/font_cmd.py, ...) pick this up automatically.
-    for name, value in list(vars(EmojiTag).items()):
-        if not name.startswith("_") and isinstance(value, str):
-            setattr(EmojiTag, name, strip_custom_emoji_text(value))
+        # Messages.X was f-string-built at import, before the probe could run,
+        # so those 112 strings already captured the tags and need their own pass.
+        from utils.message import Messages
 
-    # Messages.X was f-string-built at import, before the probe could run, so
-    # those 112 strings already captured the tags and need their own pass.
-    from utils.message import Messages
+        for name, value in list(vars(Messages).items()):
+            if not name.startswith("_") and isinstance(value, str):
+                setattr(Messages, name, strip_custom_emoji_text(value))
 
-    for name, value in list(vars(Messages).items()):
-        if not name.startswith("_") and isinstance(value, str):
-            setattr(Messages, name, strip_custom_emoji_text(value))
+        # Emoji.X -> None so nothing can hand an id to a message entity either.
+        for name, value in list(vars(Emoji).items()):
+            if not name.startswith("_") and isinstance(value, int):
+                setattr(Emoji, name, None)
 
-    # Emoji.X -> None so buttons built later carry no icon id at all.
-    for name, value in list(vars(Emoji).items()):
-        if not name.startswith("_") and isinstance(value, int):
-            setattr(Emoji, name, None)
-
-    # ...and the markups already built at import (Buttons.HELP_HOME, .BACK)
-    # captured the real ids, so they need stripping too.
+    # Markups built at import captured the pre-verdict state, either way.
     from utils.button import Buttons
 
     for name, value in list(vars(Buttons).items()):
         if isinstance(value, InlineKeyboardMarkup):
-            setattr(Buttons, name, strip_custom_emoji_markup(value))
+            setattr(Buttons, name, _rebuild_markup(value))
 
-    logger.warning("Premium emoji unavailable — messages baked to plain Unicode emoji.")
-    return False
+    if PREMIUM_EMOJI:
+        logger.info("Premium emoji available — messages and buttons will use custom emoji.")
+    else:
+        logger.warning("Premium emoji unavailable — messages baked to plain Unicode emoji.")
+    return PREMIUM_EMOJI
 
 
 async def setup_premium_emoji(client, *chat_ids):
@@ -371,3 +402,37 @@ async def setup_premium_emoji(client, *chat_ids):
             "in if emoji render wrong."
         )
     return apply_premium_emoji(verdict is not False)
+
+
+if __name__ == "__main__":  # python -m utils.premium_emoji
+    import asyncio
+
+    from utils.button import Buttons
+
+    NOTE = Emoji.MUSIC_NOTE
+    parse = lambda t: asyncio.run(HTML(None).parse(t))  # noqa: E731
+
+    apply_premium_emoji(True)
+    assert PREMIUM_EMOJI is True
+    b = InlineKeyboardButton("🎵 ᴘʟᴀʏʙᴀᴄᴋ", callback_data="x", icon_custom_emoji_id=NOTE)
+    assert (b.text, b.icon_custom_emoji_id) == ("ᴘʟᴀʏʙᴀᴄᴋ", NOTE), b.text
+    b = InlineKeyboardButton("▷", callback_data="x", icon_custom_emoji_id=Emoji.RESUME)
+    assert (b.text, b.icon_custom_emoji_id) == ("▷", Emoji.RESUME)
+    assert _upgrade_unicode_emoji("hi 🎵") == f'hi <emoji id="{NOTE}">🎵</emoji>'
+    assert _upgrade_unicode_emoji(EmojiTag.MUSIC_NOTE) == EmojiTag.MUSIC_NOTE  # no double wrap
+    assert _upgrade_unicode_emoji("<code>🎵</code>") == "<code>🎵</code>"      # entity would nest
+    assert _upgrade_unicode_emoji("▷ II ‣") == "▷ II ‣"                        # not real emoji
+    out = parse("hi 🎵")
+    assert out["message"] == "hi 🎵"
+    assert any(e.QUALNAME.endswith("MessageEntityCustomEmoji") for e in out["entities"])
+
+    apply_premium_emoji(False)
+    assert PREMIUM_EMOJI is False
+    b = InlineKeyboardButton("🎵 ᴘʟᴀʏʙᴀᴄᴋ", callback_data="x", icon_custom_emoji_id=NOTE)
+    assert (b.text, b.icon_custom_emoji_id) == ("🎵 ᴘʟᴀʏʙᴀᴄᴋ", None), b.text
+    assert Emoji.MUSIC_NOTE is None and "<emoji" not in EmojiTag.MUSIC_NOTE
+    out = parse(f'<emoji id="{NOTE}">🎵</emoji> hi')
+    assert out["message"] == "🎵 hi" and not out["entities"], out
+    assert Buttons.BACK.inline_keyboard[0][0].icon_custom_emoji_id is None
+
+    print("ok")
