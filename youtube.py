@@ -44,10 +44,16 @@ _http_client: "httpx.AsyncClient | None" = None
 def get_http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None or _http_client.is_closed:
+        use_h2 = False
+        try:
+            import h2  # noqa: F401
+            use_h2 = True
+        except ImportError:
+            logger.warning("[youtube] h2 package not installed; HTTP/2 disabled for httpx client")
         _http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=8.0),
             follow_redirects=True,
-            http2=True,  # h2 installed; multiplexes the search+player round-trips
+            http2=use_h2,
             limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=90),
         )
     return _http_client

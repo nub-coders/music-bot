@@ -1,6 +1,6 @@
 aiofiles==25.1.0
 aiohttp==3.14.3
-httpx==0.28.1
+httpx[http2]==0.28.1
 imageio==2.37.4
 kurigram==2.2.19
 tgcrypto==1.2.5
