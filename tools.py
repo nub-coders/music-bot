@@ -191,6 +191,29 @@ async def update_progress_button(message, duration_str, chat, markup):
         logger.warning(f"Progress update error: {e}")
 
 
+async def _swap_in_photo(thumb_task, chat_id, text, keyboard, text_msg, chat, duration):
+    """Replace a text now-playing message with the photo card once the render lands.
+    Telegram can't edit text->media, so this is delete + resend — the card jumps to
+    the bottom of a busy chat, which is why it's only the fallback when the render
+    misses the send grace, not the normal path."""
+    try:
+        path = await thumb_task
+    except Exception:
+        return
+    if not path:
+        return
+    try:
+        photo_msg = await clients["bot"].send_photo(chat_id, path, text, reply_markup=keyboard)
+    except Exception as e:
+        logger.warning(f"[_swap_in_photo] send_photo failed, keeping text: {e}")
+        return
+    try:
+        await text_msg.delete()
+    except Exception:
+        pass
+    asyncio.create_task(update_progress_button(photo_msg, duration, chat, keyboard))
+
+
 async def get_readable_time(seconds: int) -> str:
     return str(datetime.timedelta(seconds=int(seconds)))
 
@@ -532,16 +555,23 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         logger.debug(f"[join_call] Sending playback notification to chat {message.chat.id}")
         _msg_t0 = time.perf_counter()
-        if asyncio.isfuture(thumb) or asyncio.iscoroutine(thumb):
+        # Text-first: don't let a slow card render block the notification. Give the
+        # render a short grace so fast/cached cards still post as a photo directly
+        # (no flicker); if it misses, post text now and swap the photo in when it lands.
+        thumb_task = thumb if (asyncio.isfuture(thumb) or asyncio.iscoroutine(thumb)) else None
+        thumb_ready = None if thumb_task else thumb
+        if thumb_task:
             try:
-                thumb = await thumb
+                thumb_ready = await asyncio.wait_for(asyncio.shield(thumb_task), 2.0)
+            except asyncio.TimeoutError:
+                thumb_ready = None  # still rendering — post text, swap in when ready
             except Exception as thumb_err:
                 logger.warning(f"[join_call] Thumbnail task failed, sending text instead: {thumb_err}")
-                thumb = None
-        if thumb:
+                thumb_ready = None
+        if thumb_ready:
             try:
                 sent_message = await clients["bot"].send_photo(
-                    chat_id, thumb, message_text, reply_markup=keyboard
+                    chat_id, thumb_ready, message_text, reply_markup=keyboard
                 )
                 logger.info(f"[join_call] Playback notification sent with photo, message_id: {sent_message.id}")
             except Exception as photo_err:
@@ -551,11 +581,14 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 link_preview_options=None)
                 logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
         else:
-            logger.warning("[join_call] Thumbnail is None, sending as text message")
             sent_message = await clients["bot"].send_message(
                 chat_id, message_text, reply_markup=keyboard,
             link_preview_options=None)
-            logger.info(f"[join_call] Playback notification sent as text (no thumbnail), message_id: {sent_message.id}")
+            logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
+            if thumb_task:  # card still rendering — swap it in when ready
+                asyncio.create_task(_swap_in_photo(
+                    thumb_task, chat_id, message_text, keyboard, sent_message, chat, duration
+                ))
         _msg_ms = (time.perf_counter() - _msg_t0) * 1000
         logger.info(f"[join_call] ⏱ Now-playing message sent in {_msg_ms:.1f}ms for chat {chat_id}")
 

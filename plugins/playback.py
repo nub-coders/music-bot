@@ -5,6 +5,15 @@ from plugins._common import *  # noqa: F401,F403
 from sources import resolve_sources
 
 
+def _bg(coro):
+    """Fire-and-forget a coroutine, swallowing its result/exception so it never
+    warns or blocks the caller. Used for cosmetic Telegram calls (message
+    deletes) that must not sit on the /play critical path."""
+    task = asyncio.create_task(coro)
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    return task
+
+
 async def dend(client, update, channel_id= None):
     # Enhanced input validation
     try:
@@ -141,10 +150,9 @@ async def play_handler_func(client, message):
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
     by = message.from_user
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    # Cosmetic: remove the user's "/play ..." command. Fire-and-forget so this
+    # Telegram round-trip does not gate track resolution / the voice join.
+    _bg(message.delete())
 
     # Check if user is banned using global BLOCK variable
     if message.from_user.id in BLOCK:
@@ -423,6 +431,7 @@ async def play_handler_func(client, message):
         stream_url,
         yt_task=_yt_task,
     )
+    first_track_pos = len(state.queues.get(target_chat.id, []))
     # Playlist: queue the remaining tracks behind the first. Each resolves
     # lazily via its own handle_youtube task when it reaches the queue head
     # (join_call awaits _yt_task), exactly like any normal queued search.
@@ -454,11 +463,11 @@ async def play_handler_func(client, message):
                         yt_result = await _yt_task
                         if yt_result:
                             title = trim_title(yt_result[0]) if yt_result[0] else title
-                            duration = yt_result[1] if yt_result[1] else "N/A"
+                            duration = parse_dur(yt_result[1]) if yt_result[1] else "N/A"
                             youtube_link = yt_result[2] if yt_result[2] else youtube_link
                     except Exception:
                         duration = "N/A"
-                position = len(state.queues.get(message.chat.id)) if state.queues.get(target_chat.id) else 1
+                position = first_track_pos
                 keyboard = Buttons.queue_markup(track_id, channel_mode)
                 is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
                 video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None

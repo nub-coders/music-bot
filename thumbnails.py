@@ -2,6 +2,7 @@ import asyncio
 import random
 import os
 import re
+import hashlib
 import aiofiles
 import aiohttp
 import numpy as np
@@ -9,6 +10,17 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 import logging
 logger = logging.getLogger(__name__)
+
+_session = None
+
+
+def _get_session():
+    """Reused aiohttp session so cache-miss thumbnail downloads keep the
+    TCP/TLS connection alive instead of a fresh handshake each time."""
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession()
+    return _session
 
 
 def draw_heart(draw, center_x, center_y, size, outline_color, fill_color=None, width=2):
@@ -302,7 +314,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
 
     background = background.convert("RGB")
     background_path = f"cache/{random_id}_{videoid}_premium.png"
-    background.save(background_path, quality=95, optimize=True)
+    background.save(background_path, optimize=False)
 
     for temp_file in temp_files_to_delete:
         try:
@@ -467,23 +479,34 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
         if thumbnail is None:
             thumbnail = "thumbnail.png"
 
+        # Rendered cards are deterministic for a (videoid, metadata) pair — the live
+        # progress lives in the button, not the image — so cache per song and skip the
+        # download + PIL render on repeat plays. render_thumb writes to
+        # cache/{random_id}_{videoid}_premium.png, so a deterministic id makes that
+        # path double as the cache path.
+        if videoid != "unknown":
+            random_id = hashlib.md5(f"{videoid}|{title}|{duration}|{channel}|{views}".encode()).hexdigest()[:12]
+            cached_card = f"cache/{random_id}_{videoid}_premium.png"
+            if os.path.exists(cached_card):
+                return cached_card
+
         if os.path.exists(thumbnail):
             image_path = thumbnail
             if not title:
                 title = "Now Playing"
         else:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(thumbnail) as resp:
-                    if resp.status == 200:
-                        os.makedirs("cache", exist_ok=True)
-                        temp_thumb_path = f"cache/thumb_{random_id}_{videoid}.png"
-                        f = await aiofiles.open(temp_thumb_path, mode="wb")
-                        await f.write(await resp.read())
-                        await f.close()
-                        image_path = temp_thumb_path
-                        temp_files_to_delete.append(temp_thumb_path)
-                    else:
-                        image_path = "thumbnail.png"
+            session = _get_session()
+            async with session.get(thumbnail) as resp:
+                if resp.status == 200:
+                    os.makedirs("cache", exist_ok=True)
+                    temp_thumb_path = f"cache/thumb_{random_id}_{videoid}.png"
+                    f = await aiofiles.open(temp_thumb_path, mode="wb")
+                    await f.write(await resp.read())
+                    await f.close()
+                    image_path = temp_thumb_path
+                    temp_files_to_delete.append(temp_thumb_path)
+                else:
+                    image_path = "thumbnail.png"
 
         background_path = await asyncio.to_thread(
             render_thumb,
