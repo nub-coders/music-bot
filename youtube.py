@@ -245,6 +245,183 @@ async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
     logger.error(f"[YT-DLP] stderr: {stderr_text[-500:]}")
     return None
 
+# Innertube API Configuration
+INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+INNERTUBE_CLIENT_ANDROID = {
+    "clientName": "ANDROID",
+    "clientVersion": "20.10.38",
+    "androidSdkVersion": 30,
+    "hl": "en",
+    "gl": "US",
+}
+INNERTUBE_HEADERS_ANDROID = {
+    "Content-Type": "application/json",
+    "X-Youtube-Client-Name": "3",
+    "User-Agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip",
+}
+
+INNERTUBE_CLIENT_VR = {
+    "clientName": "ANDROID_VR",
+    "clientVersion": "1.65.10",
+    "deviceMake": "Oculus",
+    "deviceModel": "Quest 3",
+    "androidSdkVersion": 32,
+    "osName": "Android",
+    "osVersion": "12L",
+    "hl": "en",
+    "gl": "US",
+}
+INNERTUBE_HEADERS_VR = {
+    "Content-Type": "application/json",
+    "X-Youtube-Client-Name": "28",
+    "User-Agent": "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+}
+
+
+def _innertube_extract_vid(url_or_query: str) -> str | None:
+    if not url_or_query:
+        return None
+    m = re.search(r"(?:v=|/shorts/|youtu\.be/|/embed/|/v/|/live/)([A-Za-z0-9_-]{11})", url_or_query)
+    if m:
+        return m.group(1)
+    if re.fullmatch(r"[A-Za-z0-9_-]{11}", url_or_query.strip()):
+        return url_or_query.strip()
+    return None
+
+
+async def _post_innertube_async(endpoint: str, payload: dict, client: dict = INNERTUBE_CLIENT_ANDROID, headers: dict = INNERTUBE_HEADERS_ANDROID) -> dict:
+    url = f"https://youtubei.googleapis.com/youtubei/v1/{endpoint}?key={INNERTUBE_KEY}"
+    body = {"context": {"client": client}, **payload}
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as http:
+        resp = await http.post(url, json=body, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
+
+
+def _first_video_id(node) -> tuple[str, str | None] | None:
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k.lower().endswith("videorenderer") and isinstance(v, dict) and v.get("videoId"):
+                title = None
+                t_node = v.get("title")
+                if isinstance(t_node, dict):
+                    title = t_node.get("simpleText") or "".join(r.get("text", "") for r in t_node.get("runs", []))
+                return v["videoId"], title
+        for v in node.values():
+            res = _first_video_id(v)
+            if res:
+                return res
+    elif isinstance(node, list):
+        for item in node:
+            res = _first_video_id(item)
+            if res:
+                return res
+    return None
+
+
+def _pick_best_format(formats: list, *keys) -> dict | None:
+    def rank(f):
+        return tuple(("mp4" in (f.get("mimeType") or "")) if k == "mp4" else (f.get(k) or 0) for k in keys)
+
+    valid = [f for f in formats if f.get("url")]
+    return sorted(valid, key=rank)[-1] if valid else None
+
+
+def pick_innertube_streams(streaming_data: dict) -> dict:
+    if not streaming_data:
+        return {"stream": None, "audio": None, "video": None}
+
+    formats = streaming_data.get("formats") or []
+    adaptive = streaming_data.get("adaptiveFormats") or []
+
+    audio_fmts = [f for f in adaptive if (f.get("mimeType") or "").startswith("audio/")]
+    video_fmts = [f for f in adaptive if (f.get("mimeType") or "").startswith("video/")]
+
+    muxed = _pick_best_format(formats, "height", "bitrate")
+    best_audio = _pick_best_format(audio_fmts, "mp4", "bitrate") or muxed
+    best_video = _pick_best_format(video_fmts, "mp4", "height", "bitrate") or muxed
+
+    return {
+        "stream": (muxed or {}).get("url") or (best_audio or {}).get("url"),
+        "audio": (best_audio or {}).get("url"),
+        "video": (best_video or {}).get("url"),
+    }
+
+
+async def resolve_innertube(argument: str, mode: str = "audio") -> dict | None:
+    """
+    Resolve YouTube stream and metadata using direct Innertube player/search endpoints.
+    """
+    try:
+        vid = _innertube_extract_vid(argument)
+        if not vid:
+            search_resp = await _post_innertube_async("search", {"query": argument})
+            hit = _first_video_id(search_resp)
+            if not hit:
+                logger.warning(f"[Innertube] Search gave no results for: {argument}")
+                return None
+            vid = hit[0]
+
+        player_data = None
+        try:
+            player_data = await _post_innertube_async("player", {"videoId": vid}, INNERTUBE_CLIENT_ANDROID, INNERTUBE_HEADERS_ANDROID)
+        except Exception as e:
+            logger.warning(f"[Innertube] ANDROID client failed for {vid}: {e}")
+
+        ps = (player_data or {}).get("playabilityStatus") or {}
+        if ps.get("status") != "OK":
+            try:
+                visitor = ((player_data or {}).get("responseContext") or {}).get("visitorData")
+                vr_client = {**INNERTUBE_CLIENT_VR}
+                if visitor:
+                    vr_client["visitorData"] = visitor
+                player_data = await _post_innertube_async("player", {"videoId": vid}, vr_client, INNERTUBE_HEADERS_VR)
+                ps = (player_data or {}).get("playabilityStatus") or {}
+            except Exception as e:
+                logger.warning(f"[Innertube] ANDROID_VR client failed for {vid}: {e}")
+
+        if ps.get("status") != "OK":
+            logger.warning(f"[Innertube] Video {vid} playability status: {ps.get('status')} - {ps.get('reason')}")
+            return None
+
+        details = player_data.get("videoDetails") or {}
+        sd = player_data.get("streamingData") or {}
+        picked = pick_innertube_streams(sd)
+
+        stream_url = picked.get("stream") if mode == "video" else picked.get("audio") or picked.get("stream")
+        if not stream_url:
+            stream_url = picked.get("stream") or picked.get("video")
+
+        if not stream_url:
+            logger.warning(f"[Innertube] No stream URL found for {vid}")
+            return None
+
+        title = details.get("title", "N/A")
+        duration_sec = int(details.get("lengthSeconds", 0))
+        duration_formatted = parse_dur(f"PT{duration_sec}S") if duration_sec else "N/A"
+        youtube_link = f"https://www.youtube.com/watch?v={vid}"
+        thumbs = (details.get("thumbnail") or {}).get("thumbnails") or []
+        thumbnail_url = thumbs[-1].get("url") if thumbs else "N/A"
+        channel_name = details.get("author", "N/A")
+        views = format_ind(details.get("viewCount", "0"))
+
+        return {
+            "title": title,
+            "video_id": vid,
+            "duration": duration_formatted,
+            "duration_sec": duration_sec,
+            "youtube_link": youtube_link,
+            "channel_name": channel_name,
+            "views": views,
+            "stream_url": stream_url,
+            "thumbnail": thumbnail_url,
+            "picked_streams": picked,
+        }
+    except Exception as e:
+        logger.error(f"[Innertube] Resolution exception for '{argument}': {e}")
+        return None
+
+
 async def get_stream(url: str, cookies: str | None = None) -> str | None:
     logger.info(f"[AUDIO] get_stream called: {url}")
     cached = _MEM_CACHE.get(("audio", url))
@@ -258,6 +435,17 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         _mem_cache_set(("audio", url), cached)
         return cached
     logger.info("[AUDIO] No cache, extracting fresh stream...")
+
+    # Fast Path: Innertube direct resolution
+    innertube_data = await resolve_innertube(url, mode="audio")
+    if innertube_data and innertube_data.get("stream_url"):
+        stream = innertube_data["stream_url"]
+        logger.info(f"[AUDIO] ✅ Innertube success — {stream[:100]}...")
+        _mem_cache_set(("audio", url), stream)
+        _write_cache(url, stream, prefix="audio_")
+        return stream
+
+    logger.warning("[AUDIO] Innertube extraction returned None, falling back to yt-dlp...")
     stream = await _run_yt_dlp(
         url,
         "bestaudio[ext=m4a]/bestaudio/best",
@@ -283,6 +471,17 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         _mem_cache_set(("video", url), cached)
         return cached
     logger.info("[VIDEO] No cache, extracting fresh stream...")
+
+    # Fast Path: Innertube direct resolution (muxed / video stream)
+    innertube_data = await resolve_innertube(url, mode="video")
+    if innertube_data and innertube_data.get("stream_url"):
+        stream = innertube_data["stream_url"]
+        logger.info(f"[VIDEO] ✅ Innertube success — {stream[:100]}...")
+        _mem_cache_set(("video", url), stream)
+        _write_cache(url, stream, prefix="video_")
+        return stream
+
+    logger.warning("[VIDEO] Innertube extraction returned None, falling back to yt-dlp...")
     stream = await _run_yt_dlp(
         url,
         "best[ext=mp4][protocol=https]",
@@ -328,7 +527,7 @@ def _api_record_failure():
 
 
 async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") -> Tuple[str, str, str, str, str, str, str, str, str]:
-    """Get video info using nubcoder API, falling back to local search."""
+    """Get video info using nubcoder API, Innertube resolution, or local search fallback."""
     # Direct stream URL handling (bypasses nubcoder API completely)
     if is_direct_stream_url(query):
         logger.info(f"[youtube.get_video_info] Bypassing API for direct stream URL: '{query[:80]}...'")
@@ -347,7 +546,27 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
             )
         return (None,) * 9
 
-    # Primary: use the nubcoder /info API endpoint (skipped while the breaker is open)
+    # Primary: Fast Innertube direct resolution
+    try:
+        logger.debug(f"[youtube.get_video_info] Trying direct Innertube resolution for '{query}' (mode={mode})")
+        innertube_res = await resolve_innertube(query, mode=mode)
+        if innertube_res and innertube_res.get("stream_url"):
+            logger.info(f"[youtube.get_video_info] Innertube direct success: title='{innertube_res.get('title')}'")
+            return (
+                innertube_res.get('title', 'N/A'),
+                innertube_res.get('video_id', 'N/A'),
+                innertube_res.get('duration', '0'),
+                innertube_res.get('youtube_link', 'N/A'),
+                innertube_res.get('channel_name', 'N/A'),
+                innertube_res.get('views', '0'),
+                innertube_res.get('stream_url', 'N/A'),
+                innertube_res.get('thumbnail', 'N/A'),
+                'innertube',
+            )
+    except Exception as e:
+        logger.warning(f"[youtube.get_video_info] Innertube direct resolution failed: {e}")
+
+    # Fallback: use the nubcoder /info API endpoint (skipped while the breaker is open)
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}'")
@@ -383,7 +602,6 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     try:
         logger.debug(f"[youtube.get_video_info] Falling back to local search for '{query}' (max_results={max_results}, mode={mode})")
         results = await youtube_search(query, limit=max_results)
-        results = await youtube_search(query, limit=max_results)
         if not results:
             return (None,) * 9
         video = results[0]
@@ -403,6 +621,7 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     except Exception as e:
         logger.error(f"[youtube.get_video_info] Exception: {e}")
         return (None,) * 9
+
 
 
 def extract_video_id(url):
