@@ -328,29 +328,24 @@ def _pick_best_format(formats: list, *keys) -> dict | None:
 
 
 def pick_innertube_streams(streaming_data: dict) -> dict:
+    """
+    Pick strictly from progressive Muxed streams (audio + video combined, e.g. formats array).
+    """
     if not streaming_data:
-        return {"stream": None, "audio": None, "video": None}
+        return {"stream": None}
 
     formats = streaming_data.get("formats") or []
-    adaptive = streaming_data.get("adaptiveFormats") or []
-
-    audio_fmts = [f for f in adaptive if (f.get("mimeType") or "").startswith("audio/")]
-    video_fmts = [f for f in adaptive if (f.get("mimeType") or "").startswith("video/")]
-
     muxed = _pick_best_format(formats, "height", "bitrate")
-    best_audio = _pick_best_format(audio_fmts, "mp4", "bitrate") or muxed
-    best_video = _pick_best_format(video_fmts, "mp4", "height", "bitrate") or muxed
 
     return {
-        "stream": (muxed or {}).get("url") or (best_audio or {}).get("url"),
-        "audio": (best_audio or {}).get("url"),
-        "video": (best_video or {}).get("url"),
+        "stream": (muxed or {}).get("url"),
     }
 
 
 async def resolve_innertube(argument: str, mode: str = "audio") -> dict | None:
     """
     Resolve YouTube stream and metadata using direct Innertube player/search endpoints.
+    Innertube ONLY provides Muxed Streams (audio + video progressive formats).
     """
     try:
         vid = _innertube_extract_vid(argument)
@@ -388,13 +383,11 @@ async def resolve_innertube(argument: str, mode: str = "audio") -> dict | None:
         sd = player_data.get("streamingData") or {}
         picked = pick_innertube_streams(sd)
 
-        stream_url = picked.get("stream") if mode == "video" else picked.get("audio") or picked.get("stream")
+        stream_url = picked.get("stream")
         if not stream_url:
-            stream_url = picked.get("stream") or picked.get("video")
-
-        if not stream_url:
-            logger.warning(f"[Innertube] No stream URL found for {vid}")
+            logger.warning(f"[Innertube] No muxed stream URL found for {vid}")
             return None
+
 
         title = details.get("title", "N/A")
         duration_sec = int(details.get("lengthSeconds", 0))
