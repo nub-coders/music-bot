@@ -294,49 +294,13 @@ def strip_custom_emoji_text(text):
 
 
 def position_tag(n: int) -> str:
-    """Return an HTML <emoji> tag string for a queue position number.
+    """Return keycaps emoji string for position n.
 
-    Each <emoji> tag contains exactly one character as its fallback text, which
-    is what Telegram counts for entity offset/length. The custom emoji glyph
-    displayed is the pack icon for that digit/tens value.
-
-    Strategy:
-        1-9   → <emoji id="DIGITS[d]">d</emoji>  (single digit, one char)
-        10,20,..,90 → <emoji id="TENS[n]">first_digit</emoji>  (one char fallback)
-        11-19, 21-29, etc. → two tags using DIGITS; "0" falls back to plain "0"
-        3+ digit / no PREMIUM_EMOJI → plain keycaps()
+    HTML.parse automatically upgrades keycap emoji (e.g. '5️⃣') to custom emoji
+    tags (<emoji id="...">5️⃣</emoji>) when PREMIUM_EMOJI is active. The tag wraps
+    the actual keycap emoji character '5️⃣', ensuring Telegram's custom emoji
+    validation passes without ENTITY_TEXT_INVALID errors.
     """
-    if not PREMIUM_EMOJI:
-        return keycaps(n)
-
-    s = str(n)
-
-    # Single digit 1-9
-    if len(s) == 1:
-        eid = Emoji.DIGITS.get(s)
-        if eid:
-            return f'<emoji id="{eid}">{s}</emoji>'
-        return s  # shouldn't happen for 1-9
-
-    # Exact tens multiple: 10, 20, … 90
-    if s in Emoji.TENS:
-        eid = Emoji.TENS.get(s)
-        if eid:
-            # Fallback is the first (tens) digit only — one character
-            return f'<emoji id="{eid}">{s[0]}</emoji>'
-
-    # Two-digit non-exact-tens (11-19, 21-29, …): one tag per digit
-    if len(s) == 2:
-        out = ""
-        for d in s:
-            eid = Emoji.DIGITS.get(d)
-            if eid:
-                out += f'<emoji id="{eid}">{d}</emoji>'
-            else:
-                out += d  # '0' has no DIGITS entry — emit plain
-        return out
-
-    # 3+ digit positions: plain keycaps
     return keycaps(n)
 
 
