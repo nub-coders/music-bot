@@ -1,5 +1,6 @@
 """plugins/playback.py — /play command plus its media-download, thumbnail and queue helpers."""
 import uuid
+import html as _html
 
 from plugins._common import *  # noqa: F401,F403
 from sources import resolve_sources
@@ -470,12 +471,13 @@ async def play_handler_func(client, message):
                 keyboard = Buttons.queue_markup(track_id, channel_mode)
                 is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
                 video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None
+                _safe_title = _html.escape(trim_title(title))
                 if video_id:
-                    title_text = f'<a href="https://t.me/{client.me.username}?start=vidid_{video_id}"><b>{trim_title(title)}</b></a>'
+                    title_text = f'<a href="https://t.me/{client.me.username}?start=vidid_{video_id}"><b>{_safe_title}</b></a>'
                 elif youtube_link and youtube_link.startswith("http"):
-                    title_text = f'<a href="{youtube_link}"><b>{trim_title(title)}</b></a>'
+                    title_text = f'<a href="{youtube_link}"><b>{_safe_title}</b></a>'
                 else:
-                    title_text = f'<b>{trim_title(title)}</b>'
+                    title_text = f'<b>{_safe_title}</b>'
                 await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, keycaps(position)), reply_markup=keyboard, link_preview_options=None)
                 try:
                    await message.delete()
