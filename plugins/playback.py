@@ -478,7 +478,7 @@ async def play_handler_func(client, message):
                     title_text = f'<a href="{youtube_link}"><b>{_safe_title}</b></a>'
                 else:
                     title_text = f'<b>{_safe_title}</b>'
-                await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, keycaps(position)), reply_markup=keyboard, link_preview_options=None)
+                await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position_tag(position)), reply_markup=keyboard, link_preview_options=None)
                 try:
                    await message.delete()
                 except Exception:
