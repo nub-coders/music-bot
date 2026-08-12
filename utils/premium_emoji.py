@@ -130,12 +130,15 @@ _BUTTON_ONLY_GLYPHS = {"II", "‣‣I", "▷", "▢", "‣"}
 
 # Keycap digits ("1️⃣") get their own ids, and Telegram sends them with or
 # without the variation selector — accept both spellings.
+# NOTE: TENS are intentionally excluded here. Each TENS ID is a single custom
+# emoji glyph, but keycaps() always produces two separate keycap characters
+# (e.g. "1️⃣0️⃣") — wrapping two emoji in one <emoji> tag violates Telegram's
+# CUSTOM_EMOJI entity rule (must span exactly one emoji) and causes
+# ENTITY_TEXT_INVALID. Individual digits 1-9 are still upgraded via DIGITS.
 _MESSAGE_EMOJI_IDS = {
     **{g: i for g, i in _UNICODE_TO_EMOJI_ID.items() if g not in _BUTTON_ONLY_GLYPHS},
     **{f"{d}️⃣": i for d, i in Emoji.DIGITS.items()},
     **{f"{d}⃣": i for d, i in Emoji.DIGITS.items()},
-    **{f"{t[0]}️⃣{t[1]}️⃣": i for t, i in Emoji.TENS.items()},
-    **{f"{t[0]}⃣{t[1]}⃣": i for t, i in Emoji.TENS.items()},
 }
 
 # Longest match first, so "1️⃣" beats "1⃣" and "⚙️" beats "⚙".
@@ -435,6 +438,11 @@ if __name__ == "__main__":  # python -m utils.premium_emoji
     assert _upgrade_unicode_emoji("▷ II ‣") == "▷ II ‣"                        # not real emoji
     assert _upgrade_unicode_emoji(keycaps(12)) == (
         f'<emoji id="{Emoji.DIGITS["1"]}">1️⃣</emoji><emoji id="{Emoji.DIGITS["2"]}">2️⃣</emoji>'
+    )
+    # Two-digit positions (10, 20 ...) must NOT be wrapped in a single <emoji>
+    # tag — that would span two keycap characters and cause ENTITY_TEXT_INVALID.
+    assert _upgrade_unicode_emoji(keycaps(10)) == (
+        f'<emoji id="{Emoji.DIGITS["1"]}">1️⃣</emoji>0️⃣'
     )
     out = parse("hi 🎵")
     assert out["message"] == "hi 🎵"
