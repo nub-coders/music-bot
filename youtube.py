@@ -41,10 +41,12 @@ DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
 YOUTUBE_API_KEYS = [k.strip() for k in _YOUTUBE_API_KEYS_RAW.split(",") if k.strip()]
 
 def is_direct_stream_url(url: str) -> bool:
-    """Return True if url is a direct HTTP/HTTPS stream link (not YouTube or Spotify)."""
+    """Return True if url is a direct HTTP/HTTPS stream link (not a standard YouTube watch/playlist page or Spotify link)."""
     if not isinstance(url, str) or not url.startswith(("http://", "https://")):
         return False
-    if re.search(r"(youtube\.com|youtu\.be|spotify\.com)", url, re.I):
+    if re.search(r"spotify\.com", url, re.I):
+        return False
+    if re.search(r"(youtube\.com/(watch|playlist|shorts|embed)|youtu\.be/)", url, re.I):
         return False
     return True
 
@@ -327,6 +329,24 @@ def _api_record_failure():
 
 async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") -> Tuple[str, str, str, str, str, str, str, str, str]:
     """Get video info using nubcoder API, falling back to local search."""
+    # Direct stream URL handling (bypasses nubcoder API completely)
+    if is_direct_stream_url(query):
+        logger.info(f"[youtube.get_video_info] Bypassing API for direct stream URL: '{query[:80]}...'")
+        details = await get_video_details(query)
+        if details and "error" not in details:
+            return (
+                details.get("title", "Direct Stream"),
+                query,
+                details.get("duration", "N/A"),
+                query,
+                details.get("channel_name", "Direct Stream"),
+                "N/A",
+                details.get("stream_url", query),
+                details.get("thumbnail", "N/A"),
+                "direct",
+            )
+        return (None,) * 9
+
     # Primary: use the nubcoder /info API endpoint (skipped while the breaker is open)
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
@@ -359,25 +379,10 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
             logger.warning(f"[youtube.get_video_info] nubcoder API failed: {e}, falling back")
             _api_record_failure()
 
-    # Fallback: local direct stream or YouTube Data API search + stream extraction
+    # Fallback: local YouTube Data API search + stream extraction
     try:
-        if is_direct_stream_url(query):
-            details = await get_video_details(query)
-            if details and "error" not in details:
-                return (
-                    details.get("title", "Direct Stream"),
-                    query,
-                    details.get("duration", "N/A"),
-                    query,
-                    details.get("channel_name", "Direct Stream"),
-                    "N/A",
-                    details.get("stream_url", query),
-                    details.get("thumbnail", "N/A"),
-                    "direct",
-                )
-            return (None,) * 9
-
         logger.debug(f"[youtube.get_video_info] Falling back to local search for '{query}' (max_results={max_results}, mode={mode})")
+        results = await youtube_search(query, limit=max_results)
         results = await youtube_search(query, limit=max_results)
         if not results:
             return (None,) * 9
@@ -671,47 +676,18 @@ def extract_best_format(formats):
 
 async def get_video_details(video_id):
     """
-    Get video details using API first, then yt_dlp fallback
+    Get video details using direct stream resolution, API (for YouTube videos), or yt-dlp fallback.
 
     Args:
-        video_id (str): Video ID to fetch details for
+        video_id (str): Video ID or URL to fetch details for
 
     Returns:
         dict: Video details or error message
     """
 
-    # First try API if token is available
-    if API_TOKEN:
-        try:
-            logger.debug(f"[youtube.get_video_details] Using API for video_id='{video_id}'")
-            api_result = await get_video_info(video_id)
-
-            if api_result and api_result[0] and api_result[0] != "N/A":
-                title, video_id_result, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken = api_result
-
-                # Format duration if it's in seconds
-                if isinstance(duration, int):
-                    duration = format_duration(duration)
-
-                return {
-                    'title': title,
-                    'thumbnail': thumbnail,
-                    'duration': duration,
-                    'view_count': views,
-                    'channel_name': channel_name,
-                    'video_url': youtube_link,
-                    'platform': 'Direct' if is_direct_stream_url(video_id) else 'YouTube',
-                    'stream_url': stream_url,
-                    'video_id': video_id_result
-                }
-            else:
-                logger.warning("[youtube.get_video_details] API returned no usable data, falling back to yt-dlp")
-        except Exception as e:
-            logger.error(f"[youtube.get_video_details] API error: {e}")
-
-    # Direct stream URL resolution
+    # Direct stream URL resolution (bypasses YouTube API and external nubcoder API)
     if is_direct_stream_url(video_id):
-        logger.info(f"[youtube.get_video_details] Handling direct stream URL: '{video_id}'")
+        logger.info(f"[youtube.get_video_details] Handling direct stream URL: '{video_id[:80]}...'")
         try:
             ydl_opts = {
                 "quiet": True,
@@ -733,7 +709,8 @@ async def get_video_details(video_id):
                     if info.get("thumbnails"):
                         thumbnail = info["thumbnails"][-1].get("url", "N/A")
                     stream_url = extract_best_format(info.get("formats", [])) or info.get("url") or video_id
-                    title = info.get("title") or video_id.split("/")[-1].split("?")[0] or "Direct Stream"
+                    clean_filename = video_id.split("/")[-1].split("?")[0]
+                    title = info.get("title") or (clean_filename if clean_filename and len(clean_filename) < 50 else "Direct Stream")
                     return {
                         "title": title,
                         "thumbnail": thumbnail,
@@ -749,7 +726,7 @@ async def get_video_details(video_id):
             logger.warning(f"[youtube.get_video_details] Direct URL yt-dlp extraction notice: {e}")
 
         clean_filename = video_id.split("/")[-1].split("?")[0]
-        title = clean_filename if clean_filename else "Direct Stream"
+        title = clean_filename if clean_filename and len(clean_filename) < 50 else "Direct Stream"
         duration = "Live Stream" if ".m3u8" in video_id.lower() else "N/A"
         return {
             "title": title,
@@ -762,6 +739,35 @@ async def get_video_details(video_id):
             "stream_url": video_id,
             "video_id": video_id,
         }
+
+    # First try API if token is available for YouTube videos
+    if API_TOKEN:
+        try:
+            logger.debug(f"[youtube.get_video_details] Using API for video_id='{video_id}'")
+            api_result = await get_video_info(video_id)
+
+            if api_result and api_result[0] and api_result[0] != "N/A":
+                title, video_id_result, duration, youtube_link, channel_name, views, stream_url, thumbnail, time_taken = api_result
+
+                # Format duration if it's in seconds
+                if isinstance(duration, int):
+                    duration = format_duration(duration)
+
+                return {
+                    'title': title,
+                    'thumbnail': thumbnail,
+                    'duration': duration,
+                    'view_count': views,
+                    'channel_name': channel_name,
+                    'video_url': youtube_link,
+                    'platform': 'YouTube',
+                    'stream_url': stream_url,
+                    'video_id': video_id_result
+                }
+            else:
+                logger.warning("[youtube.get_video_details] API returned no usable data, falling back to yt-dlp")
+        except Exception as e:
+            logger.error(f"[youtube.get_video_details] API error: {e}")
 
     # Fallback to yt-dlp
     try:

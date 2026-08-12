@@ -40,6 +40,7 @@ async def test_get_video_info_api_call_without_mode():
 def test_is_direct_stream_url():
     assert youtube.is_direct_stream_url("https://example.com/audio.mp3") is True
     assert youtube.is_direct_stream_url("http://radio.example.com/live.m3u8") is True
+    assert youtube.is_direct_stream_url("https://rr5---sn-qxaelnl6.googlevideo.com/videoplayback?expire=12345") is True
     assert youtube.is_direct_stream_url("https://www.youtube.com/watch?v=abc") is False
     assert youtube.is_direct_stream_url("https://open.spotify.com/track/abc") is False
     assert youtube.is_direct_stream_url("just a query") is False
@@ -53,3 +54,19 @@ async def test_direct_stream_url_details_fallback():
         assert details["platform"] == "Direct"
         assert details["stream_url"] == url
         assert details["title"] == "live.mp3"
+
+
+@pytest.mark.asyncio
+async def test_googlevideo_direct_stream_url_bypasses_api():
+    url = "https://rr5---sn-qxaelnl6.googlevideo.com/videoplayback?expire=12345"
+    assert youtube.is_direct_stream_url(url) is True
+
+    with (
+        patch("youtube.API_TOKEN", "test-token"),
+        patch("youtube.BASE_URL", "https://api.test.com"),
+        patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
+    ):
+        details = await youtube.get_video_details(url)
+        mock_get.assert_not_called()
+        assert details["platform"] == "Direct"
+        assert details["stream_url"] == url
