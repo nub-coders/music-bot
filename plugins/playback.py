@@ -431,7 +431,6 @@ async def play_handler_func(client, message):
         stream_url,
         yt_task=_yt_task,
     )
-    first_track_pos = len(state.queues.get(target_chat.id, []))
     # Playlist: queue the remaining tracks behind the first. Each resolves
     # lazily via its own handle_youtube task when it reaches the queue head
     # (join_call awaits _yt_task), exactly like any normal queued search.
@@ -463,11 +462,11 @@ async def play_handler_func(client, message):
                         yt_result = await _yt_task
                         if yt_result:
                             title = trim_title(yt_result[0]) if yt_result[0] else title
-                            duration = parse_dur(yt_result[1]) if yt_result[1] else "N/A"
+                            duration = yt_result[1] if yt_result[1] else "N/A"
                             youtube_link = yt_result[2] if yt_result[2] else youtube_link
                     except Exception:
                         duration = "N/A"
-                position = first_track_pos
+                position = len(state.queues.get(message.chat.id)) if state.queues.get(target_chat.id) else 1
                 keyboard = Buttons.queue_markup(track_id, channel_mode)
                 is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
                 video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None

@@ -77,33 +77,17 @@ def get_random_key():
         raise RuntimeError("YouTube API key not configured")
     return random.choice(YOUTUBE_API_KEYS)
 
-def parse_dur(duration) -> str:
-    """Parses duration from ISO 8601 string (e.g. PT4M47S, PT287S), seconds integer/string,
-    or formatted time string into HH:MM:SS or MM:SS."""
-    if not duration or duration == "N/A":
+def parse_dur(duration: str) -> str:
+    match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration or "")
+    if not match:
         return "N/A"
-    if isinstance(duration, (int, float)):
-        return format_duration(duration)
-    duration_str = str(duration).strip()
-    if duration_str.isdigit():
-        return format_duration(int(duration_str))
-
-    match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str, re.IGNORECASE)
-    if match and any(match.groups()):
-        hours, minutes, seconds = match.groups(default="0")
-        total_seconds = int(hours) * 3600 + int(minutes) * 60 + int(seconds)
-        return format_duration(total_seconds)
-
-    if ":" in duration_str:
-        parts = duration_str.split(":")
-        try:
-            total_seconds = sum(int(x) * (60 ** i) for i, x in enumerate(reversed(parts)))
-            return format_duration(total_seconds)
-        except Exception:
-            pass
-
-    return duration_str
-
+    hours, minutes, seconds = match.groups(default="0")
+    h = int(hours)
+    m = int(minutes)
+    s = int(seconds)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
 
 def format_ind(n):
     try:

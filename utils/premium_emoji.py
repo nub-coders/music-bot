@@ -134,6 +134,8 @@ _MESSAGE_EMOJI_IDS = {
     **{g: i for g, i in _UNICODE_TO_EMOJI_ID.items() if g not in _BUTTON_ONLY_GLYPHS},
     **{f"{d}️⃣": i for d, i in Emoji.DIGITS.items()},
     **{f"{d}⃣": i for d, i in Emoji.DIGITS.items()},
+    **{f"{t[0]}️⃣{t[1]}️⃣": i for t, i in Emoji.TENS.items()},
+    **{f"{t[0]}⃣{t[1]}⃣": i for t, i in Emoji.TENS.items()},
 }
 
 # Longest match first, so "1️⃣" beats "1⃣" and "⚙️" beats "⚙".
@@ -374,6 +376,10 @@ def apply_premium_emoji(available):
         for name, value in list(vars(Emoji).items()):
             if not name.startswith("_") and isinstance(value, int):
                 setattr(Emoji, name, None)
+        for k in Emoji.DIGITS:
+            Emoji.DIGITS[k] = None
+        for k in Emoji.TENS:
+            Emoji.TENS[k] = None
 
     # Markups built at import captured the pre-verdict state, either way.
     from utils.button import Buttons
