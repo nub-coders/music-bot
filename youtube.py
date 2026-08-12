@@ -40,6 +40,15 @@ DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
 
 YOUTUBE_API_KEYS = [k.strip() for k in _YOUTUBE_API_KEYS_RAW.split(",") if k.strip()]
 
+def is_direct_stream_url(url: str) -> bool:
+    """Return True if url is a direct HTTP/HTTPS stream link (not YouTube or Spotify)."""
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        return False
+    if re.search(r"(youtube\.com|youtu\.be|spotify\.com)", url, re.I):
+        return False
+    return True
+
+
 def get_random_key():
     if not YOUTUBE_API_KEYS:
         raise RuntimeError("YouTube API key not configured")
@@ -101,6 +110,8 @@ def process_video(item, details):
         return None
 
 async def youtube_search(query: str, limit: int = 1):
+    if is_direct_stream_url(query):
+        return []
     if not YOUTUBE_API_KEYS:
         return []
     async with httpx.AsyncClient(timeout=10) as client:
@@ -319,11 +330,11 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     # Primary: use the nubcoder /info API endpoint (skipped while the breaker is open)
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}' (mode={mode})")
+            logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}'")
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
                 resp = await client.get(
                     f"{BASE_URL}/info",
-                    params={"q": query, "mode": mode},
+                    params={"q": query},
                     headers={"Authorization": f"Bearer {API_TOKEN}"},
                 )
             if resp.status_code == 200:
@@ -348,8 +359,24 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
             logger.warning(f"[youtube.get_video_info] nubcoder API failed: {e}, falling back")
             _api_record_failure()
 
-    # Fallback: local YouTube Data API search + stream extraction
+    # Fallback: local direct stream or YouTube Data API search + stream extraction
     try:
+        if is_direct_stream_url(query):
+            details = await get_video_details(query)
+            if details and "error" not in details:
+                return (
+                    details.get("title", "Direct Stream"),
+                    query,
+                    details.get("duration", "N/A"),
+                    query,
+                    details.get("channel_name", "Direct Stream"),
+                    "N/A",
+                    details.get("stream_url", query),
+                    details.get("thumbnail", "N/A"),
+                    "direct",
+                )
+            return (None,) * 9
+
         logger.debug(f"[youtube.get_video_info] Falling back to local search for '{query}' (max_results={max_results}, mode={mode})")
         results = await youtube_search(query, limit=max_results)
         if not results:
@@ -673,7 +700,7 @@ async def get_video_details(video_id):
                     'view_count': views,
                     'channel_name': channel_name,
                     'video_url': youtube_link,
-                    'platform': 'YouTube',
+                    'platform': 'Direct' if is_direct_stream_url(video_id) else 'YouTube',
                     'stream_url': stream_url,
                     'video_id': video_id_result
                 }
@@ -681,6 +708,60 @@ async def get_video_details(video_id):
                 logger.warning("[youtube.get_video_details] API returned no usable data, falling back to yt-dlp")
         except Exception as e:
             logger.error(f"[youtube.get_video_details] API error: {e}")
+
+    # Direct stream URL resolution
+    if is_direct_stream_url(video_id):
+        logger.info(f"[youtube.get_video_details] Handling direct stream URL: '{video_id}'")
+        try:
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "skip_download": True,
+                "http_chunk_size": 10485760,
+                "retries": 1,
+                **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_id, download=False)
+                if info:
+                    if "entries" in info and info["entries"]:
+                        info = info["entries"][0]
+                    duration = "N/A"
+                    if info.get("duration"):
+                        duration = format_duration(int(info["duration"]))
+                    thumbnail = "N/A"
+                    if info.get("thumbnails"):
+                        thumbnail = info["thumbnails"][-1].get("url", "N/A")
+                    stream_url = extract_best_format(info.get("formats", [])) or info.get("url") or video_id
+                    title = info.get("title") or video_id.split("/")[-1].split("?")[0] or "Direct Stream"
+                    return {
+                        "title": title,
+                        "thumbnail": thumbnail,
+                        "duration": duration,
+                        "view_count": "N/A",
+                        "channel_name": info.get("uploader") or "Direct Stream",
+                        "video_url": video_id,
+                        "platform": "Direct",
+                        "stream_url": stream_url,
+                        "video_id": video_id,
+                    }
+        except Exception as e:
+            logger.warning(f"[youtube.get_video_details] Direct URL yt-dlp extraction notice: {e}")
+
+        clean_filename = video_id.split("/")[-1].split("?")[0]
+        title = clean_filename if clean_filename else "Direct Stream"
+        duration = "Live Stream" if ".m3u8" in video_id.lower() else "N/A"
+        return {
+            "title": title,
+            "thumbnail": "N/A",
+            "duration": duration,
+            "view_count": "N/A",
+            "channel_name": "Direct Stream",
+            "video_url": video_id,
+            "platform": "Direct",
+            "stream_url": video_id,
+            "video_id": video_id,
+        }
 
     # Fallback to yt-dlp
     try:

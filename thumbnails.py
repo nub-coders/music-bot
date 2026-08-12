@@ -157,7 +157,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     bar_heights = [10, 20, 15, 8]
     bar_width = 3
     bar_gap = 3
-    
+
     # Waveform Shadow
     for i, h in enumerate(bar_heights):
         bx1 = waveform_x + i * (bar_width + bar_gap) + 2
@@ -165,7 +165,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
         bx2 = bx1 + bar_width
         by2 = y_center + h // 2 + 2
         draw.rounded_rectangle([(bx1, by1), (bx2, by2)], radius=1, fill=(0, 0, 0, 150))
-        
+
     # Main Waveform
     for i, h in enumerate(bar_heights):
         bx1 = waveform_x + i * (bar_width + bar_gap)
@@ -227,7 +227,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     if duration != "Live":
         progress_percentage = random.uniform(0.15, 0.85)
         filled_width = int(progress_width * progress_percentage)
-        
+
         # Draw filled progress bar in solid white
         draw.rounded_rectangle(
             [(progress_x, progress_y + 10), (progress_x + filled_width, progress_y + 10 + progress_height)],
