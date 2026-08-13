@@ -5,81 +5,97 @@ from plugins._common import *  # noqa: F401,F403
 
 @Client.on_callback_query(filters.regex(r"^broadcast$"))
 async def broadcast_callback_handler(client, callback_query):
-    # Fetch user data for the callback query
+    # Fetch user settings for the broadcast
     user_data = await user_sessions.find_one({"bot_id": client.me.id})
     if not user_data:
-        return await callback_query.answer(Messages.USER_DATA_NOT_FOUND, show_alert=True)
-    group = user_data.get('group')
-    private = user_data.get('private')
-    ugroup = user_data.get('ugroup')
-    uprivate = user_data.get('uprivate')
-    bot = user_data.get('bot')
-    userbot = user_data.get('userbot')
-    pin = user_data.get('pin')
+        user_data = {}
+    group = user_data.get('group', True)
+    private = user_data.get('private', True)
+    ugroup = user_data.get('ugroup', False)
+    uprivate = user_data.get('uprivate', False)
+    bot = user_data.get('bot', True)
+    userbot = user_data.get('userbot', False)
+    pin = user_data.get('pin', False)
+
     await callback_query.message.delete()
-    # Fetch bot data
+
+    # Fetch bot data and broadcast payload
     bot_data = await collection.find_one({"bot_id": client.me.id})
     broadcast_data = broadcast_message.get(client.me.id)
     if not broadcast_data:
         return await callback_query.answer(Messages.NO_MSG_FOR_BROADCAST, show_alert=True)
     message_to_broadcast, forwarding = broadcast_data
+
+    # Bot Broadcast
     if bot_data and bot:
         X = await callback_query.message.reply(Messages.START_BOT_BROADCAST, link_preview_options=None)
         users = bot_data.get('users', [])
-        progress_msg = ""
-        u, g, sg, a_chat = 0, 0, 0, 0
+        u, g, a_chat = 0, 0, 0
+        last_edit_time = time.time()
 
-        # Use asyncio.gather for efficient parallel processing
-        chat_types = await asyncio.gather(
-            *[get_chat_type(client, chat_id) for chat_id in users]
-        )
-
-        # Prepare message for broadcast
-        if not message_to_broadcast:
-            return await callback_query.answer(Messages.NO_MSG_FOR_BROADCAST, show_alert=True)
-
-        for i, chat_type in enumerate(chat_types):
-            if not chat_type:
-                continue  # Skip if chat type could not be fetched
-
-            # Handle the chat based on its type and flags
+        for chat_id in users:
             try:
-                if chat_type == enums.ChatType.PRIVATE and private:
-                    await message_to_broadcast.copy(users[i])  if not forwarding else await message_to_broadcast.forward(users[i])
-                    u+=1
+                cid = int(chat_id)
+                is_private = cid > 0
+                is_group = cid < 0
 
-                elif chat_type in (enums.ChatType.SUPERGROUP, enums.ChatType.GROUP) and group:
-                    # Handle supergroup-specific actions
-                    sent_message = await message_to_broadcast.copy(users[i]) if not forwarding else await message_to_broadcast.forward(users[i])
-                    if chat_type == enums.ChatType.SUPERGROUP:
-                        sg+=1
-                    else:
-                        g+=1
+                if is_private and not private:
+                    continue
+                if is_group and not group:
+                    continue
+
+                sent_message = await message_to_broadcast.copy(cid) if not forwarding else await message_to_broadcast.forward(cid)
+                if is_private:
+                    u += 1
+                else:
+                    g += 1
                     if pin:
-                      try:
-                        user_s = await client.get_chat_member(users[i], client.me.id)
-                        if user_s.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
+                        try:
                             await sent_message.pin()
                             a_chat += 1
-                      except FloodWait as e:
-                              await asyncio.sleep(e.value)
-                      except Exception as e:
-                        logger.info(f"Error getting chat member status for {users[i]}: {e}")
-                else:
-                       continue
+                        except Exception:
+                            pass
 
-                # Update progress for each broadcast action (optional)
-                progress_msg = f"Broadcasting to {u} private, {g} groups, {sg} supergroups, and {a_chat} pinned messages"
-                await X.edit(progress_msg)
+                # Debounce progress edits to avoid rate-limiting
+                if (u + g) % 20 == 0 or time.time() - last_edit_time > 3:
+                    try:
+                        await X.edit(
+                            f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ꜰʀᴏᴍ ʙᴏᴛ...</b>\n\n"
+                            f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>\n"
+                            f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>\n"
+                            f"✦ {EmojiTag.SHIELD} <b>Pinned:</b> <code>{a_chat}</code>"
+                        )
+                        last_edit_time = time.time()
+                    except Exception:
+                        pass
+
+            except FloodWait as e:
+                await asyncio.sleep(e.value)
+                try:
+                    sent_message = await message_to_broadcast.copy(cid) if not forwarding else await message_to_broadcast.forward(cid)
+                    if cid > 0:
+                        u += 1
+                    else:
+                        g += 1
+                except Exception as e:
+                    logger.info(f"Error broadcasting to {chat_id}: {e}")
             except Exception as e:
-                logger.info(f"Error in broadcasting to {users[i]}: {e}")
-        await X.edit(f"Broadcasted to {u} private, {g} groups, {sg} supergroups, and {a_chat} pinned messages from bot")
+                logger.info(f"Error broadcasting to {chat_id}: {e}")
+
+        await X.edit(
+            f"<b>{EmojiTag.SUCCESS} ʙᴏᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
+            f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>\n"
+            f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>\n"
+            f"✦ {EmojiTag.SHIELD} <b>Pinned in Groups:</b> <code>{a_chat}</code>"
+        )
+
     bot_username = client.me.username
 
-
+    # Assistant Broadcast
     if userbot and session:
         XX = await callback_query.message.reply(Messages.START_ASSISTANT_BROADCAST, link_preview_options=None)
-        uu, ug, usg, _ua_chat = 0, 0, 0, 0
+        uu, ug = 0, 0
+        last_edit_time = time.time()
         try:
             # Ensure communication with the bot
             try:
@@ -96,37 +112,56 @@ async def broadcast_callback_handler(client, callback_query):
 
             msg = await compare_message(copied_message, client, session)
             if not msg:
-             raise Exception("broadcast msg not found")
-            # Broadcast to all dialogs
+                msg = copied_message
+
+            # Broadcast to dialogs
             async for dialog in session.get_dialogs():
                 chat_id = dialog.chat.id
-                chat_type = dialog.chat.type
                 if str(chat_id) == str(-1001806816712):
-                      continue
-                try:
-                    if chat_type == enums.ChatType.PRIVATE and uprivate:
-                        await msg.copy(chat_id)
-                        uu += 1
+                    continue
 
-                    elif chat_type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP) and ugroup:
-                        sent_message = await msg.copy(chat_id)  if not forwarding else await message_to_broadcast.forward(users[i])
-                        if chat_type == enums.ChatType.SUPERGROUP:
-                            usg += 1
+                is_private = int(chat_id) > 0 or dialog.chat.type == enums.ChatType.PRIVATE
+                is_group = int(chat_id) < 0 or dialog.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
+
+                if is_private and not uprivate:
+                    continue
+                if is_group and not ugroup:
+                    continue
+
+                try:
+                    if not forwarding:
+                        await msg.copy(chat_id)
+                    else:
+                        await msg.forward(chat_id)
+                    if is_private:
+                        uu += 1
+                    else:
+                        ug += 1
+
+                    # Debounce progress edits
+                    if (uu + ug) % 20 == 0 or time.time() - last_edit_time > 3:
+                        try:
+                            await XX.edit(
+                                f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴠɪᴀ ᴀssɪsᴛᴀɴᴛ...</b>\n\n"
+                                f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{uu}</code>\n"
+                                f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{ug}</code>"
+                            )
+                            last_edit_time = time.time()
+                        except Exception:
+                            pass
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    try:
+                        if not forwarding:
+                            await msg.copy(chat_id)
+                        else:
+                            await msg.forward(chat_id)
+                        if is_private:
+                            uu += 1
                         else:
                             ug += 1
-
-                    else:
-                       continue
-                    # Update progress
-                    progress_text = (
-                        f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴠɪᴀ ᴀssɪsᴛᴀɴᴛ...</b>\n\n"
-                        f"<b>Private Chats:</b> {uu}\n"
-                        f"<b>Groups:</b> {ug}\n"
-                        f"<b>Supergroups:</b> {usg}\n"
-                    )
-                    await XX.edit(progress_text)
-                except FloodWait as e:
-                               await asyncio.sleep(e.value)
+                    except Exception as e:
+                        logger.info(f"Error broadcasting to {chat_id}: {e}")
                 except Exception as e:
                     logger.info(f"Error broadcasting to {chat_id}: {e}")
 
@@ -134,95 +169,34 @@ async def broadcast_callback_handler(client, callback_query):
             logger.info(f"Error with session broadcast: {e}")
             await XX.reply(Messages.ERROR_OCCURRED, link_preview_options=None)
 
-    # Finalize broadcast summary
+        # Finalize assistant broadcast summary
         await XX.edit(
-        f"<b>{EmojiTag.SUCCESS} ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
-        f"<b>Private Chats:</b> {uu}\n"
-        f"<b>Groups:</b> {ug}\n"
-        f"<b>Supergroups:</b> {usg}\n"
-    )
+            f"<b>{EmojiTag.SUCCESS} ᴀssɪsᴛᴀɴᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
+            f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{uu}</code>\n"
+            f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{ug}</code>"
+        )
 
 
 async def get_status(client):
+    """Instant broadcast summary generated directly from DB without Telegram network calls."""
+    user_data = await collection.find_one({"bot_id": client.me.id})
+    users = user_data.get('users', []) if user_data else []
 
-  _start = datetime.datetime.now()
-  u = g = sg = a_chat =  0 # Initialize counters
-  user_data = await collection.find_one({"bot_id": client.me.id})
-  mess=""
+    u = sum(1 for cid in users if int(cid) > 0)
+    g = sum(1 for cid in users if int(cid) < 0)
+    total = len(users)
 
-  if user_data:
-    users = user_data.get('users', [])
-    _progress_msg = ""
-
-    if len(users) > 500:
-        mess += (
-            f"<b>BOT STATS:</b>\n"
-            f"<blockquote><b>`Stored users = {len(users)}`</b>\n"
-            f"<b>`Detailed stats skipped to avoid timeout`</b></blockquote>"
-        )
-        mess += ("\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
-        broadcasts[client.me.id] = mess
-        return mess
-
-    chat_type_cache = dict(user_data.get('chat_type_cache', {}))
-
-    for i, chat_id in enumerate(users):
-        chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
-        if chat_type is None:
-            continue # Skip if chat type could not be fetched
-
-        if chat_type == enums.ChatType.PRIVATE:
-            u += 1
-        elif chat_type == enums.ChatType.GROUP:
-            g += 1
-        elif chat_type == enums.ChatType.SUPERGROUP:
-            sg += 1
-            try:
-                user_s = await client.get_chat_member(users[i], int(client.me.id))
-                if user_s.status in (
-                    enums.ChatMemberStatus.OWNER,
-                    enums.ChatMemberStatus.ADMINISTRATOR,
-                ):
-                    a_chat += 1
-            except Exception as e:
-                logger.info(f"Error getting chat member status for {users[i]}: {e}")
-    mess += (
-        f"""<b>BOT STATS:</b>
-<blockquote><b>`Private chats = {u}</b>`
-<b>`Groups = {g}`
-<b>`Super Groups = {sg}`<b>
-<b>`Admin in Chats = {a_chat}`</b></blockquote>""")
-
-    uu = ug = usg  = ua_chat =0
-    async for dialog in session.get_dialogs():
-        try:
-            if dialog.chat.type == enums.ChatType.PRIVATE:
-                uu += 1
-            elif dialog.chat.type == enums.ChatType.GROUP:
-                ug += 1
-            elif dialog.chat.type == enums.ChatType.SUPERGROUP:
-                usg += 1
-                user_s = await dialog.chat.get_member(int(session.me.id))
-                if user_s.status in (
-                    enums.ChatMemberStatus.OWNER,
-                    enums.ChatMemberStatus.ADMINISTRATOR,
-                ):
-                    ua_chat += 1
-        except Exception:
-            pass
-
-    mess += (
-        f"""\n\n<b>ASSISTANT STATS:</b>
-<blockquote><b>`Private Messages = {uu}`
-<b>`Groups = {ug}`
-<b>`Super Groups = {usg}`<b>
-<b>`Admin in Chats = {ua_chat}`</b></blockquote>"""
+    mess = (
+        f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs</b>\n"
+        f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+        f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>\n"
+        f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>\n"
+        f"✦ {EmojiTag.STATS} <b>Total Targets:</b> <code>{total}</code>\n"
+        f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+        f"<blockquote><b>ᴄʜᴏᴏsᴇ ʏᴏᴜʀ ʙʀᴏᴀᴅᴄᴀsᴛ ᴏᴘᴛɪᴏɴs ʙᴇʟᴏᴡ ⬇️</b></blockquote>"
     )
-    mess += ("\n\n<blockquote><b>CHOOSE THE OPTIONS BELOW⬇️⬇️ FOR BRODCASTING</b></blockquote>")
     broadcasts[client.me.id] = mess
     return mess
-  else:
-    return
 
 
 async def compare_message(mess, client, session):
@@ -261,13 +235,14 @@ async def toggle_setting(client, callback_query):
 
     user_data = await user_sessions.find_one({"bot_id": sender_id})
     if not user_data:
-        return await callback_query.answer(Messages.USER_DATA_NOT_FOUND, show_alert=True)
+        user_data = {}
     setting_to_toggle = callback_query.data.split("_", 1)[1]
-    current_value = user_data.get(setting_to_toggle)
+    current_value = user_data.get(setting_to_toggle, False)
     new_value = not current_value
     db_task(user_sessions.update_one(
         {"bot_id": sender_id},
-        {"$set": {setting_to_toggle: new_value}}
+        {"$set": {setting_to_toggle: new_value}},
+        upsert=True
     ))
     await broadcast_command_handler(client, callback_query)
 
@@ -324,49 +299,61 @@ async def broadcast_command_handler(client, message):
     sender_id = client.me.id
     user_data = await user_sessions.find_one({"bot_id": sender_id})
     if not user_data:
-        return await message.reply(Messages.USER_DATA_NOT_FOUND, link_preview_options=None)
-    if not isinstance(message, CallbackQuery):
-      if not message.reply_to_message:
-        return await message.reply(Messages.REPLY_TO_BROADCAST, link_preview_options=None)
-      broadcast_message[client.me.id] = [message.reply_to_message]
-      broadcast_message[client.me.id].append(True if message.command[0].lower().startswith("f") else None)
-    group = user_data.get('group')
-    private = user_data.get('private')
-    ugroup = user_data.get('ugroup')
-    uprivate = user_data.get('uprivate')
-    bot = user_data.get('bot')
-    userbot = user_data.get('userbot')
-    pin = user_data.get('pin')
-    for_bot =[
-            InlineKeyboardButton(f"Gʀᴏᴜᴘ {'✅' if group else '❌'}", callback_data="toggle_group"),
-            InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ {'✅' if private else '❌'}", callback_data="toggle_private"),
-            InlineKeyboardButton(f"📌Pɪɴ {'✅' if pin else '❌'}", callback_data="toggle_pin"),]
+        user_data = {}
+        db_task(user_sessions.update_one(
+            {"bot_id": sender_id},
+            {"$setOnInsert": {"bot_id": sender_id}},
+            upsert=True
+        ))
 
-    for_userbot = [
-            InlineKeyboardButton(f"Gʀᴏᴜᴘ {'✅' if ugroup else '❌'}", callback_data="toggle_ugroup"),
-            InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ {'✅' if uprivate else '❌'}", callback_data="toggle_uprivate"),]
-    buttons = [
-            [InlineKeyboardButton(f"Fʀᴏᴍ ʙᴏᴛ {'⬇️' if bot else '❌'}", callback_data="toggle_bot"),], for_bot if bot else [],
-        [
-            InlineKeyboardButton(f"Fʀᴏᴍ ᴜꜱᴇʀʙᴏᴛ {'⬇️' if userbot else '❌'}", callback_data="toggle_userbot"),], for_userbot if userbot else [],
+    if not isinstance(message, CallbackQuery):
+        if not message.reply_to_message:
+            return await message.reply(Messages.REPLY_TO_BROADCAST, link_preview_options=None)
+        broadcast_message[client.me.id] = [
+            message.reply_to_message,
+            True if message.command[0].lower().startswith("f") else None
+        ]
+
+    group = user_data.get('group', True)
+    private = user_data.get('private', True)
+    ugroup = user_data.get('ugroup', False)
+    uprivate = user_data.get('uprivate', False)
+    bot = user_data.get('bot', True)
+    userbot = user_data.get('userbot', False)
+    pin = user_data.get('pin', False)
+
+    for_bot = [
+        InlineKeyboardButton(f"Gʀᴏᴜᴘ {'✅' if group else '❌'}", callback_data="toggle_group"),
+        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ {'✅' if private else '❌'}", callback_data="toggle_private"),
+        InlineKeyboardButton(f"📌Pɪɴ {'✅' if pin else '❌'}", callback_data="toggle_pin"),
     ]
 
+    for_userbot = [
+        InlineKeyboardButton(f"Gʀᴏᴜᴘ {'✅' if ugroup else '❌'}", callback_data="toggle_ugroup"),
+        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ {'✅' if uprivate else '❌'}", callback_data="toggle_uprivate"),
+    ]
 
-    buttons.append([InlineKeyboardButton("BROADCAST🚀🚀", callback_data="broadcast")])
-    if isinstance(message, CallbackQuery):  # If it's a button click (CallbackQuery)
-        if client.me.id not in broadcasts:
-           await get_status(client)
+    buttons = [
+        [InlineKeyboardButton(f"Fʀᴏᴍ ʙᴏᴛ {'⬇️' if bot else '❌'}", callback_data="toggle_bot")],
+        for_bot if bot else [],
+        [InlineKeyboardButton(f"Fʀᴏᴍ ᴜꜱᴇʀʙᴏᴛ {'⬇️' if userbot else '❌'}", callback_data="toggle_userbot")],
+        for_userbot if userbot else [],
+        [InlineKeyboardButton("BROADCAST🚀🚀", callback_data="broadcast")],
+    ]
+
+    # Filter out empty button rows
+    buttons = [row for row in buttons if row]
+
+    mess_text = await get_status(client)
+
+    if isinstance(message, CallbackQuery):
         await message.edit_message_text(
-            broadcasts[client.me.id],
+            mess_text,
             reply_markup=InlineKeyboardMarkup(buttons)
         )
-    else:  # If it's a normal command message
-        mess = await message.reply(Messages.GETTING_CHATS, link_preview_options=None)
-        await get_status(client)
-        if broadcasts[client.me.id]:
-           await mess.edit(
-            broadcasts[client.me.id],
-            reply_markup=InlineKeyboardMarkup(buttons)
+    else:
+        await message.reply(
+            mess_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            link_preview_options=None
         )
-        else:
-           await message.reply(Messages.NO_DATA_FOUND, link_preview_options=None)
