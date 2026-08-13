@@ -294,9 +294,9 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
 async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
     """Jump straight to a queued track — the button on its 'added to queue' card.
 
-    Admins, plus whoever queued *this* track: same rule the skip button uses for
-    the currently-playing song. Not @admin_only() because the exemption depends
-    on the entry's `by`, which is only known after we look it up.
+    Admins/auth users, plus whoever queued the currently-playing song (same rule
+    the skip button uses). Not @admin_only() because the exemption depends on the
+    active song's `by`, which is looked up dynamically.
     """
     user = callback_query.from_user
     if not user or user.id in BLOCK:
@@ -318,14 +318,16 @@ async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
         )
         track_id = data.split("_", 1)[1]
 
-        # Peek before claiming: the requester exemption needs the entry's `by`,
-        # and a track that vanishes between peek and pop just reports TRACK_GONE.
-        queued_by = next(
-            (e.get("by") for e in (state.queues.get(chat_id) or [])
-             if e.get("_track_id") == track_id),
-            None,
+        # Check authorization: jumping straight to a track interrupts/skips the
+        # currently playing track. The user must be an admin/auth user OR the
+        # owner of the currently playing song (same authorization as /skip).
+        current_song = state.playing.get(chat_id)
+        current_owner_id = (
+            getattr(current_song.get("by"), "id", None)
+            if isinstance(current_song, dict)
+            else None
         )
-        if getattr(queued_by, "id", None) != user.id and not await is_authorized(
+        if current_song and user.id != current_owner_id and not await is_authorized(
             client, auth_chat_id, user.id
         ):
             await callback_query.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)

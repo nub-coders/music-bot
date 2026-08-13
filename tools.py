@@ -643,7 +643,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 lines.append(f"{idx}️⃣ <b>{s_title}</b> <code>[{s_dur}]</code>")
         items_text = "\n".join(lines)
 
-        countdown_sec = 10
+        countdown_sec = 5
         display_seed = trim_title(seed_title)
         autoplay_enabled = state.is_autoplay_enabled(chat_id)
 

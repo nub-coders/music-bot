@@ -201,6 +201,20 @@ async def play_handler_func(client, message):
     # where both could read "not active" and both try to join/play.
     is_active = not await state.activate(target_chat_id)
 
+    # Force-play interrupts/skips the active stream, so require admin/auth or current song owner.
+    if force_play and is_active:
+        current_song = state.playing.get(target_chat_id)
+        current_owner_id = (
+            getattr(current_song.get("by"), "id", None)
+            if isinstance(current_song, dict)
+            else None
+        )
+        if current_song and message.from_user.id != current_owner_id and not await is_authorized(
+            client, message.chat.id, message.from_user.id
+        ):
+            await massage.edit(Messages.ADMIN_RESTRICTED_CMD)
+            return
+
     youtube_link = None
     media_info = {}
     _yt_task = None
