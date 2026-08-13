@@ -243,14 +243,14 @@ async def status(client, message):
 
         if total_users > 500:
             await Nub.edit_text(
-                f"<b>📊 Comprehensive Bot Statistics</b>\n"
+                f"<b>{EmojiTag.STATS} Comprehensive Bot Statistics</b>\n"
                 f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                f"⏱ <b>Processed in:</b> <code>0s</code>\n\n"
-                f"✦ <b>Stored Users:</b> <code>{total_users}</code>\n"
-                f"✦ <b>Detailed stats:</b> <code>Skipped to avoid timeout</code>\n"
-                f"✦ <b>Songs Played (24h):</b> <code>{play_count}</code>\n\n"
+                f"{EmojiTag.BOLT} <b>Processed in:</b> <code>0s</code>\n\n"
+                f"✦ {EmojiTag.USER} <b>Stored Users:</b> <code>{total_users}</code>\n"
+                f"✦ {EmojiTag.INFO} <b>Detailed stats:</b> <code>Skipped to avoid timeout</code>\n"
+                f"✦ {EmojiTag.MUSIC_NOTE} <b>Songs Played (24h):</b> <code>{play_count}</code>\n\n"
                 f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                f"<b>🎶 @{client.me.username} Performance Summary</b>"
+                f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
             )
             return
 
@@ -279,14 +279,14 @@ async def status(client, message):
                 # Update progress every 10 chats
                 if i % 10 == 0 or i == total_users - 1:
                     progress_msg = f"""
-<b>🔍 Collecting Stats ({min(i+1, total_users)}/{total_users})</b>
+<b>{EmojiTag.LOADING} Collecting Stats ({min(i+1, total_users)}/{total_users})</b>
 <b>━━━━━━━━━━━━━━━━━━━━━━━</b>
-✦ <b>Private:</b> <code>{u}</code>
-✦ <b>Groups:</b> <code>{g}</code>
-✦ <b>Super Groups:</b> <code>{sg}</code>
-✦ <b>Channels:</b> <code>{c}</code>
-✦ <b>Admin Positions:</b> <code>{a_chat}</code>
-✦ <b>Songs Played (24h):</b> <code>{play_count}</code>
+✦ {EmojiTag.USER} <b>Private:</b> <code>{u}</code>
+✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>
+✦ {EmojiTag.USERS} <b>Super Groups:</b> <code>{sg}</code>
+✦ {EmojiTag.BROADCAST} <b>Channels:</b> <code>{c}</code>
+✦ {EmojiTag.SHIELD} <b>Admin Positions:</b> <code>{a_chat}</code>
+✦ {EmojiTag.MUSIC_NOTE} <b>Songs Played (24h):</b> <code>{play_count}</code>
 """
                     await Nub.edit_text(progress_msg)
 
@@ -297,19 +297,19 @@ async def status(client, message):
         ms = (end - start).seconds
 
         final_stats = f"""
-<b>📊 Comprehensive Bot Statistics</b>
+<b>{EmojiTag.STATS} Comprehensive Bot Statistics</b>
 <b>━━━━━━━━━━━━━━━━━━━━━━━</b>
-⏱ <b>Processed in:</b> <code>{ms}s</code>
+{EmojiTag.BOLT} <b>Processed in:</b> <code>{ms}s</code>
 
-✦ <b>Private Chats:</b> <code>{u}</code>
-✦ <b>Groups:</b> <code>{g}</code>
-✦ <b>Super Groups:</b> <code>{sg}</code>
-✦ <b>Channels:</b> <code>{c}</code>
-✦ <b>Admin Privileges:</b> <code>{a_chat}</code>
-✦ <b>Songs Played (24h):</b> <code>{play_count}</code>
+✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>
+✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>
+✦ {EmojiTag.USERS} <b>Super Groups:</b> <code>{sg}</code>
+✦ {EmojiTag.BROADCAST} <b>Channels:</b> <code>{c}</code>
+✦ {EmojiTag.SHIELD} <b>Admin Privileges:</b> <code>{a_chat}</code>
+✦ {EmojiTag.MUSIC_NOTE} <b>Songs Played (24h):</b> <code>{play_count}</code>
 
 <b>━━━━━━━━━━━━━━━━━━━━━━━</b>
-<b>🎶 @{client.me.username} Performance Summary</b>
+<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>
 """
         await Nub.edit_text(final_stats)
 

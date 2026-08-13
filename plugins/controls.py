@@ -110,12 +110,12 @@ async def seek_handler_func(client, message):
 
             await client.send_message(
                 message.chat.id,
-                f"Seeked to {to_seek}!\n\nʙʏ: {message.from_user.mention()}",
+                f"<b>{EmojiTag.SUCCESS} sᴇᴇᴋᴇᴅ ᴛᴏ {to_seek}!</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {message.from_user.mention()}",
             link_preview_options=None)
         else:
             await client.send_message(
                 message.chat.id,
-                "Assistant is not streaming anything!",
+                Messages.ASSISTANT_NOT_STREAMING,
             link_preview_options=None)
     except Exception as e:
         logger.error(f"[seek] Error: {e}")
@@ -153,7 +153,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
                 logger.warning(f"Error leaving call: {e}")
 
             await callback_query.message.reply(
-                f"QUEUE CLEARED\nStreaming stopped\nRequested by: {callback_query.from_user.mention()}",
+                f"<b>{EmojiTag.STOP} ǫᴜᴇᴜᴇ ᴄʟᴇᴀʀᴇᴅ</b>\n<b>‣ sᴛʀᴇᴀᴍɪɴɢ sᴛᴏᴘᴘᴇᴅ</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {callback_query.from_user.mention()}",
             link_preview_options=None)
             try:
                 await callback_query.message.delete()
@@ -201,7 +201,7 @@ async def end_handler_func(client, message):
        await remove_active_chat(client, message.chat.id)
        state.queues.pop(message.chat.id, None)
        await client.send_message(message.chat.id,
-f"QUEUE CLEARED\nStreaming stopped\nRequested by: {message.from_user.mention()}",
+f"<b>{EmojiTag.STOP} ǫᴜᴇᴜᴇ ᴄʟᴇᴀʀᴇᴅ</b>\n<b>‣ sᴛʀᴇᴀᴍɪɴɢ sᴛᴏᴘᴘᴇᴅ</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {message.from_user.mention()}",
             link_preview_options=None)
        await call_py.leave_call(message.chat.id)
        state.playing.pop(message.chat.id, None)
@@ -409,19 +409,19 @@ async def loop_handler_func(client, message):
 
             await client.send_message(
                 message.chat.id,
-                f"Current song will be repeated {loop_count} times!\n\nʙʏ: {message.from_user.mention()}",
+                f"<b>{EmojiTag.LOOP} ᴄᴜʀʀᴇɴᴛ sᴏɴɢ ᴡɪʟʟ ʙᴇ ʀᴇᴘᴇᴀᴛᴇᴅ {loop_count} ᴛɪᴍᴇs!</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {message.from_user.mention()}",
             link_preview_options=None)
         else:
             await client.send_message(
                 message.chat.id,
-                "Assistant is not streaming anything!",
+                Messages.ASSISTANT_NOT_STREAMING,
             link_preview_options=None)
 
     except Exception as e:
         logger.error(f"[controls] Error: {e}")
         await client.send_message(
             message.chat.id,
-            "❌ An error occurred. Please try again.",
+            Messages.ERROR_OCCURRED,
         link_preview_options=None)
 
 
@@ -482,7 +482,7 @@ async def button_resume_handler(client: Client, callback_query: CallbackQuery):
         if await is_active_chat(client, chat_id):
             await call_py.resume(chat_id)
             await callback_query.message.reply(
-                f"Song resumed. Use the Pause button to pause again.\n\nʙʏ: {callback_query.from_user.mention()}",
+                f"<b>{EmojiTag.RESUME} sᴏɴɢ ʀᴇsᴜᴍᴇᴅ. ᴜsᴇ ᴛʜᴇ ᴘᴀᴜsᴇ ʙᴜᴛᴛᴏɴ ᴛᴏ ᴘᴀᴜsᴇ ᴀɢᴀɪɴ.</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {callback_query.from_user.mention()}",
             link_preview_options=None)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING)
@@ -508,7 +508,7 @@ async def button_pause_handler(client: Client, callback_query: CallbackQuery):
         if await is_active_chat(client, chat_id):
             await call_py.pause(chat_id)
             await callback_query.message.reply(
-                f"Song paused. Use the Resume button to continue.\n\nʙʏ: {callback_query.from_user.mention()}",
+                f"<b>{EmojiTag.PAUSE} sᴏɴɢ ᴘᴀᴜsᴇᴅ. ᴜsᴇ ᴛʜᴇ ʀᴇsᴜᴍᴇ ʙᴜᴛᴛᴏɴ ᴛᴏ ᴄᴏɴᴛɪɴᴜᴇ.</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {callback_query.from_user.mention()}",
             link_preview_options=None)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING)

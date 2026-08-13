@@ -43,7 +43,7 @@ async def show_sudo_list(client, message):
             return await message.reply(Messages.NO_SUDO_USERS, link_preview_options=None)
 
         # Build the sudo list message
-        sudo_list = ["**🔱 SUDO USERS LIST:**\n"]
+        sudo_list = [f"<b>{EmojiTag.SUDO} sᴜᴅᴏ ᴜsᴇʀs ʟɪsᴛ:</b>\n"]
         number = 1
 
         for user_id in sudo_users:

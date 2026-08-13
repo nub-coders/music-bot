@@ -85,7 +85,7 @@ async def active_chats_info(client, message):
 
     cp = _call_py()
     if cp is None:
-        return await message.reply("❌ Call client not ready.", link_preview_options=None)
+        return await message.reply(f"<b>{EmojiTag.ERROR} ᴄᴀʟʟ ᴄʟɪᴇɴᴛ ɴᴏᴛ ʀᴇᴀᴅʏ.</b>", link_preview_options=None)
 
     active_calls = await cp.calls
     if active_calls:
@@ -99,12 +99,12 @@ async def active_chats_info(client, message):
         titles = await asyncio.gather(*[_fetch_title(cid) for cid in active_calls])
         titles_str = "\n".join(titles)
         reply_text = (
-            f"<b>Active group calls:</b>\n"
+            f"<b>{EmojiTag.HEADPHONES} ᴀᴄᴛɪᴠᴇ ɢʀᴏᴜᴘ ᴄᴀʟʟs:</b>\n"
             f"<blockquote expandable>{titles_str}</blockquote>\n"
-            f"<b>Total:</b> {len(active_calls)}"
+            f"<b>‣ ᴛᴏᴛᴀʟ:</b> <code>{len(active_calls)}</code>"
         )
     else:
-        reply_text = "<b>Active Voice Chats:</b>\n<blockquote>No active group calls</blockquote>"
+        reply_text = f"<b>{EmojiTag.HEADPHONES} ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs:</b>\n<blockquote>{EmojiTag.INFO} No active group calls</blockquote>"
 
     await message.reply_text(reply_text, link_preview_options=None)
 

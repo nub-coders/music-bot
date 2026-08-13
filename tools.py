@@ -606,11 +606,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
     except NoActiveGroupCall:
         logger.error(f"[join_call] NoActiveGroupCall exception for chat {chat.id} - No active group calls")
-        await clients["bot"].send_message(chat.id, "ERROR: No active group calls", link_preview_options=None)
+        await clients["bot"].send_message(chat.id, Messages.NO_STREAM, link_preview_options=None)
         return await remove_active_chat(chat.id)
     except Exception as e:
         logger.error(f"[join_call] Unexpected error in chat {chat.id}: {type(e).__name__} - {e}", exc_info=True)
-        await clients["bot"].send_message(chat.id, "ERROR: Something went wrong. Please try again.", link_preview_options=None)
+        await clients["bot"].send_message(chat.id, Messages.ERROR_OCCURRED, link_preview_options=None)
         return await remove_active_chat(chat.id)
 
 

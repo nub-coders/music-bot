@@ -94,10 +94,10 @@ async def mentionall(client, message):
         usrtxt += f"{usr.user.mention()}, "
         if usrnum == 5:
             if args:
-                txt = f"<blockquote>{args}\n\n{usrtxt}</blockquote>"
+                txt = f"<blockquote>{EmojiTag.BROADCAST} <b>{args}</b>\n\n{usrtxt}</blockquote>"
                 await client.send_message(chat_id, txt, link_preview_options=None)
             elif direp:
-                await direp.reply(f"<blockquote>{usrtxt}</blockquote>", link_preview_options=None)
+                await direp.reply(f"<blockquote>{EmojiTag.BROADCAST} {usrtxt}</blockquote>", link_preview_options=None)
             await asyncio.sleep(5)
             usrnum = 0
             usrtxt = ""

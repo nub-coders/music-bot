@@ -278,5 +278,5 @@ async def blocklist_handler(client, message):
     if not blocked_users:
         return await message.reply(Messages.NO_USERS_BLOCKED, link_preview_options=None)
 
-    blocklist_text = "Blocked Users:\n" + "\n".join([f"- `{user_id}`" for user_id in blocked_users])
+    blocklist_text = f"<b>{EmojiTag.BLOCKED} ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs:</b>\n" + "\n".join([f"• <code>{user_id}</code>" for user_id in blocked_users])
     await message.reply_text(blocklist_text, link_preview_options=None)

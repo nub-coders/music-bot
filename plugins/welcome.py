@@ -15,21 +15,18 @@ async def set_welcome_handler(client, message):
         replied_msg = message.reply_to_message
         if not replied_msg:
             usage_text = (
-                "Please reply to a message to set it as welcome message.\n\n"
-                "You can set:\n"
+                f"<b>{EmojiTag.INFO} ᴘʟᴇᴀsᴇ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ sᴇᴛ ɪᴛ ᴀs ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ.</b>\n\n"
+                "<b>You can set:</b>\n"
                 "• Text message\n"
                 "• Media (photo/video/gif/sticker)\n"
                 "• Media with caption\n\n"
-                "Available placeholders:\n"
-                "• {name} - User's name\n"
-                "• {id} - User's ID\n"
-                "• {botname} - Bot's username\n\n"
-                "Size limits:\n"
+                "<b>Available placeholders:</b>\n"
+                "• <code>{name}</code> - User's name\n"
+                "• <code>{id}</code> - User's ID\n"
+                "• <code>{botname}</code> - Bot's username\n\n"
+                "<b>Size limits:</b>\n"
                 "• Text: Maximum 4096 characters\n"
-                "• Media: Maximum 5MB\n\n"
-                "Example usage:\n"
-                "• 'Welcome {name}! Your ID is {id}'\n"
-                "• Reply to a photo/video with caption 'Welcome to {botname}!'"
+                "• Media: Maximum 5MB"
             )
             return await message.reply_text(usage_text, link_preview_options=None)
 

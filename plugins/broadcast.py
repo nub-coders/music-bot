@@ -116,10 +116,10 @@ async def broadcast_callback_handler(client, callback_query):
                        continue
                     # Update progress
                     progress_text = (
-                        f"Broadcasting via assistant...\n\n"
-                        f"Private Chats: {uu}\n"
-                        f"Groups: {ug}\n"
-                        f"Supergroups: {usg}\n"
+                        f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴠɪᴀ ᴀssɪsᴛᴀɴᴛ...</b>\n\n"
+                        f"<b>Private Chats:</b> {uu}\n"
+                        f"<b>Groups:</b> {ug}\n"
+                        f"<b>Supergroups:</b> {usg}\n"
                     )
                     await XX.edit(progress_text)
                 except FloodWait as e:
@@ -129,14 +129,14 @@ async def broadcast_callback_handler(client, callback_query):
 
         except Exception as e:
             logger.info(f"Error with session broadcast: {e}")
-            await XX.reply("An error occurred during userbot broadcasting.", link_preview_options=None)
+            await XX.reply(Messages.ERROR_OCCURRED, link_preview_options=None)
 
     # Finalize broadcast summary
         await XX.edit(
-        f"Broadcast completed!\n\n"
-        f"Private Chats: {uu}\n"
-        f"Groups: {ug}\n"
-        f"Supergroups: {usg}\n"
+        f"<b>{EmojiTag.SUCCESS} ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
+        f"<b>Private Chats:</b> {uu}\n"
+        f"<b>Groups:</b> {ug}\n"
+        f"<b>Supergroups:</b> {usg}\n"
     )
 
 
