@@ -294,14 +294,26 @@ def strip_custom_emoji_text(text):
 
 
 def position_tag(n: int) -> str:
-    """Return keycaps emoji string for position n.
+    """Return keycaps emoji or custom emoji tag for position n.
 
-    HTML.parse automatically upgrades keycap emoji (e.g. '5️⃣') to custom emoji
-    tags (<emoji id="...">5️⃣</emoji>) when PREMIUM_EMOJI is active. The tag wraps
-    the actual keycap emoji character '5️⃣', ensuring Telegram's custom emoji
-    validation passes without ENTITY_TEXT_INVALID errors.
+    HTML.parse automatically upgrades single keycap emoji (e.g. '5️⃣') to custom emoji
+    tags (<emoji id="...">5️⃣</emoji>) when PREMIUM_EMOJI is active. However, for
+    positions present in Emoji.TENS (e.g. 10, 20, ..., 90), there is no '0' digit
+    in Emoji.DIGITS. We directly return the TENS custom emoji tag wrapping a single
+    keycap character fallback (e.g. '1️⃣') to prevent Telegram's ENTITY_TEXT_INVALID error.
     """
+    if PREMIUM_EMOJI:
+        s = str(n)
+        if s in Emoji.TENS and Emoji.TENS[s]:
+            first_digit = s[0]
+            return f'<emoji id="{Emoji.TENS[s]}">{first_digit}️⃣</emoji>'
+        if len(s) > 2 and s.endswith("0"):
+            prefix = s[:-1]
+            if prefix in Emoji.TENS and Emoji.TENS[prefix]:
+                first_digit = prefix[0]
+                return f'<emoji id="{Emoji.TENS[prefix]}">{first_digit}️⃣</emoji>0️⃣'
     return keycaps(n)
+
 
 
 def _as_chat_id(value):
