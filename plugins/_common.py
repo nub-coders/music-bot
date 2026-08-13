@@ -58,6 +58,29 @@ import magic
 
 logger = logging.getLogger("pyrogram")
 
+
+def clean_alert(text: str) -> str:
+    """Strip custom premium emoji tags and HTML for plain-text callback_query.answer toasts/alerts."""
+    if not text:
+        return ""
+    clean = re.sub(r'<emoji id="[^"]*">(.*?)</emoji>', r'\1', str(text))
+    clean = re.sub(r'<[^>]+>', '', clean)
+    return clean.strip()
+
+
+# Patch CallbackQuery.answer to automatically sanitize all button alert messages
+if not getattr(CallbackQuery, "_clean_answer_patched", False):
+    _orig_cb_answer = CallbackQuery.answer
+
+    async def _safe_cb_answer(self, text: str = None, show_alert: bool = None, url: str = None, cache_time: int = 0):
+        if text:
+            text = clean_alert(text)
+        return await _orig_cb_answer(self, text=text, show_alert=show_alert, url=url, cache_time=cache_time)
+
+    CallbackQuery.answer = _safe_cb_answer
+    CallbackQuery._clean_answer_patched = True
+
+
 # ── module-level state ──
 session = clients["session"]
 call_py = clients["call_py"]
@@ -66,6 +89,7 @@ create_custom_filter = filters.create(lambda _, __, message: any(m.is_self for m
 mime = magic.Magic(mime=True)
 
 # ── shared helpers ──
+
 def _chat_type_value(chat_type):
     return getattr(chat_type, "value", chat_type)
 def _is_admin_member_status(status):

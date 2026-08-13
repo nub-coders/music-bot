@@ -108,3 +108,30 @@ class Buttons:
                 InlineKeyboardButton("✖ ᴄʟᴏsᴇ", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),
             ],
         ])
+
+    @staticmethod
+    def suggestion_markup(suggestions: list, autoplay_enabled: bool = True):
+        """Generates the markup for related video suggestions card."""
+        play_row = []
+        for i, item in enumerate(suggestions[:5], 1):
+            vid = item.get("video_id")
+            if vid:
+                play_row.append(
+                    InlineKeyboardButton(
+                        f"▶️ {i}",
+                        callback_data=f"sgplay_{vid}",
+                        style=ButtonStyle.PRIMARY,
+                        icon_custom_emoji_id=Emoji.PLAY,
+                    )
+                )
+
+        autoplay_text = "🔄 ᴀᴜᴛᴏᴘʟᴀʏ: ON" if autoplay_enabled else "⏸ ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
+        control_row = [
+            InlineKeyboardButton("⏹ sᴛᴏᴘ", callback_data="sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
+            InlineKeyboardButton(autoplay_text, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
+        ]
+        rows = []
+        if play_row:
+            rows.append(play_row)
+        rows.append(control_row)
+        return InlineKeyboardMarkup(rows)

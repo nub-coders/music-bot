@@ -19,6 +19,9 @@ class SessionStore:
         self.playing = {}    # chat_id -> QueueEntry | dict
         self.played = {}     # chat_id -> int (unix ts playback started)
         self.active = set()  # chat_ids with an active voice chat
+        self.suggest_tasks = {}      # chat_id -> asyncio.Task (active countdown task)
+        self.last_played = {}        # chat_id -> dict (last played track info)
+        self.autoplay_settings = {}  # chat_id -> bool (autoplay preference, default True)
         # ponytail: one lock per chat_id, created on demand and never reaped;
         # locks are tiny, and a bot serving even 100k chats is well within budget.
         self._locks = defaultdict(asyncio.Lock)
@@ -26,6 +29,22 @@ class SessionStore:
     def lock(self, chat_id):
         """Per-chat lock. Wrap any queue/active read-modify-write in `async with`."""
         return self._locks[chat_id]
+
+    def cancel_suggest(self, chat_id):
+        """Cancel any pending suggestion countdown task for chat_id."""
+        task = self.suggest_tasks.pop(chat_id, None)
+        if task and not task.done():
+            task.cancel()
+            return True
+        return False
+
+    def is_autoplay_enabled(self, chat_id) -> bool:
+        """Return True if autoplay/suggest is enabled for chat_id (defaults to True)."""
+        return self.autoplay_settings.get(chat_id, True)
+
+    def set_autoplay(self, chat_id, enabled: bool):
+        """Set autoplay preference for chat_id."""
+        self.autoplay_settings[chat_id] = enabled
 
     async def activate(self, chat_id):
         """Atomically mark a chat active. Returns True iff it was NOT already active
@@ -44,6 +63,7 @@ class SessionStore:
                 if entry.get("_track_id") == track_id:
                     return queue.pop(i)
         return None
+
 
 
 state = SessionStore()

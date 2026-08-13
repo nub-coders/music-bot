@@ -103,7 +103,9 @@
  | `/skip` | Skip to next track in queue |
  | `/seek <sec>` · `/seekback <sec>` | Seek forward / backward |
  | `/loop <n>` | Loop current track n times (`0` disables) |
+ | `/autoplay [on|off]` | Toggle automatic suggestions on queue end (admins only) |
  | `/end` | Stop playback and clear the queue |
+
 
  **Queue**
 

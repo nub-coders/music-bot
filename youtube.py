@@ -304,6 +304,19 @@ INNERTUBE_HEADERS_VR = {
     "User-Agent": "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
 }
 
+INNERTUBE_CLIENT_REMIX = {
+    "clientName": "WEB_REMIX",
+    "clientVersion": "1.20240101.01.00",
+    "hl": "en",
+    "gl": "US",
+}
+INNERTUBE_HEADERS_REMIX = {
+    "Content-Type": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://music.youtube.com/",
+}
+
+
 
 def _innertube_extract_vid(url_or_query: str) -> str | None:
     if not url_or_query:
@@ -1143,3 +1156,142 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
             pass
 
     return result_tuple
+
+
+def _extract_ytm_tracks(data: dict) -> list[dict]:
+    tracks = []
+    seen = set()
+
+    def find_renderers(node):
+        if isinstance(node, dict):
+            if "playlistPanelVideoRenderer" in node:
+                r = node["playlistPanelVideoRenderer"]
+                vid = r.get("videoId")
+                title_node = r.get("title")
+                title = ""
+                if isinstance(title_node, dict):
+                    title = title_node.get("simpleText") or "".join(x.get("text", "") for x in title_node.get("runs", []))
+
+                byline_node = r.get("shortBylineText") or r.get("longBylineText")
+                artist = ""
+                if isinstance(byline_node, dict):
+                    artist = byline_node.get("simpleText") or "".join(x.get("text", "") for x in byline_node.get("runs", []))
+
+                dur_node = r.get("lengthText")
+                dur = ""
+                if isinstance(dur_node, dict):
+                    dur = dur_node.get("simpleText") or "".join(x.get("text", "") for x in dur_node.get("runs", []))
+
+                thumbs = (r.get("thumbnail") or {}).get("thumbnails", [])
+                thumb = thumbs[-1]["url"] if thumbs else ""
+
+                if vid and title and vid not in seen:
+                    seen.add(vid)
+                    tracks.append({
+                        "video_id": vid,
+                        "title": title,
+                        "artist": artist,
+                        "duration": dur or "N/A",
+                        "thumbnail": thumb,
+                        "url": f"https://www.youtube.com/watch?v={vid}",
+                    })
+            elif "compactVideoRenderer" in node:
+                r = node["compactVideoRenderer"]
+                vid = r.get("videoId")
+                title_node = r.get("title")
+                title = ""
+                if isinstance(title_node, dict):
+                    title = title_node.get("simpleText") or "".join(x.get("text", "") for x in title_node.get("runs", []))
+                byline_node = r.get("shortBylineText") or r.get("ownerText")
+                artist = ""
+                if isinstance(byline_node, dict):
+                    artist = byline_node.get("simpleText") or "".join(x.get("text", "") for x in byline_node.get("runs", []))
+                dur_node = r.get("lengthText")
+                dur = ""
+                if isinstance(dur_node, dict):
+                    dur = dur_node.get("simpleText") or "".join(x.get("text", "") for x in dur_node.get("runs", []))
+                thumbs = (r.get("thumbnail") or {}).get("thumbnails", [])
+                thumb = thumbs[-1]["url"] if thumbs else ""
+                if vid and title and vid not in seen:
+                    seen.add(vid)
+                    tracks.append({
+                        "video_id": vid,
+                        "title": title,
+                        "artist": artist,
+                        "duration": dur or "N/A",
+                        "thumbnail": thumb,
+                        "url": f"https://www.youtube.com/watch?v={vid}",
+                    })
+            for v in node.values():
+                find_renderers(v)
+        elif isinstance(node, list):
+            for item in node:
+                find_renderers(item)
+
+    find_renderers(data)
+    return tracks
+
+
+async def get_related_suggestions(argument: str, limit: int = 5) -> list[dict]:
+    """
+    Fetch related music recommendations for a given video ID, URL, or song title.
+    Uses YouTube Music Radio Mix (/next with RDAMVM) as primary source, falling back to YouTube search.
+    """
+    if not argument:
+        return []
+
+    vid = _innertube_extract_vid(argument)
+    if not vid:
+        # If argument is a song title / query, find its video_id first
+        vid = _MEM_CACHE.get(("search", argument))
+        if not vid:
+            try:
+                search_resp = await _post_innertube_async("search", {"query": argument})
+                hit = _first_video_id(search_resp)
+                if hit:
+                    vid = hit[0]
+                    _mem_cache_set(("search", argument), vid)
+            except Exception as e:
+                logger.warning(f"[Suggest] Initial search resolution failed for '{argument}': {e}")
+
+    suggestions = []
+    if vid:
+        try:
+            http = get_http_client()
+            url = f"https://music.youtube.com/youtubei/v1/next?key={INNERTUBE_KEY}"
+            body = {
+                "context": {"client": INNERTUBE_CLIENT_REMIX},
+                "videoId": vid,
+                "playlistId": f"RDAMVM{vid}",
+                "isAutomix": True,
+            }
+            res = await http.post(url, json=body, headers=INNERTUBE_HEADERS_REMIX)
+            if res.status_code == 200:
+                extracted = _extract_ytm_tracks(res.json())
+                # Filter out the seed video
+                suggestions = [t for t in extracted if t.get("video_id") != vid]
+                logger.info(f"[Suggest] Fetched {len(suggestions)} related tracks for video '{vid}'")
+        except Exception as e:
+            logger.warning(f"[Suggest] YouTube Music radio request failed for {vid}: {e}")
+
+    # Fallback: if we got fewer than desired recommendations, use youtube_search
+    if len(suggestions) < limit:
+        try:
+            query = argument if not vid else f"similar music to {vid}"
+            search_items = await youtube_search(query, limit=limit)
+            for item in search_items:
+                item_vid = item.get("video_id")
+                if item_vid and item_vid != vid and not any(s.get("video_id") == item_vid for s in suggestions):
+                    suggestions.append({
+                        "video_id": item_vid,
+                        "title": item.get("title", "N/A"),
+                        "artist": item.get("channel_name", "N/A"),
+                        "duration": item.get("duration", "N/A"),
+                        "thumbnail": item.get("thumbnail", ""),
+                        "url": item.get("video_url", f"https://www.youtube.com/watch?v={item_vid}"),
+                    })
+        except Exception as e:
+            logger.warning(f"[Suggest] Fallback search failed: {e}")
+
+    return suggestions[:limit]
+

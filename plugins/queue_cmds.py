@@ -11,12 +11,27 @@ async def queue_command(client, message):
     if not items:
         return await message.reply(Messages.QUEUE_EMPTY, link_preview_options=None)
 
-    # Build styled queue text
-    text_lines = ["🎵 | ǫᴜᴇᴜᴇ (ᴍᴀx 20)\n"]
+    # Build styled queue items & resolve pending yt_task if completed
+    header_text = "CURRENT QUEUE (MAX 20)"
+    display_items = []
     for idx, item in enumerate(items, 1):
-        title = item.get("title", "Unknown")
-        duration = item.get("duration", "-")
-        text_lines.append(f"{idx}. {title}  [{duration}]")
+        yt_task = item.get("_yt_task")
+        if yt_task and yt_task.done() and not yt_task.cancelled() and not yt_task.exception():
+            try:
+                res = yt_task.result()
+                if res and len(res) >= 2:
+                    if res[0] and res[0] != "Error":
+                        item["title"] = res[0]
+                    if res[1] and res[1] != "N/A":
+                        item["duration"] = res[1]
+            except Exception:
+                pass
+
+        raw_title = item.get("title") or "Unknown"
+        title = trim_title(raw_title) if raw_title else "Unknown"
+        dur = item.get("duration")
+        duration = str(dur) if dur and str(dur).lower() not in ("none", "n/a", "") else "-"
+        display_items.append((idx, title, duration))
 
     # Create dark gradient-style image
     width, height = 900, 650
@@ -24,22 +39,23 @@ async def queue_command(client, message):
     draw = ImageDraw.Draw(img)
     # Draw a subtle accent bar on the left
     for x in range(8):
-        _opacity = max(0, 255 - x * 30)
         draw.rectangle([(x, 0), (x, height)], fill=(138, 43, 226))
     # Font
     try:
         font_title = ImageFont.truetype("Poppins-Bold.ttf", 36)
-        font_body  = ImageFont.truetype("Poppins-Regular.ttf", 28)
+        font_body  = ImageFont.truetype("Poppins-Regular.ttf", 26)
     except Exception:
         font_title = ImageFont.load_default()
         font_body  = font_title
     # Title
-    draw.text((30, 30), text_lines[0].strip(), fill=(200, 150, 255), font=font_title)
+    draw.text((35, 30), header_text, fill=(200, 150, 255), font=font_title)
     # Body items
-    y = 90
-    for line in text_lines[1:]:
-        draw.text((30, y), line, fill=(230, 230, 255), font=font_body)
-        y += 40
+    y = 85
+    for idx, title, duration in display_items:
+        # Truncate title on image to fit width nicely
+        img_title = (title[:42] + "…") if len(title) > 45 else title
+        draw.text((35, y), f"{idx}. {img_title}  [{duration}]", fill=(230, 230, 255), font=font_body)
+        y += 36
 
     # Save to bytes
     from io import BytesIO
@@ -51,12 +67,13 @@ async def queue_command(client, message):
         f"<u><b>{EmojiTag.MUSIC_NOTE} | ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ</b></u>\n"
         "<blockquote expandable>\n"
         + "\n".join(
-            f"<b>{idx}.</b> {item.get('title','Unknown')}  <code>[{item.get('duration','-')}]</code>"
-            for idx, item in enumerate(items, 1)
+            f"<b>{idx}.</b> {title}  <code>[{duration}]</code>"
+            for idx, title, duration in display_items
         )
         + "\n</blockquote>"
     )
     await message.reply_photo(photo=buf, caption=styled_caption)
+
 
 
 @Client.on_message(filters.command("shuffle"))

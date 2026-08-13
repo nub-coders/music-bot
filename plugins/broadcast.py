@@ -3,7 +3,7 @@
 from plugins._common import *  # noqa: F401,F403
 
 
-@Client.on_callback_query(filters.regex("broadcast"))
+@Client.on_callback_query(filters.regex(r"^broadcast$"))
 async def broadcast_callback_handler(client, callback_query):
     # Fetch user data for the callback query
     user_data = await user_sessions.find_one({"bot_id": client.me.id})
@@ -19,7 +19,10 @@ async def broadcast_callback_handler(client, callback_query):
     await callback_query.message.delete()
     # Fetch bot data
     bot_data = await collection.find_one({"bot_id": client.me.id})
-    message_to_broadcast, forwarding = broadcast_message.get(client.me.id)
+    broadcast_data = broadcast_message.get(client.me.id)
+    if not broadcast_data:
+        return await callback_query.answer(Messages.NO_MSG_FOR_BROADCAST, show_alert=True)
+    message_to_broadcast, forwarding = broadcast_data
     if bot_data and bot:
         X = await callback_query.message.reply(Messages.START_BOT_BROADCAST, link_preview_options=None)
         users = bot_data.get('users', [])
@@ -252,7 +255,7 @@ async def compare_message(mess, client, session):
     return None
 
 
-@Client.on_callback_query(filters.regex(r"toggle_(.*)"))
+@Client.on_callback_query(filters.regex(r"^toggle_(.*)$"))
 async def toggle_setting(client, callback_query):
     sender_id = client.me.id
 

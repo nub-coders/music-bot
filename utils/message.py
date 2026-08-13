@@ -29,6 +29,23 @@ class Messages:
     AUTO_LEAVE_ONE = f"{EmojiTag.WARNING} <b>ᴏɴʟʏ ᴏɴᴇ ʟɪsᴛᴇɴᴇʀ ʀᴇᴍᴀɪɴᴇᴅ. ᴀssɪsᴛᴀɴᴛ ʟᴇꜰᴛ ᴄʜᴀᴛ.</b>"
     ERROR_STREAM = f"{EmojiTag.ERROR} <b>ᴄᴏᴜʟᴅ ɴᴏᴛ ꜰɪɴᴅ ᴀ ᴠᴀʟɪᴅ sᴛʀᴇᴀᴍ sᴏᴜʀᴄᴇ.</b>"
 
+    # ── Autoplay & Suggestions ─────────────────────────────────────────────
+    SUGGESTION_CARD = (
+        f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
+        "<b>‣ sᴇᴇᴅ:</b> {0}\n\n"
+        "{1}\n\n"
+        "⏳ <i>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ #1 ɪɴ <b>{2}</b>s…</i>"
+    )
+    SUGGESTION_CARD_NO_AUTOPLAY = (
+        f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
+        "<b>‣ sᴇᴇᴅ:</b> {0}\n\n"
+        "{1}\n\n"
+        "<i>ᴄʜᴏᴏsᴇ ᴀ sᴏɴɢ ᴛᴏ ᴘʟᴀʏ ɴᴇxᴛ.</i>"
+    )
+    AUTOPLAY_ENABLED = f"{EmojiTag.SUCCESS} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴇɴᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
+    AUTOPLAY_DISABLED = f"{EmojiTag.WARNING} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴅɪsᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
+
+
     # ── Admin & Auth ───────────────────────────────────────────────────────
     ADMIN_UNKNOWN_USER = f"{EmojiTag.WARNING} <b>ᴄᴀɴɴᴏᴛ ᴠᴇʀɪꜰʏ ᴀᴅᴍɪɴ sᴛᴀᴛᴜs ꜰᴏʀ ᴛʜɪs ᴜsᴇʀ.</b>"
     ADMIN_RESTRICTED_ACTION = f"{EmojiTag.LOCK} <b>ᴛʜɪs ᴀᴄᴛɪᴏɴ ɪs ʀᴇsᴛʀɪᴄᴛᴇᴅ ᴛᴏ ᴀᴅᴍɪɴs ᴏɴʟʏ.</b>"

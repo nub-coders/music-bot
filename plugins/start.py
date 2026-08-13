@@ -237,8 +237,10 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         f"{EmojiTag.NEXT} /seek &lt;sec&gt;    — ᴊᴜᴍᴘ ꜰᴏʀᴡᴀʀᴅ\n"
         f"{EmojiTag.BACK} /seekback &lt;sec&gt; — ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ\n"
         f"{EmojiTag.LOOP} /loop &lt;1-20&gt;   — ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ\n"
+        f"{EmojiTag.SETTINGS} /autoplay [on|off] — ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs\n"
         "</blockquote>"
     )
+
 
     auth_commands = (
         f"<u><b>{EmojiTag.LOCK} | ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"

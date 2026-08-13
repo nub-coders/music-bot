@@ -23,6 +23,8 @@
   "LOADING": "<emoji id=\"5787237370709413702\">🔄</emoji> | <b>ʟᴏᴀᴅɪɴɢ…</b>",
   "PROCESSING": "<emoji id=\"5787237370709413702\">🔄</emoji> | <b>ᴘʀᴏᴄᴇssɪɴɢ…</b>",
   "REBOOTING": "<emoji id=\"5787237370709413702\">🔄</emoji> | <b>ʀᴇʙᴏᴏᴛɪɴɢ ʙᴏᴛ ᴘʀᴏᴄᴇss…</b>",
+  "AUTOPLAY_ENABLED": "<emoji id=\"5776375003280838798\">✅</emoji> | <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴇɴᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>",
+  "AUTOPLAY_DISABLED": "<emoji id=\"5881702736843511327\">⚠️</emoji> | <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴅɪsᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>",
 
   "ADMIN_RESTRICTED_CMD": "<emoji id=\"5879895758202735862\">🔐</emoji> | <b>ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪs ʀᴇsᴛʀɪᴄᴛᴇᴅ ᴛᴏ ᴀᴅᴍɪɴs ᴏɴʟʏ.</b>",
   "ADMIN_RESTRICTED_ACTION": "<emoji id=\"5879895758202735862\">🔐</emoji> | <b>ᴛʜɪs ᴀᴄᴛɪᴏɴ ɪs ʀᴇsᴛʀɪᴄᴛᴇᴅ ᴛᴏ ᴀᴅᴍɪɴs ᴏɴʟʏ.</b>",

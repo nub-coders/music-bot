@@ -143,6 +143,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
         )
 
         is_active = await is_active_chat(client, chat_id)
+        state.cancel_suggest(chat_id)
         if is_active:
             # Clear the song queue and end the session
             await remove_active_chat(client, chat_id)
@@ -196,10 +197,12 @@ async def end_handler_func(client, message):
   if message.from_user.id in BLOCK:
        return
   try:
-   is_active = await is_active_chat(client, message.chat.id)
+   chat_id = message.chat.id
+   state.cancel_suggest(chat_id)
+   is_active = await is_active_chat(client, chat_id)
    if is_active:
-       await remove_active_chat(client, message.chat.id)
-       state.queues.pop(message.chat.id, None)
+       await remove_active_chat(client, chat_id)
+       state.queues.pop(chat_id, None)
        await client.send_message(message.chat.id,
 f"<b>{EmojiTag.STOP} ǫᴜᴇᴜᴇ ᴄʟᴇᴀʀᴇᴅ</b>\n<b>‣ sᴛʀᴇᴀᴍɪɴɢ sᴛᴏᴘᴘᴇᴅ</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {message.from_user.mention()}",
             link_preview_options=None)
@@ -547,3 +550,177 @@ link_preview_options=None)
        await client.send_message(message.chat.id,  Messages.NO_STREAM, link_preview_options=None)
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+
+
+# ── Suggestion & Autoplay Callbacks / Commands ───────────────────────────────
+
+@Client.on_callback_query(filters.regex(r"^sgplay_"))
+async def suggestion_play_handler(client: Client, callback_query: CallbackQuery):
+    """Play a suggested video immediately in audio mode."""
+    user = callback_query.from_user
+    if not user or user.id in BLOCK:
+        await callback_query.answer("You are not allowed to perform this action.", show_alert=True)
+        return
+    if user.id != OWNER_ID and user.id not in SUDO and not allow_play(user.id):
+        await callback_query.answer(Messages.RATE_LIMITED, show_alert=True)
+        return
+
+    chat_id = callback_query.message.chat.id
+    vid = callback_query.data.split("sgplay_", 1)[1]
+    url = f"https://www.youtube.com/watch?v={vid}"
+
+    # Cancel countdown timer
+    state.cancel_suggest(chat_id)
+
+    await callback_query.answer("▶️ Starting playback…", show_alert=False)
+
+    try:
+        await callback_query.message.edit_text(
+            f"▶️ <b>ᴘʟᴀʏɪɴɢ sᴜɢɢᴇsᴛɪᴏɴ:</b> <code>{vid}</code>…",
+            reply_markup=None,
+        )
+    except Exception:
+        pass
+
+    try:
+        yt_task = asyncio.create_task(handle_youtube(url))
+        yt_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+        last_info = state.last_played.get(chat_id) or {}
+        chat_obj = last_info.get("chat") or callback_query.message.chat
+        await join_call(
+            callback_query.message,
+            "Suggested Track",
+            None,
+            chat_obj,
+            user,
+            "N/A",
+            "audio",
+            None,
+            stream_url=None,
+            yt_task=yt_task,
+        )
+    except Exception as e:
+        logger.error(f"[Suggest] Failed to play suggested track {vid}: {e}")
+        await callback_query.message.reply(Messages.ERROR_OCCURRED, link_preview_options=None)
+
+
+@Client.on_callback_query(filters.regex(r"^sgstop$"))
+@admin_only()
+async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery):
+    """Stop suggestion countdown and leave voice chat."""
+    user = callback_query.from_user
+    if not user or user.id in BLOCK:
+        await callback_query.answer(Messages.NO_PERM_END_SESSION, show_alert=True)
+        return
+
+    chat_id = callback_query.message.chat.id
+    state.cancel_suggest(chat_id)
+
+    try:
+        await call_py.leave_call(chat_id)
+    except Exception:
+        pass
+
+    await remove_active_chat(client, chat_id)
+    state.playing.pop(chat_id, None)
+
+    try:
+        await callback_query.message.edit_text(
+            f"<b>{EmojiTag.STOP} sᴛʀᴇᴀᴍ ᴇɴᴅᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ.</b>",
+            reply_markup=None,
+        )
+    except Exception:
+        pass
+
+    await callback_query.answer(Messages.STREAM_ENDED, show_alert=False)
+
+
+@Client.on_callback_query(filters.regex(r"^sgtoggle$"))
+@admin_only()
+async def suggestion_toggle_handler(client: Client, callback_query: CallbackQuery):
+    """Toggle autoplay on/off from suggestion card."""
+    chat_id = callback_query.message.chat.id
+    current = state.is_autoplay_enabled(chat_id)
+    new_state = not current
+    state.set_autoplay(chat_id, new_state)
+
+    if not new_state:
+        state.cancel_suggest(chat_id)
+
+    await callback_query.answer("Autoplay: ON" if new_state else "Autoplay: OFF", show_alert=False)
+
+    try:
+        orig_markup = callback_query.message.reply_markup
+        if orig_markup and orig_markup.inline_keyboard:
+            rows = []
+            for row in orig_markup.inline_keyboard:
+                new_row = []
+                for btn in row:
+                    if btn.callback_data == "sgtoggle":
+                        new_txt = "🔄 ᴀᴜᴛᴏᴘʟᴀʏ: ON" if new_state else "⏸ ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
+                        new_row.append(InlineKeyboardButton(new_txt, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS))
+                    else:
+                        new_row.append(btn)
+                rows.append(new_row)
+            await callback_query.message.edit_reply_markup(InlineKeyboardMarkup(rows))
+    except Exception:
+        pass
+
+
+@Client.on_message(filters.command(["autoplay", "suggest"]))
+async def autoplay_command_handler(client: Client, message):
+    """View or toggle autoplay status. Members can view; only admins and auth users can switch."""
+    if message.from_user and message.from_user.id in BLOCK:
+        return
+
+    chat_id = message.chat.id
+    user_id = message.from_user.id if message.from_user else None
+    parts = message.text.split()
+    current = state.is_autoplay_enabled(chat_id)
+    status_str = "<b>ᴇɴᴀʙʟᴇᴅ</b>" if current else "<b>ᴅɪsᴀʙʟᴇᴅ</b>"
+
+    is_admin = await is_authorized(client, chat_id, user_id, allow_auth_users=True) if user_id else False
+
+    if len(parts) > 1:
+        arg = parts[1].lower()
+        if arg in ["status", "check", "info"]:
+            return await message.reply(
+                f"{EmojiTag.INFO} <b>ᴀᴜᴛᴏᴘʟᴀʏ sᴛᴀᴛᴜs:</b> {status_str}",
+                link_preview_options=None,
+            )
+
+        if not is_admin:
+            return await message.reply(
+                f"{Messages.ADMIN_RESTRICTED_CMD}\n\n{EmojiTag.INFO} <b>ᴀᴜᴛᴏᴘʟᴀʏ ɪs ᴄᴜʀʀᴇɴᴛʟʏ:</b> {status_str}",
+                link_preview_options=None,
+            )
+
+        if arg in ["on", "enable", "true", "1"]:
+            state.set_autoplay(chat_id, True)
+            await message.reply(Messages.AUTOPLAY_ENABLED, link_preview_options=None)
+        elif arg in ["off", "disable", "false", "0"]:
+            state.set_autoplay(chat_id, False)
+            state.cancel_suggest(chat_id)
+            await message.reply(Messages.AUTOPLAY_DISABLED, link_preview_options=None)
+        else:
+            await message.reply(
+                f"{EmojiTag.INFO} <b>ᴜsᴀɢᴇ:</b> <code>/autoplay [on|off]</code>\n‣ <b>ᴄᴜʀʀᴇɴᴛ sᴛᴀᴛᴜs:</b> {status_str}",
+                link_preview_options=None,
+            )
+    else:
+        if not is_admin:
+            return await message.reply(
+                f"{EmojiTag.INFO} <b>ᴀᴜᴛᴏᴘʟᴀʏ sᴛᴀᴛᴜs:</b> {status_str}\n<i>(Only admins & auth users can switch this setting)</i>",
+                link_preview_options=None,
+            )
+
+        new_state = not current
+        state.set_autoplay(chat_id, new_state)
+        if not new_state:
+            state.cancel_suggest(chat_id)
+        if new_state:
+            await message.reply(Messages.AUTOPLAY_ENABLED, link_preview_options=None)
+        else:
+            await message.reply(Messages.AUTOPLAY_DISABLED, link_preview_options=None)
+

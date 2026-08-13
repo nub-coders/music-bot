@@ -17,7 +17,7 @@ from pymediainfo import MediaInfo
 
 
 from config import *
-from youtube import extract_video_id, get_stream
+from youtube import extract_video_id, get_stream, get_related_suggestions, handle_youtube
 from database import user_sessions, db_task, collection
 
 import logging
@@ -423,17 +423,17 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         chat_id = chat.id
         audio_flags = MediaStream.Flags.IGNORE if mode == "audio" else None
 
-        # ── Wait for YouTube task if we have no stream source yet ──────────────
-        # ponytail: await the task we depend on (up to 30s) instead of a 3s poll
-        # that "proceeds with None" — proceeding sourceless just errors below.
+        # ── Wait for YouTube task if we have no stream source or incomplete metadata ──
+        # ponytail: await the task we depend on (up to 30s) instead of proceeding sourceless
+        # or with placeholder duration/title.
         # shield so a timeout here never cancels the task the queue also holds.
-        if not stream_url and not youtube_link and yt_task:
-            logger.info("[join_call] No stream source yet — awaiting YouTube task (max 30s)...")
+        if (not stream_url or duration in (None, "N/A", "00:00", "") or title in ("Suggested Track", "Unknown Media", "Playlist track")) and yt_task:
+            logger.info("[join_call] Awaiting YouTube task for stream and metadata (max 30s)...")
             result = None
             try:
                 result = await asyncio.wait_for(asyncio.shield(yt_task), timeout=30)
             except asyncio.TimeoutError:
-                logger.warning("[join_call] YouTube task not done after 30s — proceeding with None source")
+                logger.warning("[join_call] YouTube task not done after 30s — proceeding with available source")
             except Exception as e:
                 logger.warning(f"[join_call] yt_task failed: {e}")
 
@@ -463,11 +463,12 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                             thumb.add_done_callback(
                                 lambda t: t.exception() if not t.cancelled() else None
                             )
-                        logger.info(f"[join_call] YouTube task resolved — title='{title}'")
+                        logger.info(f"[join_call] YouTube task resolved — title='{title}', duration='{duration}'")
                 except Exception as e:
                     logger.warning(f"[join_call] yt_task result failed: {e}")
 
         queue = state.queues.get(chat_id, [])
+
         position = len(queue)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"[join_call] chat={chat_id} title='{title}' mode={mode} position={position} thumb={'set' if thumb else 'None'}")
@@ -521,6 +522,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             "thumb": thumb
         }
         state.played[chat_id] = int(time.time())
+        state.last_played[chat_id] = state.playing[chat_id]
         logger.debug(f"[join_call] Playing status updated, timestamp: {state.played[chat_id]}")
 
         logger.debug(f"[join_call] Scheduling playtime save to database for bot {clients['bot'].me.id}")
@@ -614,6 +616,116 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         return await remove_active_chat(chat.id)
 
 
+async def _trigger_suggestions(client, chat_id: int, last_song: dict):
+    """Fetch related recommendations, send suggestion card with countdown and auto-stream #1."""
+    try:
+        seed_url = last_song.get("yt_link") or ""
+        seed_title = last_song.get("title") or "Last Track"
+        seed_vid = extract_video_id(seed_url) if seed_url else None
+        lookup_seed = seed_vid or seed_url or seed_title
+
+        suggestions = await get_related_suggestions(lookup_seed, limit=5)
+
+        if not suggestions:
+            logger.info(f"[Suggest] No recommendations found for chat {chat_id}, leaving call.")
+            await client.leave_call(chat_id)
+            await remove_active_chat(chat_id)
+            return
+
+        lines = []
+        for idx, item in enumerate(suggestions[:5], 1):
+            s_title = trim_title(item.get("title", "Unknown"))
+            s_artist = item.get("artist", "")
+            s_dur = item.get("duration", "")
+            if s_artist:
+                lines.append(f"{idx}️⃣ <b>{s_title}</b> — <i>{s_artist}</i> <code>[{s_dur}]</code>")
+            else:
+                lines.append(f"{idx}️⃣ <b>{s_title}</b> <code>[{s_dur}]</code>")
+        items_text = "\n".join(lines)
+
+        countdown_sec = 10
+        display_seed = trim_title(seed_title)
+        autoplay_enabled = state.is_autoplay_enabled(chat_id)
+
+        if autoplay_enabled:
+            card_text = Messages.SUGGESTION_CARD.format(display_seed, items_text, countdown_sec)
+        else:
+            card_text = Messages.SUGGESTION_CARD_NO_AUTOPLAY.format(display_seed, items_text)
+
+        keyboard = Buttons.suggestion_markup(suggestions[:5], autoplay_enabled=autoplay_enabled)
+
+        bot = clients.get("bot")
+        if not bot:
+            logger.warning("[Suggest] Bot client not available")
+            await client.leave_call(chat_id)
+            await remove_active_chat(chat_id)
+            return
+
+        sent_msg = await bot.send_message(
+            chat_id,
+            card_text,
+            reply_markup=keyboard,
+            link_preview_options=None,
+        )
+
+        if not autoplay_enabled:
+            return
+
+        async def _suggest_countdown():
+            try:
+                await asyncio.sleep(countdown_sec)
+                top_track = suggestions[0]
+                top_vid = top_track.get("video_id")
+                top_url = top_track.get("url") or f"https://www.youtube.com/watch?v={top_vid}"
+                top_title = top_track.get("title", "Autoplay track")
+                top_dur = top_track.get("duration", "N/A")
+
+                try:
+                    await sent_msg.edit_text(
+                        f"▶️ <b>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ:</b> <b>{trim_title(top_title)}</b>…",
+                        reply_markup=None,
+                    )
+                except Exception:
+                    pass
+
+                yt_task = asyncio.create_task(handle_youtube(top_url))
+                yt_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+
+                by_user = "AUTO"
+                chat_obj = last_song.get("chat") or getattr(sent_msg, 'chat', None)
+                await join_call(
+                    sent_msg,
+                    top_title,
+                    None,
+                    chat_obj,
+                    by_user,
+                    top_dur,
+                    "audio",
+                    None,
+                    stream_url=None,
+                    yt_task=yt_task,
+                )
+            except asyncio.CancelledError:
+                pass
+            except Exception as err:
+                logger.warning(f"[Suggest] Countdown autoplay failed for chat {chat_id}: {err}")
+                await client.leave_call(chat_id)
+                await remove_active_chat(chat_id)
+            finally:
+                state.suggest_tasks.pop(chat_id, None)
+
+        task = asyncio.create_task(_suggest_countdown())
+        state.suggest_tasks[chat_id] = task
+
+    except Exception as e:
+        logger.warning(f"[Suggest] Error triggering suggestions for chat {chat_id}: {e}")
+        try:
+            await client.leave_call(chat_id)
+            await remove_active_chat(chat_id)
+        except Exception:
+            pass
+
+
 async def end(client, update):
     db_task(collection.update_one(
         {"bot_id": clients["bot"].me.id},
@@ -621,12 +733,16 @@ async def end(client, update):
         upsert=True
     ))
     try:
-        if update.chat_id in state.queues and state.queues[update.chat_id]:
-            next_song = state.queues[update.chat_id].pop(0)
-            if update.chat_id in state.playing:
+        chat_id = update.chat_id
+        state.cancel_suggest(chat_id)
+
+        if chat_id in state.queues and state.queues[chat_id]:
+            next_song = state.queues[chat_id].pop(0)
+            if chat_id in state.playing:
                 if update.stream_type == StreamEnded.Type.VIDEO:
-                    await client.leave_call(update.chat_id)
-            state.playing[update.chat_id] = next_song
+                    await client.leave_call(chat_id)
+            state.playing[chat_id] = next_song
+            state.last_played[chat_id] = next_song
             await join_call(
                 next_song['message'],
                 next_song['title'],
@@ -640,12 +756,19 @@ async def end(client, update):
                 yt_task=next_song.get('_yt_task'),
             )
         else:
-            logger.info(f"Song queue for chat {update.chat_id} is empty.")
-            await client.leave_call(update.chat_id)
-            await remove_active_chat(update.chat_id)
-            state.playing.pop(update.chat_id, None)
+            logger.info(f"Song queue for chat {chat_id} is empty.")
+            last_song = state.playing.pop(chat_id, None) or state.last_played.get(chat_id)
+            if last_song:
+                state.last_played[chat_id] = last_song
+
+            if last_song:
+                asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+            else:
+                await client.leave_call(chat_id)
+                await remove_active_chat(chat_id)
     except Exception as e:
         logger.warning(f"Error in end function: {e}")
+
 
 
 

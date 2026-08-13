@@ -194,6 +194,7 @@ async def play_handler_func(client, message):
     _current_queue = len(state.queues.get(target_chat_id, [])) if state.queues else 0
 
     massage = await message.reply(Messages.BOLT, link_preview_options=None)
+    state.cancel_suggest(target_chat_id)
     # Atomic test-and-set under the per-chat lock: of two near-simultaneous /play
     # calls in the same chat, exactly one sees is_active=False (starts playback);
     # the other sees True and is routed to the enqueue branch. Closes the race
