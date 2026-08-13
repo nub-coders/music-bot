@@ -191,6 +191,60 @@ async def update_progress_button(message, duration_str, chat, markup):
         logger.warning(f"Progress update error: {e}")
 
 
+async def count_listeners(chat_id: int) -> int:
+    """Count non-bot, active human participants currently in the voice chat."""
+    session = clients.get("session")
+    if not session:
+        return 1
+    try:
+        listeners = 0
+        async for member in session.get_call_members(chat_id):
+            if getattr(member, "is_left", False):
+                continue
+            session_id = getattr(session.me, "id", None) if hasattr(session, "me") and session.me else None
+            if getattr(member, "is_self", False) or (session_id and getattr(member.chat, "id", None) == session_id):
+                continue
+            listeners += 1
+        return listeners
+    except Exception as e:
+        logger.warning(f"[count_listeners] Could not fetch call members for chat {chat_id}: {e}")
+        return 1
+
+
+async def autoleave_vc(chat_id: int) -> bool:
+    """
+    Quickly check if voice chat has listeners. If empty, leave call and clean up immediately.
+    Returns True if call was empty and left, False if listeners are present.
+    """
+    try:
+        listeners = await count_listeners(chat_id)
+        if listeners == 0:
+            logger.info(f"[autoleave_vc] No listeners detected in chat {chat_id}. Leaving voice chat immediately.")
+            call_py = clients.get("call_py")
+            if call_py:
+                try:
+                    await call_py.leave_call(chat_id)
+                except Exception:
+                    pass
+            state.queues.pop(chat_id, None)
+            state.playing.pop(chat_id, None)
+            await remove_active_chat(chat_id)
+            bot = clients.get("bot")
+            if bot:
+                try:
+                    await bot.send_message(
+                        chat_id,
+                        Messages.AUTO_LEAVE_EMPTY,
+                        link_preview_options=None,
+                    )
+                except Exception:
+                    pass
+            return True
+    except Exception as e:
+        logger.warning(f"[autoleave_vc] Error: {e}")
+    return False
+
+
 async def _swap_in_photo(thumb_task, chat_id, text, keyboard, text_msg, chat, duration):
     """Replace a text now-playing message with the photo card once the render lands.
     Telegram can't edit text->media, so this is delete + resend — the card jumps to
@@ -619,6 +673,10 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 async def _trigger_suggestions(client, chat_id: int, last_song: dict):
     """Fetch related recommendations, send suggestion card with countdown and auto-stream #1."""
     try:
+        # Quick check: if no listeners, leave immediately and cancel autoplay
+        if await autoleave_vc(chat_id):
+            return
+
         seed_url = last_song.get("yt_link") or ""
         seed_title = last_song.get("title") or "Last Track"
         seed_vid = extract_video_id(seed_url) if seed_url else None
@@ -674,6 +732,10 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
         async def _suggest_countdown():
             try:
                 await asyncio.sleep(countdown_sec)
+                # Quick recheck: if everyone left during countdown, cancel and leave immediately
+                if await autoleave_vc(chat_id):
+                    return
+
                 top_track = suggestions[0]
                 top_vid = top_track.get("video_id")
                 top_url = top_track.get("url") or f"https://www.youtube.com/watch?v={top_vid}"

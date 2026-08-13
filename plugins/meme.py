@@ -10,6 +10,9 @@ async def kang(client, message):
     if not user:
        return await message.reply_text(Messages.USE_COMMAND_AS_USER, link_preview_options=None)
     replied = message.reply_to_message
+    if not replied or not replied.media:
+        return await message.reply_text(Messages.REPLY_TO_MEDIA, link_preview_options=None)
+
     Nub = await message.reply_text(Messages.STICKER_LONG, link_preview_options=None)
     media_ = None
     emoji_ = None
@@ -17,47 +20,43 @@ async def kang(client, message):
     is_video = False
     resize = False
     ff_vid = False
-    if replied and replied.media:
-        if replied.photo:
-            resize = True
-        elif replied.document and "image" in replied.document.mime_type:
-            resize = True
-            replied.document.file_name
-        elif replied.document and "tgsticker" in replied.document.mime_type:
-            is_anim = True
-            replied.document.file_name
-        elif replied.document and "video" in replied.document.mime_type:
-            resize = True
-            is_video = True
-            ff_vid = True
-        elif replied.animation:
-            resize = True
-            is_video = True
-            ff_vid = True
-        elif replied.video:
-            resize = True
-            is_video = True
-            ff_vid = True
-        elif replied.sticker:
-            if not replied.sticker.file_name:
-                await Nub.edit(Messages.STICKER_NO_NAME)
-                return
-            emoji_ = replied.sticker.emoji
-            is_anim = replied.sticker.is_animated
-            is_video = replied.sticker.is_video
-            if not (
-                replied.sticker.file_name.endswith(".tgs")
-                or replied.sticker.file_name.endswith(".webm")
-            ):
-                resize = True
-                ff_vid = True
-        else:
-            await Nub.edit(Messages.UNSUPPORTED_FILE)
+    if replied.photo:
+        resize = True
+    elif replied.document and "image" in replied.document.mime_type:
+        resize = True
+        replied.document.file_name
+    elif replied.document and "tgsticker" in replied.document.mime_type:
+        is_anim = True
+        replied.document.file_name
+    elif replied.document and "video" in replied.document.mime_type:
+        resize = True
+        is_video = True
+        ff_vid = True
+    elif replied.animation:
+        resize = True
+        is_video = True
+        ff_vid = True
+    elif replied.video:
+        resize = True
+        is_video = True
+        ff_vid = True
+    elif replied.sticker:
+        if not replied.sticker.file_name:
+            await Nub.edit(Messages.STICKER_NO_NAME)
             return
-        media_ = await client.download_media(replied, file_name=f"{ggg}/user_{client.me.id}/")
+        emoji_ = replied.sticker.emoji
+        is_anim = replied.sticker.is_animated
+        is_video = replied.sticker.is_video
+        if not (
+            replied.sticker.file_name.endswith(".tgs")
+            or replied.sticker.file_name.endswith(".webm")
+        ):
+            resize = True
+            ff_vid = True
     else:
-        await Nub.edit(Messages.REPLY_TO_MEDIA)
+        await Nub.edit(Messages.UNSUPPORTED_FILE)
         return
+    media_ = await client.download_media(replied, file_name=f"{ggg}/user_{client.me.id}/")
     if media_:
         args = get_arg(message)
         pack = 1
@@ -281,24 +280,32 @@ async def get_response(message, client):
 
 @Client.on_message(filters.command("mmf"))
 async def memify(client, message):
-    if not message.reply_to_message_id:
-        await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
-        return
+    if not message.reply_to_message or not message.reply_to_message.media:
+        return await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
+    text = get_arg(message).strip()
+    if not text:
+        return await message.reply_text("Please use `/mmf <text>`", link_preview_options=None)
     reply_message = message.reply_to_message
-    if not reply_message.media:
-        await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
-        return
-    file = await client.download_media(reply_message)
     Nub = await message.reply_text(Messages.PROCESSING, link_preview_options=None)
-    text = get_arg(message)
-    if len(text) < 1:
-        return await Nub.edit("Please use `/mmf <text>`")
-    meme = await add_text_img(file, text)
-    await asyncio.gather(
-        Nub.delete(),
-        client.send_sticker(
-            message.chat.id,                                                                                          sticker=meme,
-            reply_to_message_id=reply_message.id,                                                                 ),
-    )
-    os.remove(meme)
-    await message.delete()
+    file = await client.download_media(reply_message)
+    if not file:
+        return await Nub.edit("Failed to download media for memify.")
+    try:
+        meme = await add_text_img(file, text)
+        await asyncio.gather(
+            Nub.delete(),
+            client.send_sticker(
+                message.chat.id,
+                sticker=meme,
+                reply_to_message_id=reply_message.id,
+            ),
+        )
+        if os.path.exists(meme):
+            os.remove(meme)
+    finally:
+        if os.path.exists(file):
+            os.remove(file)
+    try:
+        await message.delete()
+    except Exception:
+        pass

@@ -175,9 +175,17 @@ async def play_handler_func(client, message):
         await message.reply(Messages.GROUP_ONLY, link_preview_options=None)
         return
 
+    # Check for query or replied media upfront before sending processing message or locking chat
+    has_media = bool(message.reply_to_message and message.reply_to_message.media)
+    input_parts = (message.text or message.caption or "").split(maxsplit=1)
+    raw_query = input_parts[1].strip() if len(input_parts) > 1 else ""
+
+    if not has_media and not raw_query:
+        await message.reply(f"{Messages.NO_QUERY_GIVEN}\n`/{command} query`", link_preview_options=None)
+        return
+
     # Get the bot username and retrieve the session client ID from connector
     youtube_link = None
-    input_text = message.text.split(" ", 1)
 
     # Determine if we need channel mode
     _chat = message.chat
@@ -224,7 +232,7 @@ async def play_handler_func(client, message):
     title = trim_title("Unknown Media")
 
     # Check if replied to media message
-    if message.reply_to_message and message.reply_to_message.media:
+    if has_media:
         media_msg = message.reply_to_message
         media_type = None
         duration = 0
@@ -314,8 +322,8 @@ async def play_handler_func(client, message):
             'media_type': media_type,
             'url': youtube_link
         }
-    elif len(input_text) == 2:
-        search_query = input_text[1]
+    else:
+        search_query = raw_query
         # Source seam: a playlist link expands into many per-track queries;
         # search text or a single video URL stays a one-element list.
         _sources = await resolve_sources(search_query)
@@ -336,12 +344,6 @@ async def play_handler_func(client, message):
         _yt_task.add_done_callback(
             lambda t: t.exception() if not t.cancelled() else None
         )
-    else:
-        try:
-            await massage.edit(f"{Messages.NO_QUERY_GIVEN}\n`/play query`")
-            return await remove_active_chat(client, target_chat_id)
-        except Exception:
-            return
 
     # Start thumbnail generation in the background so the voice join is not blocked.
     # join_call will await the task only after streaming is already live.
