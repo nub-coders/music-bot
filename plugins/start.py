@@ -323,7 +323,9 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         "tools": tools_commands,
         "kang": kang_commands,
         "status": status_commands,
+        "owner": owner_commands,
     }
+
 
     # ---------- Navigation buttons ----------
     back_markup = Buttons.BACK

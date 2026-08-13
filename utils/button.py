@@ -28,7 +28,6 @@ class Buttons:
         ],
         [
             InlineKeyboardButton("⚙️ ᴏᴡɴᴇʀ",        callback_data="commands_owner", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.SETTINGS),
-            InlineKeyboardButton("🌐 ʀᴇᴘᴏ",          url="https://github.com/nub-coders/nub-music-bot", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.REPO),
         ],
         [InlineKeyboardButton("🏠 ʜᴏᴍᴇ",             callback_data="commands_back", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.HOME)],
     ])
@@ -56,8 +55,12 @@ class Buttons:
                 ),
                 InlineKeyboardButton("💬 sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ", url=f"https://t.me/{GROUP}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.CHAT),
             ],
+            [
+                InlineKeyboardButton("🌐 ʀᴇᴘᴏ", url="https://github.com/nub-coders/nub-music-bot", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.REPO),
+            ],
         ]
         return InlineKeyboardMarkup(buttons)
+
 
     @staticmethod
     def playback_markup(channel_mode=False):
