@@ -138,3 +138,18 @@ class Buttons:
             rows.append(play_row)
         rows.append(control_row)
         return InlineKeyboardMarkup(rows)
+
+    @staticmethod
+    def autoleave_markup():
+        """Generates the markup for the auto-leave voice chat message."""
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🤖 ᴏᴜʀ ʙᴏᴛs",
+                    url="https://t.me/+FbIuEWrOYlEwYzM1",
+                    style=ButtonStyle.PRIMARY,
+                    icon_custom_emoji_id=Emoji.USER,
+                )
+            ]
+        ])
+

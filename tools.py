@@ -235,6 +235,7 @@ async def autoleave_vc(chat_id: int) -> bool:
                     await bot.send_message(
                         chat_id,
                         Messages.AUTO_LEAVE_EMPTY,
+                        reply_markup=Buttons.autoleave_markup(),
                         link_preview_options=None,
                     )
                 except Exception:
