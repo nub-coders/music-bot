@@ -1232,10 +1232,11 @@ def _extract_ytm_tracks(data: dict) -> list[dict]:
     return tracks
 
 
-async def get_related_suggestions(argument: str, limit: int = 5) -> list[dict]:
+async def get_related_suggestions(argument: str, limit: int = 5, exclude_ids: set | list | None = None) -> list[dict]:
     """
     Fetch related music recommendations for a given video ID, URL, or song title.
     Uses YouTube Music Radio Mix (/next with RDAMVM) as primary source, falling back to YouTube search.
+    Filters out recently played video IDs to prevent A -> B -> A recommendation loops.
     """
     if not argument:
         return []
@@ -1254,7 +1255,12 @@ async def get_related_suggestions(argument: str, limit: int = 5) -> list[dict]:
             except Exception as e:
                 logger.warning(f"[Suggest] Initial search resolution failed for '{argument}': {e}")
 
+    excluded = set(exclude_ids) if exclude_ids else set()
+    if vid:
+        excluded.add(vid)
+
     suggestions = []
+    extracted = []
     if vid:
         try:
             http = get_http_client()
@@ -1268,9 +1274,9 @@ async def get_related_suggestions(argument: str, limit: int = 5) -> list[dict]:
             res = await http.post(url, json=body, headers=INNERTUBE_HEADERS_REMIX)
             if res.status_code == 200:
                 extracted = _extract_ytm_tracks(res.json())
-                # Filter out the seed video
-                suggestions = [t for t in extracted if t.get("video_id") != vid]
-                logger.info(f"[Suggest] Fetched {len(suggestions)} related tracks for video '{vid}'")
+                # Filter out the seed video and any previously played / excluded videos
+                suggestions = [t for t in extracted if t.get("video_id") and t.get("video_id") not in excluded]
+                logger.info(f"[Suggest] Fetched {len(suggestions)} related tracks for video '{vid}' (excluded {len(excluded)} tracks)")
         except Exception as e:
             logger.warning(f"[Suggest] YouTube Music radio request failed for {vid}: {e}")
 
@@ -1278,10 +1284,10 @@ async def get_related_suggestions(argument: str, limit: int = 5) -> list[dict]:
     if len(suggestions) < limit:
         try:
             query = argument if not vid else f"similar music to {vid}"
-            search_items = await youtube_search(query, limit=limit)
+            search_items = await youtube_search(query, limit=limit * 3)
             for item in search_items:
                 item_vid = item.get("video_id")
-                if item_vid and item_vid != vid and not any(s.get("video_id") == item_vid for s in suggestions):
+                if item_vid and item_vid not in excluded and not any(s.get("video_id") == item_vid for s in suggestions):
                     suggestions.append({
                         "video_id": item_vid,
                         "title": item.get("title", "N/A"),
@@ -1290,8 +1296,14 @@ async def get_related_suggestions(argument: str, limit: int = 5) -> list[dict]:
                         "thumbnail": item.get("thumbnail", ""),
                         "url": item.get("video_url", f"https://www.youtube.com/watch?v={item_vid}"),
                     })
+                    if len(suggestions) >= limit:
+                        break
         except Exception as e:
             logger.warning(f"[Suggest] Fallback search failed: {e}")
+
+    # Last-resort fallback: if strict exclusion resulted in 0 suggestions, relax exclusion to avoid dropping the call
+    if not suggestions and extracted and vid:
+        suggestions = [t for t in extracted if t.get("video_id") != vid]
 
     return suggestions[:limit]
 

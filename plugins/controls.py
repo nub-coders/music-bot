@@ -585,6 +585,7 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
         pass
 
     try:
+        state.add_to_history(chat_id, vid)
         yt_task = asyncio.create_task(handle_youtube(url))
         yt_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
@@ -593,7 +594,7 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
         await join_call(
             callback_query.message,
             "Suggested Track",
-            None,
+            url,
             chat_obj,
             user,
             "N/A",

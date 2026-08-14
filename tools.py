@@ -518,6 +518,8 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                             thumb.add_done_callback(
                                 lambda t: t.exception() if not t.cancelled() else None
                             )
+                        if _vid_id and _vid_id != 'N/A':
+                            state.add_to_history(chat_id, _vid_id)
                         logger.info(f"[join_call] YouTube task resolved — title='{title}', duration='{duration}'")
                 except Exception as e:
                     logger.warning(f"[join_call] yt_task result failed: {e}")
@@ -597,6 +599,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         video_id = extract_video_id(youtube_link) if youtube_link and not os.path.exists(youtube_link) else None
         if video_id:
+            state.add_to_history(chat_id, video_id)
             display_title = f'<a href="https://t.me/{clients["bot"].me.username}?start=vidid_{video_id}"><b>{title_formatted}</b></a>'
         elif youtube_link and youtube_link.startswith("http"):
             display_title = f'<a href="{youtube_link}"><b>{title_formatted}</b></a>'
@@ -683,7 +686,18 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
         seed_vid = extract_video_id(seed_url) if seed_url else None
         lookup_seed = seed_vid or seed_url or seed_title
 
-        suggestions = await get_related_suggestions(lookup_seed, limit=5)
+        # Exclude recently played songs and queued songs to avoid loops (A -> B -> A)
+        exclude_ids = set(state.get_history_ids(chat_id))
+        if seed_vid:
+            exclude_ids.add(seed_vid)
+            state.add_to_history(chat_id, seed_vid)
+        for q in state.queues.get(chat_id, []):
+            q_url = q.get("yt_link") or ""
+            q_vid = extract_video_id(q_url) if q_url else None
+            if q_vid:
+                exclude_ids.add(q_vid)
+
+        suggestions = await get_related_suggestions(lookup_seed, limit=5, exclude_ids=exclude_ids)
 
         if not suggestions:
             logger.info(f"[Suggest] No recommendations found for chat {chat_id}, leaving call.")
@@ -743,6 +757,9 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 top_title = top_track.get("title", "Autoplay track")
                 top_dur = top_track.get("duration", "N/A")
 
+                if top_vid:
+                    state.add_to_history(chat_id, top_vid)
+
                 try:
                     await sent_msg.edit_text(
                         f"▶️ <b>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ:</b> <b>{trim_title(top_title)}</b>…",
@@ -759,7 +776,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 await join_call(
                     sent_msg,
                     top_title,
-                    None,
+                    top_url,
                     chat_obj,
                     by_user,
                     top_dur,
