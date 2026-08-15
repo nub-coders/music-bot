@@ -22,10 +22,32 @@ class SessionStore:
         self.suggest_tasks = {}      # chat_id -> asyncio.Task (active countdown task)
         self.last_played = {}        # chat_id -> dict (last played track info)
         self.autoplay_settings = {}  # chat_id -> bool (autoplay preference, default True)
+        self.now_playing_msgs = {}   # chat_id -> Message (active now-playing message)
         self.history = defaultdict(lambda: deque(maxlen=50))  # chat_id -> deque of recent video_ids
         # ponytail: one lock per chat_id, created on demand and never reaped;
         # locks are tiny, and a bot serving even 100k chats is well within budget.
         self._locks = defaultdict(asyncio.Lock)
+
+    def set_now_playing(self, chat_id, message):
+        """Record the active now-playing message for chat_id."""
+        self.now_playing_msgs[chat_id] = message
+
+    def get_now_playing(self, chat_id):
+        """Get the active now-playing message for chat_id."""
+        return self.now_playing_msgs.get(chat_id)
+
+    def pop_now_playing(self, chat_id):
+        """Pop and return the active now-playing message for chat_id."""
+        return self.now_playing_msgs.pop(chat_id, None)
+
+    async def delete_now_playing(self, chat_id):
+        """Safely delete and remove the active now-playing message for chat_id."""
+        msg = self.pop_now_playing(chat_id)
+        if msg:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
 
     def lock(self, chat_id):
         """Per-chat lock. Wrap any queue/active read-modify-write in `async with`."""

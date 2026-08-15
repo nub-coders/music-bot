@@ -162,6 +162,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
                 logger.warning(f"Could not delete message: {e}")
 
             state.playing.pop(chat_id, None)
+            await state.delete_now_playing(chat_id)
 
             await callback_query.answer(Messages.STREAM_ENDED, show_alert=False)
         else:
@@ -175,11 +176,13 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
                 Messages.NO_STREAM,
             link_preview_options=None)
             state.playing.pop(chat_id, None)
+            await state.delete_now_playing(chat_id)
 
             await callback_query.answer(Messages.NO_ACTIVE_STREAM, show_alert=False)
     except NotInCallError:
         await remove_active_chat(client, chat_id)
         state.playing.pop(chat_id, None)
+        await state.delete_now_playing(chat_id)
         await callback_query.answer(Messages.STREAM_ENDED_NOT_IN_CALL, show_alert=False)
     except Exception as e:
         logger.error(f"Error in end button handler: {e}")
@@ -208,16 +211,19 @@ f"<b>{EmojiTag.STOP} ǫᴜᴇᴜᴇ ᴄʟᴇᴀʀᴇᴅ</b>\n<b>‣ sᴛʀᴇᴀ
             link_preview_options=None)
        await call_py.leave_call(message.chat.id)
        state.playing.pop(message.chat.id, None)
+       await state.delete_now_playing(chat_id)
    else:
      await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
      await remove_active_chat(client, message.chat.id)
      await call_py.leave_call(message.chat.id)
      state.playing.pop(message.chat.id, None)
+     await state.delete_now_playing(chat_id)
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
      state.playing.pop(message.chat.id, None)
+     await state.delete_now_playing(chat_id)
 
 
 @Client.on_callback_query(filters.regex(r"^(skip|cskip)$"))
@@ -257,6 +263,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
                 next_song['thumb'],
                 next_song.get('stream_url'),
                 yt_task=next_song.get('_yt_task'),
+                queue_msg=next_song.get('queue_msg'),
             )
             await callback_query.answer(Messages.SKIPPED_SUCCESS, show_alert=False)
         else:
@@ -270,6 +277,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
 
             if chat_id in state.playing:
                 state.playing[chat_id].clear()
+            await state.delete_now_playing(chat_id)
 
             await callback_query.message.reply(Messages.SKIPPED_EMPTY.format(callback_query.from_user.mention()), link_preview_options=None)
 
@@ -284,6 +292,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
         await remove_active_chat(client, chat_id)
         if chat_id in state.playing:
             state.playing[chat_id].clear()
+        await state.delete_now_playing(chat_id)
         await callback_query.answer(Messages.STREAM_ENDED_NOT_IN_CALL, show_alert=False)
     except Exception as e:
         logger.error(f"Error in skip button handler: {e}")
@@ -358,6 +367,7 @@ async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
             song['thumb'],
             song.get('stream_url'),
             yt_task=song.get('_yt_task'),
+            queue_msg=song.get('queue_msg'),
         )
     except Exception as e:
         logger.error(f"Error in play-now button handler: {e}")
@@ -450,22 +460,40 @@ async def skip_handler_func(client, message):
           await call_py.pause(message.chat.id)
        except Exception:
           pass
-       await join_call(next['message'], next['title'], next['yt_link'], next['chat'], next['by'], next['duration'], next['mode'], next['thumb'], next.get('stream_url'), yt_task=next.get('_yt_task'))
+       await join_call(
+            next['message'],
+            next['title'],
+            next['yt_link'],
+            next['chat'],
+            next['by'],
+            next['duration'],
+            next['mode'],
+            next['thumb'],
+            next.get('stream_url'),
+            yt_task=next.get('_yt_task'),
+            queue_msg=next.get('queue_msg'),
+        )
     else:
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
+       if message.chat.id in state.playing:
+           state.playing[message.chat.id].clear()
+       await state.delete_now_playing(message.chat.id)
        await client.send_message(message.chat.id, Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
-       state.playing[message.chat.id].clear()
    else:
        await call_py.leave_call(message.chat.id)
        await remove_active_chat(client, message.chat.id)
+       if message.chat.id in state.playing:
+           state.playing[message.chat.id].clear()
+       await state.delete_now_playing(message.chat.id)
        await client.send_message(message.chat.id,
               Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
-       state.playing[message.chat.id].clear()
   except NotInCallError:
      await client.send_message(message.chat.id, Messages.NO_STREAM,
 link_preview_options=None)
-     state.playing[message.chat.id].clear()
+     if message.chat.id in state.playing:
+         state.playing[message.chat.id].clear()
+     await state.delete_now_playing(message.chat.id)
 
 
 @Client.on_callback_query(filters.regex("^(resume|cresume)$"))
@@ -627,6 +655,7 @@ async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery)
 
     await remove_active_chat(client, chat_id)
     state.playing.pop(chat_id, None)
+    await state.delete_now_playing(chat_id)
 
     try:
         await callback_query.message.edit_text(

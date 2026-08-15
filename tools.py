@@ -67,12 +67,16 @@ class QueueEntry:
     stream_url: object = None
     _track_id: object = None
     _yt_task: object = None
+    queue_msg: object = None
 
     def __getitem__(self, key):
         return getattr(self, key)
 
     def get(self, key, default=None):
         return getattr(self, key, default)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
 
 
 broadcasts = {}
@@ -229,6 +233,7 @@ async def autoleave_vc(chat_id: int) -> bool:
             state.queues.pop(chat_id, None)
             state.playing.pop(chat_id, None)
             await remove_active_chat(chat_id)
+            await state.delete_now_playing(chat_id)
             bot = clients.get("bot")
             if bot:
                 try:
@@ -266,6 +271,7 @@ async def _swap_in_photo(thumb_task, chat_id, text, keyboard, text_msg, chat, du
         await text_msg.delete()
     except Exception:
         pass
+    state.set_now_playing(chat_id, photo_msg)
     asyncio.create_task(update_progress_button(photo_msg, duration, chat, keyboard))
 
 
@@ -303,7 +309,7 @@ async def run_cmd(args: list):
     )
 
 
-async def convert_to_image(message, client) -> [None, str]:
+async def convert_to_image(message, client) -> str | None:
     """Convert Most Media Formats To Raw Image"""
     if not message:
         return None
@@ -453,7 +459,7 @@ async def add_text_img(image_path, text):
             y += line_height
 
     final_image = os.path.join("memify.webp")
-    img.save(final_image, **img_info)
+    img.save(final_image, **{str(k): v for k, v in img_info.items()})
     return final_image
 
 
@@ -467,7 +473,7 @@ async def hd_stream_closed_kicked(client, update):
     state.playing.pop(chat_id, None)
 
 
-async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None):
+async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None, queue_msg=None):
     """Join voice call and start streaming"""
     original_title = title
     title = trim_title(title)
@@ -477,6 +483,19 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
     try:
         chat_id = chat.id
         audio_flags = MediaStream.Flags.IGNORE if mode == "audio" else None
+
+        # Clean up old messages: delete previous track's now-playing card and this track's queue card
+        await state.delete_now_playing(chat_id)
+        if queue_msg:
+            try:
+                await queue_msg.delete()
+            except Exception:
+                pass
+        if message and message != queue_msg:
+            try:
+                await message.delete()
+            except Exception:
+                pass
 
         # ── Wait for YouTube task if we have no stream source or incomplete metadata ──
         # ponytail: await the task we depend on (up to 30s) instead of proceeding sourceless
@@ -633,17 +652,20 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 sent_message = await clients["bot"].send_photo(
                     chat_id, thumb_ready, message_text, reply_markup=keyboard
                 )
+                state.set_now_playing(chat_id, sent_message)
                 logger.info(f"[join_call] Playback notification sent with photo, message_id: {sent_message.id}")
             except Exception as photo_err:
                 logger.warning(f"[join_call] Failed to send photo, sending as text instead: {photo_err}")
                 sent_message = await clients["bot"].send_message(
                     chat_id, message_text, reply_markup=keyboard,
-                link_preview_options=None)
+                    link_preview_options=None)
+                state.set_now_playing(chat_id, sent_message)
                 logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
         else:
             sent_message = await clients["bot"].send_message(
                 chat_id, message_text, reply_markup=keyboard,
-            link_preview_options=None)
+                link_preview_options=None)
+            state.set_now_playing(chat_id, sent_message)
             logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
             if thumb_task:  # card still rendering — swap it in when ready
                 asyncio.create_task(_swap_in_photo(
@@ -654,13 +676,6 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         logger.debug(f"[join_call] Creating progress update task for duration: {duration}")
         asyncio.create_task(update_progress_button(sent_message, duration, chat, keyboard))
-
-        try:
-            logger.debug("[join_call] Attempting to delete original message")
-            await message.delete()
-            logger.debug("[join_call] Original message deleted successfully")
-        except Exception as e:
-            logger.warning(f"[join_call] Failed to delete original message: {e}")
 
         logger.info(f"[join_call] Completed successfully - Now streaming '{title}' in chat {chat_id}")
 
@@ -697,10 +712,14 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             if q_vid:
                 exclude_ids.add(q_vid)
 
+        # Delete previous now-playing message when entering suggestion mode
+        await state.delete_now_playing(chat_id)
+
         suggestions = await get_related_suggestions(lookup_seed, limit=5, exclude_ids=exclude_ids)
 
         if not suggestions:
             logger.info(f"[Suggest] No recommendations found for chat {chat_id}, leaving call.")
+            await state.delete_now_playing(chat_id)
             await client.leave_call(chat_id)
             await remove_active_chat(chat_id)
             return
@@ -834,6 +853,7 @@ async def end(client, update):
                 next_song['thumb'],
                 next_song.get('stream_url'),
                 yt_task=next_song.get('_yt_task'),
+                queue_msg=next_song.get('queue_msg'),
             )
         else:
             logger.info(f"Song queue for chat {chat_id} is empty.")
@@ -844,6 +864,7 @@ async def end(client, update):
             if last_song:
                 asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
             else:
+                await state.delete_now_playing(chat_id)
                 await client.leave_call(chat_id)
                 await remove_active_chat(chat_id)
     except Exception as e:

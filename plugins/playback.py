@@ -39,9 +39,11 @@ async def dend(client, update, channel_id= None):
                 next_song['thumb'],
                 next_song.get('stream_url'),
                 yt_task=next_song.get('_yt_task'),
+                queue_msg=next_song.get('queue_msg'),
             )
         else:
             logger.info(f"Song queue for chat {chat_id} is empty.")
+            await state.delete_now_playing(chat_id)
             await client.leave_call(chat_id)
             await remove_active_chat(client, chat_id)
             if chat_id in state.playing:
@@ -435,7 +437,7 @@ async def play_handler_func(client, message):
         # For regular mode, use the joined chat
         target_chat = joined_chat
 
-    track_id = await put_queue(
+    track_id, put_entry = await put_queue(
         massage,
         trim_title(title),
         client,
@@ -495,11 +497,14 @@ async def play_handler_func(client, message):
                     title_text = f'<a href="{youtube_link}"><b>{_safe_title}</b></a>'
                 else:
                     title_text = f'<b>{_safe_title}</b>'
-                await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position_tag(position)), reply_markup=keyboard, link_preview_options=None)
+                queue_msg = await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position_tag(position)), reply_markup=keyboard, link_preview_options=None)
+                if put_entry:
+                    put_entry.queue_msg = queue_msg
+                _bg(massage.delete())
                 try:
-                   await message.delete()
+                    await message.delete()
                 except Exception:
-                   pass
+                    pass
 
 
     else:
@@ -559,4 +564,4 @@ async def put_queue(
             if not check:
                state.queues[chat.id] = []
             state.queues[chat.id].append(put)
-    return track_id
+    return track_id, put
