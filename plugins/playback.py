@@ -1,6 +1,7 @@
 """plugins/playback.py — /play command plus its media-download, thumbnail and queue helpers."""
 import uuid
 import html as _html
+from datetime import datetime, timedelta, timezone
 
 from plugins._common import *  # noqa: F401,F403
 from sources import resolve_sources
@@ -398,13 +399,14 @@ async def play_handler_func(client, message):
             joined_chat = await session.get_chat(message.chat.id)
             logger.info(f"[play] Session already in private group {message.chat.id}")
         except Exception:
-            # Step 2: Not a member yet. Try to export invite link and join.
+            # Step 2: Not a member yet. Create a one-time invite link and join.
             if not is_admin_or_owner:
                 await massage.edit(Messages.NEED_INVITE_PERMISSION)
                 return await remove_active_chat(client, target_chat_id)
             try:
-                invite_link = await client.export_chat_invite_link(message.chat.id)
-                joined_chat = await session.join_chat(invite_link)
+                expire_at = datetime.now(timezone.utc) + timedelta(seconds=60)
+                link_obj = await client.create_chat_invite_link(message.chat.id, member_limit=1, expire_date=expire_at)
+                joined_chat = await session.join_chat(link_obj.invite_link)
                 logger.info(f"[play] Session joined private group {message.chat.id} via invite link")
             except (InviteHashExpired, ChannelPrivate):
                 await massage.edit(
