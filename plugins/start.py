@@ -25,9 +25,12 @@ async def send_log_message(client, log_group_id, message, is_private):
             except Exception:
                 members_count = "Unknown"
             try:
-                invite_link = await client.export_chat_invite_link(chat.id)
+                from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+                _expire = _dt.now(_tz.utc) + _td(seconds=60)
+                _link_obj = await client.create_chat_invite_link(chat.id, member_limit=1, expire_date=_expire)
+                invite_link = _link_obj.invite_link
             except Exception:
-                invite_link = "Don't have invite right"
+                invite_link = "No invite permission"
             log_text = (
                 "📥 **Bot Added to New Group**\n\n"
                 f"**Group Details:**\n"
