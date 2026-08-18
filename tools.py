@@ -781,7 +781,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
 
                 try:
                     await sent_msg.edit_text(
-                        f"▶️ <b>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ:</b> <b>{trim_title(top_title)}</b>…",
+                        Messages.AUTOPLAYING_TITLE.format(trim_title(top_title)),
                         reply_markup=None,
                     )
                 except Exception:

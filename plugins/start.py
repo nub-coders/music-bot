@@ -218,7 +218,9 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data.split("_")[1]
     user_id = callback_query.from_user.id
     admin_ids = get_admin_ids(f"{ggg}/admin.txt")
-    _is_admin = user_id in admin_ids or str(OWNER_ID) == str(user_id)
+    is_owner = str(OWNER_ID) == str(user_id)
+    is_sudo = is_owner or user_id in SUDO
+    is_admin = is_owner or is_sudo or (user_id in admin_ids)
     owner = await client.get_users(OWNER_ID)
     ow_id = owner.id if owner.username else None
 
@@ -240,7 +242,6 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         f"{EmojiTag.SETTINGS} /autoplay [on|off] — ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs\n"
         "</blockquote>"
     )
-
 
     auth_commands = (
         f"<u><b>{EmojiTag.LOCK} | ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
@@ -326,40 +327,39 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         "owner": owner_commands,
     }
 
-
-    # ---------- Navigation buttons ----------
-    back_markup = Buttons.BACK
-
-
     # ---------- Routing ----------
-    if data == "all":
+    if data in ("all", "help"):
         await callback_query.answer()
         await callback_query.message.edit_caption(
-            caption=f"<u><b>{EmojiTag.INFO} | sᴇʟᴇᴄᴛ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ</b></u>",
-            reply_markup=Buttons.HELP_HOME,
+            caption=Messages.HELP_CATEGORY_SELECT,
+            reply_markup=Buttons.help_markup(is_admin=is_admin, is_owner=is_owner, is_sudo=is_sudo),
         )
     elif data in category_pages:
+        # Permission checks for restricted categories
+        if data == "owner" and not is_owner:
+            return await callback_query.answer(clean_alert(Messages.BOT_OWNER_ONLY), show_alert=True)
+        if data in ("sudo", "broadcast", "blocklist") and not is_sudo:
+            return await callback_query.answer(clean_alert(Messages.OWNER_SUDO_CMD), show_alert=True)
+        if data == "auth" and not is_admin:
+            return await callback_query.answer(clean_alert(Messages.ADMIN_RESTRICTED_ACTION), show_alert=True)
+
         await callback_query.answer()
         await callback_query.message.edit_caption(
             caption=category_pages[data],
-            reply_markup=back_markup,
+            reply_markup=Buttons.BACK,
         )
-    elif data == "owner":
+    elif data in ("home", "back"):
         await callback_query.answer()
-        await callback_query.message.edit_caption(caption=owner_commands, reply_markup=back_markup)
-    elif data == "back":
-            await callback_query.answer()
-            _name = callback_query.from_user.mention()
-            _botname = client.me.mention()
-            greet_message = await gvarstatus(client.me.id, "WELCOME") or (
-                "👋 <b>ʜᴇʏ {name}!</b>\n\n"
-                "🎵 <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {botname}</b>\n\n"
-                "<i>ᴀ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ & ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ sᴛʀᴇᴀᴍɪɴɢ.</i>\n\n"
-                "<b><i>ᴜsᴇ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ.</i></b>"
-            )
-            greet_message = await format_welcome_message(client, greet_message, user_id, callback_query.from_user.mention())
-            buttons_markup = Buttons.start_markup(client.me.username, ow_id, OWNER_ID, GROUP)
-            await callback_query.message.edit_caption(
-                caption=greet_message,
-                reply_markup=buttons_markup,
-            )
+        greet_message = await gvarstatus(client.me.id, "WELCOME") or (
+            f"{EmojiTag.USER} <b>ʜᴇʏ {{name}}!</b>\n\n"
+            f"{EmojiTag.MUSIC_NOTE} <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {{botname}}</b>\n\n"
+            "<i>ᴀ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ & ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ sᴛʀᴇᴀᴍɪɴɢ.</i>\n\n"
+            "<b><i>ᴜsᴇ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ.</i></b>"
+        )
+        greet_message = await format_welcome_message(client, greet_message, user_id, callback_query.from_user.mention())
+        buttons_markup = Buttons.start_markup(client.me.username, ow_id, OWNER_ID, GROUP)
+        await callback_query.message.edit_caption(
+            caption=greet_message,
+            reply_markup=buttons_markup,
+        )
+

@@ -7,6 +7,7 @@ from pyrogram.types import Message, CallbackQuery
 from utils.font import apply_font, FONTS
 from utils.emoji import EmojiTag
 from utils.button import Buttons
+from utils.message import Messages
 
 
 @Client.on_message(filters.command(["font", "style"]))
@@ -43,7 +44,7 @@ async def font_command_handler(client: Client, message: Message):
 async def font_callback_handler(client: Client, callback_query: CallbackQuery):
     style_key = callback_query.data.split("_", 1)[1]
     if style_key not in FONTS:
-        return await callback_query.answer("Invalid font style selection.", show_alert=True)
+        return await callback_query.answer(Messages.INVALID_FONT_SELECTION, show_alert=True)
 
     label, func = FONTS[style_key]
     # Extract original text from message if present

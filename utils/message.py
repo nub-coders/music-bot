@@ -32,19 +32,31 @@ class Messages:
     # ── Autoplay & Suggestions ─────────────────────────────────────────────
     SUGGESTION_CARD = (
         f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
-        "<b>‣ sᴇᴇᴅ:</b> {0}\n\n"
-        "{1}\n\n"
-        "⏳ <i>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ #1 ɪɴ <b>{2}</b>s…</i>"
+        "<b>‣ sᴇᴇᴅ:</b> {0}\n"
+        "⏳ <i>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ #1 ɪɴ <b>{2}</b>s…</i>\n\n"
+        "{1}"
     )
     SUGGESTION_CARD_NO_AUTOPLAY = (
         f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
-        "<b>‣ sᴇᴇᴅ:</b> {0}\n\n"
-        "{1}\n\n"
-        "<i>ᴄʜᴏᴏsᴇ ᴀ sᴏɴɢ ᴛᴏ ᴘʟᴀʏ ɴᴇxᴛ.</i>"
+        "<b>‣ sᴇᴇᴅ:</b> {0}\n"
+        "<i>ᴄʜᴏᴏsᴇ ᴀ sᴏɴɢ ᴛᴏ ᴘʟᴀʏ ɴᴇxᴛ:</i>\n\n"
+        "{1}"
     )
     AUTOPLAY_ENABLED = f"{EmojiTag.SUCCESS} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴇɴᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
     AUTOPLAY_DISABLED = f"{EmojiTag.WARNING} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴅɪsᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
+    AUTOPLAY_STATUS = f"{EmojiTag.INFO} <b>ᴀᴜᴛᴏᴘʟᴀʏ sᴛᴀᴛᴜs:</b> {{}}"
+    AUTOPLAY_USAGE = f"{EmojiTag.INFO} <b>ᴜsᴀɢᴇ:</b> <code>/autoplay [on|off]</code>\n‣ <b>ᴄᴜʀʀᴇɴᴛ sᴛᴀᴛᴜs:</b> {{}}"
+    AUTOPLAY_ADMIN_ONLY_SWITCH = f"{EmojiTag.INFO} <b>ᴀᴜᴛᴏᴘʟᴀʏ sᴛᴀᴛᴜs:</b> {{}}\n<i>(Only admins & auth users can switch this setting)</i>"
+    AUTOPLAYING_TITLE = "▶️ <b>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ:</b> <b>{}</b>…"
+    STARTING_PLAYBACK = "▶️ Starting playback…"
+    PLAYING_SUGGESTION = "▶️ <b>ᴘʟᴀʏɪɴɢ sᴜɢɢᴇsᴛɪᴏɴ:</b> <code>{}</code>…"
 
+    # ── Controls Notices & Actions ─────────────────────────────────────────
+    SEEKED = f"{EmojiTag.SUCCESS} <b>sᴇᴇᴋᴇᴅ ᴛᴏ {{}}!</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
+    QUEUE_CLEARED_STOPPED = f"<b>{EmojiTag.STOP} ǫᴜᴇᴜᴇ ᴄʟᴇᴀʀᴇᴅ</b>\n<b>‣ sᴛʀᴇᴀᴍɪɴɢ sᴛᴏᴘᴘᴇᴅ</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
+    SONG_LOOPED = f"<b>{EmojiTag.LOOP} ᴄᴜʀʀᴇɴᴛ sᴏɴɢ ᴡɪʟʟ ʙᴇ ʀᴇᴘᴇᴀᴛᴇᴅ {{}} ᴛɪᴍᴇs!</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
+    SONG_RESUMED_NOTICE = f"<b>{EmojiTag.RESUME} sᴏɴɢ ʀᴇsᴜᴍᴇᴅ.</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
+    SONG_PAUSED_NOTICE = f"<b>{EmojiTag.PAUSE} sᴏɴɢ ᴘᴀᴜsᴇᴅ.</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
 
     # ── Admin & Auth ───────────────────────────────────────────────────────
     ADMIN_UNKNOWN_USER = f"{EmojiTag.WARNING} <b>ᴄᴀɴɴᴏᴛ ᴠᴇʀɪꜰʏ ᴀᴅᴍɪɴ sᴛᴀᴛᴜs ꜰᴏʀ ᴛʜɪs ᴜsᴇʀ.</b>"
@@ -167,3 +179,13 @@ class Messages:
     USER_REMOVED_SUDO = f"{EmojiTag.SUCCESS} <b>ᴜsᴇʀ {{}} ʜᴀs ʙᴇᴇɴ ʀᴇᴍᴏᴠᴇᴅ ꜰʀᴏᴍ sᴜᴅᴏᴇʀs.</b>"
     USER_NOT_IN_SUDO = f"{EmojiTag.WARNING} <b>ᴜsᴇʀ {{}} ɪs ɴᴏᴛ ɪɴ sᴜᴅᴏᴇʀs.</b>"
     CANT_REMOVE_SELF_SUDO = f"{EmojiTag.WARNING} <b>ʏᴏᴜ ᴄᴀɴɴᴏᴛ ʀᴇᴍᴏᴠᴇ ʏᴏᴜʀsᴇʟꜰ ꜰʀᴏᴍ sᴜᴅᴏᴇʀs.</b>"
+
+    # ── Additional Catalog Strings ─────────────────────────────────────────
+    CALL_CLIENT_NOT_READY = f"<b>{EmojiTag.ERROR} ᴄᴀʟʟ ᴄʟɪᴇɴᴛ ɴᴏᴛ ʀᴇᴀᴅʏ.</b>"
+    ASSISTANT_BANNED = "Assistant is banned in this chat.\n\nPlease unban {}\nuser id: {}"
+    FAILED_JOIN_GROUP = "Failed to join the group. Please try again."
+    MMF_USAGE = "Please use `/mmf <text>`"
+    MMF_DOWNLOAD_FAILED = "Failed to download media for memify."
+    INVALID_FONT_SELECTION = "Invalid font style selection."
+    HELP_CATEGORY_SELECT = f"<u><b>{EmojiTag.INFO} | sᴇʟᴇᴄᴛ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ</b></u>"
+

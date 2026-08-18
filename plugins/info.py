@@ -85,7 +85,7 @@ async def active_chats_info(client, message):
 
     cp = _call_py()
     if cp is None:
-        return await message.reply(f"<b>{EmojiTag.ERROR} ᴄᴀʟʟ ᴄʟɪᴇɴᴛ ɴᴏᴛ ʀᴇᴀᴅʏ.</b>", link_preview_options=None)
+        return await message.reply(Messages.CALL_CLIENT_NOT_READY, link_preview_options=None)
 
     active_calls = await cp.calls
     if active_calls:

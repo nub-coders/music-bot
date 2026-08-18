@@ -377,11 +377,11 @@ async def play_handler_func(client, message):
             except Exception:
                 joined_chat = await session.join_chat(message.chat.username)
         except (InviteHashExpired, ChannelPrivate):
-            await massage.edit(f"Assistant is banned in this chat.\n\nPlease unban {session.me.username or session.me.id}")
+            await massage.edit(Messages.ASSISTANT_BANNED.format(session.me.username or session.me.id, session.me.id))
             return await remove_active_chat(client, target_chat_id)
         except Exception as e:
             logger.error(f"[play] Failed to join group {target_chat_id}: {e}")
-            await massage.edit("Failed to join the group. Please try again.")
+            await massage.edit(Messages.FAILED_JOIN_GROUP)
             return await remove_active_chat(client, target_chat_id)
     else:
         # Private group — try to get/join without relying on privileges check.
@@ -408,8 +408,7 @@ async def play_handler_func(client, message):
                 logger.info(f"[play] Session joined private group {message.chat.id} via invite link")
             except (InviteHashExpired, ChannelPrivate):
                 await massage.edit(
-                    f"Assistant is banned in this chat.\n\nPlease unban "
-                    f"{session.me.mention()}\nuser id: {session.me.id}"
+                    Messages.ASSISTANT_BANNED.format(session.me.mention(), session.me.id)
                 )
                 return await remove_active_chat(client, target_chat_id)
             except Exception as e:
@@ -419,7 +418,7 @@ async def play_handler_func(client, message):
                     await massage.edit(Messages.NEED_INVITE_PERMISSION)
                 else:
                     logger.error(f"[play] Failed to join private group {target_chat_id}: {e}")
-                    await massage.edit("Failed to join the group. Please try again.")
+                    await massage.edit(Messages.FAILED_JOIN_GROUP)
                 return await remove_active_chat(client, target_chat_id)
 
 

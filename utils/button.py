@@ -9,28 +9,45 @@ from utils.emoji import Emoji
 
 class Buttons:
     # ─── Help Menu Category Selector ───────────────────────────────────────
-    HELP_HOME = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🎵 ᴘʟᴀʏʙᴀᴄᴋ",    callback_data="commands_playback", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.MUSIC_NOTE),
-            InlineKeyboardButton("🔐 ᴀᴜᴛʜ",          callback_data="commands_auth",     style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.AUTH_ICON),
-        ],
-        [
-            InlineKeyboardButton("🚫 ʙʟᴏᴄᴋʟɪsᴛ",    callback_data="commands_blocklist", style=ButtonStyle.DANGER,   icon_custom_emoji_id=Emoji.BLOCKLIST_ICON),
-            InlineKeyboardButton("🔑 sᴜᴅᴏ",           callback_data="commands_sudo",      style=ButtonStyle.PRIMARY,  icon_custom_emoji_id=Emoji.KEY),
-        ],
-        [
-            InlineKeyboardButton("📢 ʙʀᴏᴀᴅᴄᴀsᴛ",    callback_data="commands_broadcast", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.BROADCAST),
-            InlineKeyboardButton("🛠️ ᴛᴏᴏʟs",         callback_data="commands_tools",     style=ButtonStyle.DEFAULT,  icon_custom_emoji_id=Emoji.TOOLS),
-        ],
-        [
-            InlineKeyboardButton("🎨 ᴋᴀɴɢ/ᴍᴇᴍᴇ",   callback_data="commands_kang",   style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.KANG),
-            InlineKeyboardButton("📊 sᴛᴀᴛᴜs",        callback_data="commands_status", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.STATS),
-        ],
-        [
-            InlineKeyboardButton("⚙️ ᴏᴡɴᴇʀ",        callback_data="commands_owner", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.SETTINGS),
-        ],
-        [InlineKeyboardButton("🏠 ʜᴏᴍᴇ",             callback_data="commands_back", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.HOME)],
-    ])
+    @staticmethod
+    def help_markup(is_admin: bool = False, is_owner: bool = False, is_sudo: bool = False) -> InlineKeyboardMarkup:
+        """Generates category buttons tailored to the viewer's permission status."""
+        rows = [
+            [
+                InlineKeyboardButton("🎵 ᴘʟᴀʏʙᴀᴄᴋ",    callback_data="commands_playback", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.MUSIC_NOTE),
+                InlineKeyboardButton("🎨 ᴋᴀɴɢ/ᴍᴇᴍᴇ",   callback_data="commands_kang",     style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.KANG),
+            ],
+            [
+                InlineKeyboardButton("🛠️ ᴛᴏᴏʟs",         callback_data="commands_tools",    style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.TOOLS),
+                InlineKeyboardButton("📊 sᴛᴀᴛᴜs",        callback_data="commands_status",   style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.STATS),
+            ],
+        ]
+
+        if is_admin or is_sudo or is_owner:
+            rows.append([
+                InlineKeyboardButton("🔐 ᴀᴜᴛʜ",          callback_data="commands_auth",     style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.AUTH_ICON),
+            ])
+
+        if is_sudo or is_owner:
+            rows.append([
+                InlineKeyboardButton("🚫 ʙʟᴏᴄᴋʟɪsᴛ",    callback_data="commands_blocklist", style=ButtonStyle.DANGER,  icon_custom_emoji_id=Emoji.BLOCKLIST_ICON),
+                InlineKeyboardButton("🔑 sᴜᴅᴏ",           callback_data="commands_sudo",      style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.KEY),
+            ])
+            rows.append([
+                InlineKeyboardButton("📢 ʙʀᴏᴀᴅᴄᴀsᴛ",    callback_data="commands_broadcast", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.BROADCAST),
+            ])
+
+        if is_owner:
+            rows.append([
+                InlineKeyboardButton("⚙️ ᴏᴡɴᴇʀ",        callback_data="commands_owner",     style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.SETTINGS),
+            ])
+
+        rows.append([
+            InlineKeyboardButton("🏠 ʜᴏᴍᴇ",             callback_data="commands_home",      style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.HOME)
+        ])
+        return InlineKeyboardMarkup(rows)
+
+    HELP_HOME = help_markup(is_admin=True, is_owner=True, is_sudo=True)
 
     # ─── Back ───────────────────────────────────────────────────────────────
     BACK  = InlineKeyboardMarkup([[InlineKeyboardButton("◀️ ʙᴀᴄᴋ",  callback_data="commands_all", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.BACK)]])

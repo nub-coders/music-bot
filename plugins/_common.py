@@ -82,8 +82,8 @@ if not getattr(CallbackQuery, "_clean_answer_patched", False):
 
 
 # ── module-level state ──
-session = clients["session"]
-call_py = clients["call_py"]
+session = clients.get("session")
+call_py = clients.get("call_py")
 _admin_member_cache: dict[tuple[int, int], tuple[str, float]] = {}
 create_custom_filter = filters.create(lambda _, __, message: any(m.is_self for m in (message.new_chat_members if message.new_chat_members else [])))
 mime = magic.Magic(mime=True)

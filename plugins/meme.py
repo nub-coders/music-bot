@@ -213,7 +213,7 @@ async def kang(client, message):
                     await asyncio.sleep(2)
                     if is_anim:
                         await client.send_message(
-                            "Stickers", f"<{packnick}>", parse_mode=ParseMode.MARKDOWN,
+                            "Stickers", f"<{packnick}>", parse_mode=enums.ParseMode.MARKDOWN,
                         link_preview_options=None)
                         await asyncio.sleep(2)
                     await client.send_message("Stickers", "/skip", link_preview_options=None)
@@ -284,12 +284,12 @@ async def memify(client, message):
         return await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
     text = get_arg(message).strip()
     if not text:
-        return await message.reply_text("Please use `/mmf <text>`", link_preview_options=None)
+        return await message.reply_text(Messages.MMF_USAGE, link_preview_options=None)
     reply_message = message.reply_to_message
     Nub = await message.reply_text(Messages.PROCESSING, link_preview_options=None)
     file = await client.download_media(reply_message)
     if not file:
-        return await Nub.edit("Failed to download media for memify.")
+        return await Nub.edit(Messages.MMF_DOWNLOAD_FAILED)
     try:
         meme = await add_text_img(file, text)
         await asyncio.gather(
