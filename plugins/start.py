@@ -77,8 +77,26 @@ async def user_client_start_handler(client, message):
           except Exception as e:
              logger.info(e)
 
+    # Check for help argument in start command
+    command_args = message.text.split() if message.text else []
+    if len(command_args) > 1 and command_args[1].lower() == "help":
+        if is_private:
+            admin_ids = get_admin_ids(f"{ggg}/admin.txt")
+            users_data = await user_sessions.find_one({"bot_id": client.me.id})
+            sudoers = users_data.get("SUDOERS", []) if users_data else []
+            uid = message.from_user.id if message.from_user else message.chat.id
+            is_owner = str(uid) == str(OWNER_ID)
+            is_admin = uid in admin_ids or is_owner
+            is_sudo = uid in sudoers or is_owner
+
+            markup = Buttons.help_markup(is_admin=is_admin, is_owner=is_owner, is_sudo=is_sudo)
+            return await message.reply(
+                Messages.HELP_CATEGORY_SELECT,
+                reply_markup=markup,
+                link_preview_options=None
+            )
+
     # Process video ID if provided in start command
-    command_args = message.text.split() if message.text else "hh".split()
     if len(command_args) > 1 and '_' in command_args[1]:
         try:
             loading = await message.reply(Messages.GETTING_STREAM_INFO, link_preview_options=None)
@@ -273,8 +291,7 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     broadcast_commands = (
         f"<u><b>{EmojiTag.BROADCAST} | ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
         "<blockquote expandable>\n"
-        f"{EmojiTag.BROADCAST} /broadcast  — ᴄᴏᴘʏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
-        f"{EmojiTag.SEND} /fbroadcast — ꜰᴏʀᴡᴀʀᴅ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴅɪᴀʟᴏɢs\n"
+        f"{EmojiTag.BROADCAST} /broadcast — ᴏᴘᴇɴ ʙʀᴏᴀᴅᴄᴀsᴛ ᴘᴀɴᴇʟ ᴡɪᴛʜ ᴄᴏᴘʏ / ꜰᴏʀᴡᴀʀᴅ & ᴛᴀʀɢᴇᴛ ᴛᴏɢɢʟᴇs\n"
         "</blockquote>"
     )
 
@@ -361,5 +378,38 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         await callback_query.message.edit_caption(
             caption=greet_message,
             reply_markup=buttons_markup,
+        )
+
+
+@Client.on_message(filters.command(["help", "cmds", "commands"]))
+async def help_command_handler(client: Client, message: Message):
+    """Handles /help command directly in private or group chats."""
+    is_private = message.chat.type == enums.ChatType.PRIVATE
+    user_id = message.from_user.id if message.from_user else message.chat.id
+
+    if is_private:
+        admin_ids = get_admin_ids(f"{ggg}/admin.txt")
+        users_data = await user_sessions.find_one({"bot_id": client.me.id})
+        sudoers = users_data.get("SUDOERS", []) if users_data else []
+        is_owner = str(user_id) == str(OWNER_ID)
+        is_admin = user_id in admin_ids or is_owner
+        is_sudo = user_id in sudoers or is_owner
+
+        markup = Buttons.help_markup(is_admin=is_admin, is_owner=is_owner, is_sudo=is_sudo)
+        await message.reply(
+            Messages.HELP_CATEGORY_SELECT,
+            reply_markup=markup,
+            link_preview_options=None
+        )
+    else:
+        # Group chat: send inline button pointing to bot PM
+        bot_username = client.me.username
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📖 ᴏᴘᴇɴ ʜᴇʟᴘ ᴍᴇɴᴜ", url=f"https://t.me/{bot_username}?start=help", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.HELP)]
+        ])
+        await message.reply(
+            f"{EmojiTag.INFO} <b>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴛᴏ ᴏᴘᴇɴ ᴛʜᴇ ʜᴇʟᴘ ᴍᴇɴᴜ ɪɴ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ:</b>",
+            reply_markup=keyboard,
+            link_preview_options=None
         )
 

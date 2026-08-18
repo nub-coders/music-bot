@@ -16,6 +16,7 @@ async def broadcast_callback_handler(client, callback_query):
     bot = user_data.get('bot', True)
     userbot = user_data.get('userbot', False)
     pin = user_data.get('pin', False)
+    forward = user_data.get('forward', False)
 
     await callback_query.message.delete()
 
@@ -24,7 +25,7 @@ async def broadcast_callback_handler(client, callback_query):
     broadcast_data = broadcast_message.get(client.me.id)
     if not broadcast_data:
         return await callback_query.answer(Messages.NO_MSG_FOR_BROADCAST, show_alert=True)
-    message_to_broadcast, forwarding = broadcast_data
+    message_to_broadcast = broadcast_data[0] if isinstance(broadcast_data, list) else broadcast_data
 
     # Bot Broadcast
     if bot_data and bot:
@@ -44,7 +45,7 @@ async def broadcast_callback_handler(client, callback_query):
                 if is_group and not group:
                     continue
 
-                sent_message = await message_to_broadcast.copy(cid) if not forwarding else await message_to_broadcast.forward(cid)
+                sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
                 if is_private:
                     u += 1
                 else:
@@ -72,7 +73,7 @@ async def broadcast_callback_handler(client, callback_query):
             except FloodWait as e:
                 await asyncio.sleep(e.value)
                 try:
-                    sent_message = await message_to_broadcast.copy(cid) if not forwarding else await message_to_broadcast.forward(cid)
+                    sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
                     if cid > 0:
                         u += 1
                     else:
@@ -107,7 +108,7 @@ async def broadcast_callback_handler(client, callback_query):
             await asyncio.sleep(1)
 
             # Copy the message to session and fetch history
-            copied_message = await message_to_broadcast.copy(session.me.id) if not forwarding else await message_to_broadcast.forward(session.me.id)
+            copied_message = await message_to_broadcast.forward(session.me.id) if forward else await message_to_broadcast.copy(session.me.id)
             await asyncio.sleep(2)
 
             msg = await compare_message(copied_message, client, session)
@@ -129,10 +130,10 @@ async def broadcast_callback_handler(client, callback_query):
                     continue
 
                 try:
-                    if not forwarding:
-                        await msg.copy(chat_id)
-                    else:
+                    if forward:
                         await msg.forward(chat_id)
+                    else:
+                        await msg.copy(chat_id)
                     if is_private:
                         uu += 1
                     else:
@@ -152,10 +153,10 @@ async def broadcast_callback_handler(client, callback_query):
                 except FloodWait as e:
                     await asyncio.sleep(e.value)
                     try:
-                        if not forwarding:
-                            await msg.copy(chat_id)
-                        else:
+                        if forward:
                             await msg.forward(chat_id)
+                        else:
+                            await msg.copy(chat_id)
                         if is_private:
                             uu += 1
                         else:
@@ -177,25 +178,56 @@ async def broadcast_callback_handler(client, callback_query):
         )
 
 
-async def get_status(client):
-    """Instant broadcast summary generated directly from DB without Telegram network calls."""
-    user_data = await collection.find_one({"bot_id": client.me.id})
-    users = user_data.get('users', []) if user_data else []
+async def get_status(client, user_data=None):
+    """Broadcast summary with target counts and currently chosen options."""
+    bot_id = client.me.id
+    target_data = await collection.find_one({"bot_id": bot_id})
+    users = target_data.get('users', []) if target_data else []
 
     u = sum(1 for cid in users if int(cid) > 0)
     g = sum(1 for cid in users if int(cid) < 0)
     total = len(users)
 
+    if user_data is None:
+        user_data = await user_sessions.find_one({"bot_id": bot_id}) or {}
+
+    group = user_data.get('group', True)
+    private = user_data.get('private', True)
+    ugroup = user_data.get('ugroup', False)
+    uprivate = user_data.get('uprivate', False)
+    bot = user_data.get('bot', True)
+    userbot = user_data.get('userbot', False)
+    pin = user_data.get('pin', False)
+    forward = user_data.get('forward', False)
+
+    bot_status = f"{EmojiTag.SUCCESS} <b>ᴇɴᴀʙʟᴇᴅ</b>" if bot else f"{EmojiTag.ERROR} <b>ᴅɪsᴀʙʟᴇᴅ</b>"
+    userbot_status = f"{EmojiTag.SUCCESS} <b>ᴇɴᴀʙʟᴇᴅ</b>" if userbot else f"{EmojiTag.ERROR} <b>ᴅɪsᴀʙʟᴇᴅ</b>"
+    mode_status = "↗️ <b>ꜰᴏʀᴡᴀʀᴅ</b>" if forward else "📋 <b>ᴄᴏᴘʏ (ɴᴏ ᴛᴀɢ)</b>"
+
+    bot_group_str = "✅ Yes" if group else "❌ No"
+    bot_private_str = "✅ Yes" if private else "❌ No"
+    bot_pin_str = "✅ Yes" if pin else "❌ No"
+
+    ubot_group_str = "✅ Yes" if ugroup else "❌ No"
+    ubot_private_str = "✅ Yes" if uprivate else "❌ No"
+
     mess = (
-        f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs</b>\n"
+        f"<u><b>{EmojiTag.BROADCAST} | ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs</b></u>\n"
         f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
         f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>\n"
         f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>\n"
         f"✦ {EmojiTag.STATS} <b>Total Targets:</b> <code>{total}</code>\n"
         f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
+        f"<b>{EmojiTag.SETTINGS} ᴄʜᴏsᴇɴ ᴏᴘᴛɪᴏɴs:</b>\n"
+        f"• <b>Delivery Mode:</b> {mode_status}\n"
+        f"• <b>From Bot:</b> {bot_status}\n"
+        f"  └ <b>Groups:</b> {bot_group_str} | <b>Private:</b> {bot_private_str} | <b>Pin:</b> {bot_pin_str}\n"
+        f"• <b>From Assistant:</b> {userbot_status}\n"
+        f"  └ <b>Groups:</b> {ubot_group_str} | <b>Private:</b> {ubot_private_str}\n"
+        f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
         f"<blockquote><b>ᴄʜᴏᴏsᴇ ʏᴏᴜʀ ʙʀᴏᴀᴅᴄᴀsᴛ ᴏᴘᴛɪᴏɴs ʙᴇʟᴏᴡ ⬇️</b></blockquote>"
     )
-    broadcasts[client.me.id] = mess
+    broadcasts[bot_id] = mess
     return mess
 
 
@@ -233,18 +265,30 @@ async def compare_message(mess, client, session):
 async def toggle_setting(client, callback_query):
     sender_id = client.me.id
 
-    user_data = await user_sessions.find_one({"bot_id": sender_id})
-    if not user_data:
-        user_data = {}
+    user_data = await user_sessions.find_one({"bot_id": sender_id}) or {}
     setting_to_toggle = callback_query.data.split("_", 1)[1]
-    current_value = user_data.get(setting_to_toggle, False)
+
+    defaults = {
+        'group': True,
+        'private': True,
+        'ugroup': False,
+        'uprivate': False,
+        'bot': True,
+        'userbot': False,
+        'pin': False,
+        'forward': False,
+    }
+    current_value = user_data.get(setting_to_toggle, defaults.get(setting_to_toggle, False))
     new_value = not current_value
-    db_task(user_sessions.update_one(
+
+    await user_sessions.update_one(
         {"bot_id": sender_id},
         {"$set": {setting_to_toggle: new_value}},
         upsert=True
-    ))
-    await broadcast_command_handler(client, callback_query)
+    )
+    user_data[setting_to_toggle] = new_value
+    await callback_query.answer()
+    await broadcast_command_handler(client, callback_query, user_data=user_data)
 
 
 @Client.on_message(filters.command("stats"))
@@ -275,7 +319,7 @@ async def status_command_handler(client, message):
 
 
 @Client.on_message(filters.command(["broadcast", "fbroadcast"]) & filters.private)
-async def broadcast_command_handler(client, message):
+async def broadcast_command_handler(client, message, user_data=None):
     user_id = message.from_user.id
     admin_file = f"{ggg}/admin.txt"
     users_data = await user_sessions.find_one({"bot_id": client.me.id})
@@ -297,21 +341,32 @@ async def broadcast_command_handler(client, message):
         return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
 
     sender_id = client.me.id
-    user_data = await user_sessions.find_one({"bot_id": sender_id})
-    if not user_data:
-        user_data = {}
-        db_task(user_sessions.update_one(
-            {"bot_id": sender_id},
-            {"$setOnInsert": {"bot_id": sender_id}},
-            upsert=True
-        ))
+    if user_data is None:
+        user_data = await user_sessions.find_one({"bot_id": sender_id})
+        if not user_data:
+            user_data = {}
+            await user_sessions.update_one(
+                {"bot_id": sender_id},
+                {"$setOnInsert": {"bot_id": sender_id}},
+                upsert=True
+            )
 
     if not isinstance(message, CallbackQuery):
         if not message.reply_to_message:
             return await message.reply(Messages.REPLY_TO_BROADCAST, link_preview_options=None)
+
+        is_fbroadcast = bool(message.command and message.command[0].lower().startswith("f"))
+        if is_fbroadcast and not user_data.get('forward'):
+            user_data['forward'] = True
+            await user_sessions.update_one(
+                {"bot_id": sender_id},
+                {"$set": {"forward": True}},
+                upsert=True
+            )
+
         broadcast_message[client.me.id] = [
             message.reply_to_message,
-            True if message.command[0].lower().startswith("f") else None
+            user_data.get('forward', False)
         ]
 
     group = user_data.get('group', True)
@@ -321,30 +376,32 @@ async def broadcast_command_handler(client, message):
     bot = user_data.get('bot', True)
     userbot = user_data.get('userbot', False)
     pin = user_data.get('pin', False)
+    forward = user_data.get('forward', False)
 
     for_bot = [
-        InlineKeyboardButton(f"Gʀᴏᴜᴘ {'✅' if group else '❌'}", callback_data="toggle_group"),
-        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ {'✅' if private else '❌'}", callback_data="toggle_private"),
-        InlineKeyboardButton(f"📌Pɪɴ {'✅' if pin else '❌'}", callback_data="toggle_pin"),
+        InlineKeyboardButton(f"Gʀᴏᴜᴘ: {'ON' if group else 'OFF'}", callback_data="toggle_group", style=ButtonStyle.SUCCESS if group else ButtonStyle.DEFAULT),
+        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ: {'ON' if private else 'OFF'}", callback_data="toggle_private", style=ButtonStyle.SUCCESS if private else ButtonStyle.DEFAULT),
+        InlineKeyboardButton(f"Pɪɴ: {'ON' if pin else 'OFF'}", callback_data="toggle_pin", style=ButtonStyle.SUCCESS if pin else ButtonStyle.DEFAULT),
     ]
 
     for_userbot = [
-        InlineKeyboardButton(f"Gʀᴏᴜᴘ {'✅' if ugroup else '❌'}", callback_data="toggle_ugroup"),
-        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ {'✅' if uprivate else '❌'}", callback_data="toggle_uprivate"),
+        InlineKeyboardButton(f"Gʀᴏᴜᴘ: {'ON' if ugroup else 'OFF'}", callback_data="toggle_ugroup", style=ButtonStyle.SUCCESS if ugroup else ButtonStyle.DEFAULT),
+        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ: {'ON' if uprivate else 'OFF'}", callback_data="toggle_uprivate", style=ButtonStyle.SUCCESS if uprivate else ButtonStyle.DEFAULT),
     ]
 
     buttons = [
-        [InlineKeyboardButton(f"Fʀᴏᴍ ʙᴏᴛ {'⬇️' if bot else '❌'}", callback_data="toggle_bot")],
+        [InlineKeyboardButton(f"Mᴏᴅᴇ: {'FORWARD (↗️)' if forward else 'COPY (📋)'}", callback_data="toggle_forward", style=ButtonStyle.PRIMARY if forward else ButtonStyle.DEFAULT)],
+        [InlineKeyboardButton(f"Fʀᴏᴍ ʙᴏᴛ: {'ENABLED' if bot else 'DISABLED'}", callback_data="toggle_bot", style=ButtonStyle.PRIMARY if bot else ButtonStyle.DANGER)],
         for_bot if bot else [],
-        [InlineKeyboardButton(f"Fʀᴏᴍ ᴜꜱᴇʀʙᴏᴛ {'⬇️' if userbot else '❌'}", callback_data="toggle_userbot")],
+        [InlineKeyboardButton(f"Fʀᴏᴍ ᴜsᴇʀʙᴏᴛ: {'ENABLED' if userbot else 'DISABLED'}", callback_data="toggle_userbot", style=ButtonStyle.PRIMARY if userbot else ButtonStyle.DANGER)],
         for_userbot if userbot else [],
-        [InlineKeyboardButton("BROADCAST🚀🚀", callback_data="broadcast")],
+        [InlineKeyboardButton("🚀 sᴛᴀʀᴛ ʙʀᴏᴀᴅᴄᴀsᴛ", callback_data="broadcast", style=ButtonStyle.PRIMARY)],
     ]
 
     # Filter out empty button rows
     buttons = [row for row in buttons if row]
 
-    mess_text = await get_status(client)
+    mess_text = await get_status(client, user_data=user_data)
 
     if isinstance(message, CallbackQuery):
         await message.edit_message_text(
