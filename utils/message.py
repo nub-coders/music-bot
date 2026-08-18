@@ -188,4 +188,12 @@ class Messages:
     MMF_DOWNLOAD_FAILED = "Failed to download media for memify."
     INVALID_FONT_SELECTION = "Invalid font style selection."
     HELP_CATEGORY_SELECT = f"<u><b>{EmojiTag.INFO} | sᴇʟᴇᴄᴛ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ</b></u>"
+    GROUP_WELCOME = (
+        f"{EmojiTag.MUSIC_NOTE} <b>ʜᴇʏ {{adder}}!</b> ᴛʜᴀɴᴋs ꜰᴏʀ ᴀᴅᴅɪɴɢ ᴍᴇ ᴛᴏ <b>{{group_name}}</b> 🎉\n\n"
+        f"ɪ'ᴍ <b>{{botname}}</b> — ʏᴏᴜʀ ᴅᴇᴅɪᴄᴀᴛᴇᴅ ᴍᴜsɪᴄ ʙᴏᴛ.\n\n"
+        f"{EmojiTag.MUSIC_NOTES} ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ sᴛʀᴇᴀᴍɪɴɢ\n"
+        f"{EmojiTag.BOLT} ʙʟᴀᴢɪɴɢ-ꜰᴀsᴛ ᴘʟᴀʏʙᴀᴄᴋ ᴡɪᴛʜ ǫᴜᴇᴜᴇ\n"
+        f"{EmojiTag.GLOBE} ʏᴏᴜᴛᴜʙᴇ, sᴘᴏᴛɪꜰʏ & ᴍᴏʀᴇ\n\n"
+        f"<i>ᴜsᴇ <code>/play [song]</code> ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</i>"
+    )
 

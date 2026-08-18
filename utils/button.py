@@ -78,6 +78,31 @@ class Buttons:
         ]
         return InlineKeyboardMarkup(buttons)
 
+    @staticmethod
+    def group_welcome_markup(bot_username: str, GROUP: str) -> InlineKeyboardMarkup:
+        """Generates the markup shown when the bot is added to a group."""
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                "📖 ʜᴇʟᴘ & ᴄᴏᴍᴍᴀɴᴅs",
+                url=f"https://t.me/{bot_username}?start=help",
+                style=ButtonStyle.PRIMARY,
+                icon_custom_emoji_id=Emoji.HELP,
+            )],
+            [
+                InlineKeyboardButton(
+                    "➕ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ",
+                    url=f"https://t.me/{bot_username}?startgroup=true",
+                    style=ButtonStyle.DEFAULT,
+                    icon_custom_emoji_id=Emoji.ADD,
+                ),
+                InlineKeyboardButton(
+                    "💬 sᴜᴘᴘᴏʀᴛ",
+                    url=f"https://t.me/{GROUP}",
+                    style=ButtonStyle.DEFAULT,
+                    icon_custom_emoji_id=Emoji.CHAT,
+                ),
+            ],
+        ])
 
     @staticmethod
     def playback_markup(channel_mode=False):
