@@ -33,7 +33,7 @@ def _mem_cache_set(key, value):
 logger = logging.getLogger(__name__)
 
 # Single long-lived HTTP client shared by every network resolver (InnerTube,
-# nubcoder API, YouTube Data API). httpx pools connections per-host, so the
+# ytube API, YouTube Data API). httpx pools connections per-host, so the
 # search+player pair InnerTube fires on each /play reuses one warm TCP+TLS
 # connection instead of paying a fresh DNS/TCP/TLS handshake per request.
 # Measured: ~3s -> ~0.7s p50, and the multi-second tail collapses.
@@ -537,7 +537,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
 
 
 # New: Get video info using local search and stream extraction
-# Circuit breaker for the external nubcoder resolution API: after N consecutive
+# Circuit breaker for the external ytube resolution API: after N consecutive
 # failures/timeouts, skip it for a cooldown window instead of paying the ~15s
 # timeout on every single call. Resets on the first success.
 _API_FAIL_THRESHOLD = 3
@@ -562,14 +562,14 @@ def _api_record_failure():
     if _api_fail_count >= _API_FAIL_THRESHOLD:
         _api_cooldown_until = time.time() + _API_COOLDOWN_S
         logger.warning(
-            f"[youtube] nubcoder API circuit breaker OPEN for {_API_COOLDOWN_S}s "
+            f"[youtube] ytube API circuit breaker OPEN for {_API_COOLDOWN_S}s "
             f"after {_api_fail_count} consecutive failures"
         )
 
 
 async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") -> Tuple[str, str, str, str, str, str, str, str, str]:
-    """Get video info using nubcoder API, Innertube resolution, or local search fallback."""
-    # Direct stream URL handling (bypasses nubcoder API completely)
+    """Get video info using ytube API, Innertube resolution, or local search fallback."""
+    # Direct stream URL handling (bypasses ytube API completely)
     if is_direct_stream_url(query):
         logger.info(f"[youtube.get_video_info] Bypassing API for direct stream URL: '{query[:80]}...'")
         details = await get_video_details(query)
@@ -607,10 +607,10 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     except Exception as e:
         logger.warning(f"[youtube.get_video_info] Innertube direct resolution failed: {e}")
 
-    # Fallback: use the nubcoder /info API endpoint (skipped while the breaker is open)
+    # Fallback: use the ytube /info API endpoint (skipped while the breaker is open)
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            logger.debug(f"[youtube.get_video_info] Using nubcoder /info API for '{query}'")
+            logger.debug(f"[youtube.get_video_info] Using ytube /info API for '{query}'")
             resp = await get_http_client().get(
                 f"{BASE_URL}/info",
                 params={"q": query},
@@ -619,7 +619,7 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("stream_url") and data.get("title"):
-                    logger.info(f"[youtube.get_video_info] nubcoder API success: title='{data.get('title')}'")
+                    logger.info(f"[youtube.get_video_info] ytube API success: title='{data.get('title')}'")
                     _api_record_success()
                     return (
                         data.get('title', 'N/A'),
@@ -630,12 +630,12 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
                         data.get('views', '0'),
                         data.get('stream_url', 'N/A'),
                         data.get('thumbnail', 'N/A'),
-                        'api',
+                        'ytube',
                     )
-            logger.warning(f"[youtube.get_video_info] nubcoder API returned status {resp.status_code}, falling back")
+            logger.warning(f"[youtube.get_video_info] ytube API returned status {resp.status_code}, falling back")
             _api_record_failure()
         except Exception as e:
-            logger.warning(f"[youtube.get_video_info] nubcoder API failed: {e}, falling back")
+            logger.warning(f"[youtube.get_video_info] ytube API failed: {e}, falling back")
             _api_record_failure()
 
     # Fallback: local YouTube Data API search + stream extraction
@@ -944,7 +944,7 @@ async def get_video_details(video_id):
         dict: Video details or error message
     """
 
-    # Direct stream URL resolution (bypasses YouTube API and external nubcoder API)
+    # Direct stream URL resolution (bypasses YouTube API and external ytube API)
     if is_direct_stream_url(video_id):
         logger.info(f"[youtube.get_video_details] Handling direct stream URL: '{video_id[:80]}...'")
         try:
@@ -999,10 +999,10 @@ async def get_video_details(video_id):
             "video_id": video_id,
         }
 
-    # Primary resolution chain: InnerTube -> nubcoder API -> YouTube Data API
+    # Primary resolution chain: InnerTube -> ytube API -> YouTube Data API
     # search, in that priority (get_video_info owns the chain). Always attempted
     # first, unconditionally — InnerTube must stay the primary resolver even when
-    # no nubcoder token is configured. yt-dlp below is the last-resort fallback,
+    # no ytube token is configured. yt-dlp below is the last-resort fallback,
     # reached only when the whole chain yields nothing.
     try:
         logger.debug(f"[youtube.get_video_details] Resolving via get_video_info for video_id='{video_id}'")

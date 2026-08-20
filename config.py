@@ -34,9 +34,11 @@ DB_NAME   = os.getenv("DB_NAME", "musicbot")
 # Leave blank → yt-dlp only (no view counts / channel info from Data API)
 YOUTUBE_API_KEYS = os.getenv("YOUTUBE_API_KEYS", "")
 
-# External YouTube proxy (optional)
-YT_API_TOKEN      = os.getenv("YT_API_TOKEN", None)
-NUB_YT_API_BASE_URL = os.getenv("NUB_YT_API_BASE_URL", "https://api.nubcoders.com")
+# External ytube proxy API (optional)
+YTUBE_API_TOKEN   = os.getenv("YTUBE_API_TOKEN") or os.getenv("YT_API_TOKEN", None)
+YT_API_TOKEN      = YTUBE_API_TOKEN
+YTUBE_API_BASE_URL = os.getenv("YTUBE_API_BASE_URL") or os.getenv("NUB_YT_API_BASE_URL", "https://api.nubcoders.com")
+NUB_YT_API_BASE_URL = YTUBE_API_BASE_URL
 
 # Optional path to a Netscape-format cookies.txt for yt-dlp (age-restricted / region-locked
 # videos). Export one from your browser and mount it into the container, then set this env var.

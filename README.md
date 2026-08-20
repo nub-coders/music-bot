@@ -36,8 +36,7 @@
  - `BOT_TOKEN`
  - `STRING_SESSION`
  - `OWNER_ID`
- - `MONGODB_URI`
- - Optional: `LOGGER_ID`, `DB_NAME`, `YOUTUBE_API_KEYS`, `YT_API_TOKEN`, `NUB_YT_API_BASE_URL`
+ - Optional: `LOGGER_ID`, `DB_NAME`, `YOUTUBE_API_KEYS`, `YTUBE_API_TOKEN` (or `YT_API_TOKEN`), `YTUBE_API_BASE_URL` (or `NUB_YT_API_BASE_URL`)
  - Optional: `YT_COOKIES_FILE` — path to a Netscape-format `cookies.txt` for yt-dlp
    (needed for age-restricted / region-locked videos). Export one from your browser
    and mount it into the container, then point this variable at it. If unset, yt-dlp

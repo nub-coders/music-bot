@@ -62,13 +62,13 @@
       "value": "musicbot",
       "required": false
     },
-    "NUB_YT_API_BASE_URL": {
-      "description": "Base URL for external YouTube API proxy (optional)",
+    "YTUBE_API_BASE_URL": {
+      "description": "Base URL for external ytube API proxy (optional)",
       "value": "https://api.nubcoders.com",
       "required": false
     },
-    "YT_API_TOKEN": {
-      "description": "Auth token for the external YouTube API proxy (optional)",
+    "YTUBE_API_TOKEN": {
+      "description": "Auth token for the external ytube API proxy (optional)",
       "value": "",
       "required": false
     },
