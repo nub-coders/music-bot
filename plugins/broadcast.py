@@ -202,7 +202,7 @@ async def get_status(client, user_data=None):
 
     bot_status = f"{EmojiTag.SUCCESS} <b>ᴇɴᴀʙʟᴇᴅ</b>" if bot else f"{EmojiTag.ERROR} <b>ᴅɪsᴀʙʟᴇᴅ</b>"
     userbot_status = f"{EmojiTag.SUCCESS} <b>ᴇɴᴀʙʟᴇᴅ</b>" if userbot else f"{EmojiTag.ERROR} <b>ᴅɪsᴀʙʟᴇᴅ</b>"
-    mode_status = "↗️ <b>ꜰᴏʀᴡᴀʀᴅ</b>" if forward else "📋 <b>ᴄᴏᴘʏ (ɴᴏ ᴛᴀɢ)</b>"
+    sender_name_status = f"{EmojiTag.SUCCESS} <b>ᴛʀᴜᴇ</b>" if forward else f"{EmojiTag.ERROR} <b>ꜰᴀʟsᴇ</b>"
 
     bot_group_str = "✅ Yes" if group else "❌ No"
     bot_private_str = "✅ Yes" if private else "❌ No"
@@ -219,7 +219,7 @@ async def get_status(client, user_data=None):
         f"✦ {EmojiTag.STATS} <b>Total Targets:</b> <code>{total}</code>\n"
         f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
         f"<b>{EmojiTag.SETTINGS} ᴄʜᴏsᴇɴ ᴏᴘᴛɪᴏɴs:</b>\n"
-        f"• <b>Delivery Mode:</b> {mode_status}\n"
+        f"• <b>Sender Name:</b> {sender_name_status}\n"
         f"• <b>From Bot:</b> {bot_status}\n"
         f"  └ <b>Groups:</b> {bot_group_str} | <b>Private:</b> {bot_private_str} | <b>Pin:</b> {bot_pin_str}\n"
         f"• <b>From Assistant:</b> {userbot_status}\n"
@@ -390,7 +390,7 @@ async def broadcast_command_handler(client, message, user_data=None):
     ]
 
     buttons = [
-        [InlineKeyboardButton(f"Mᴏᴅᴇ: {'FORWARD (↗️)' if forward else 'COPY (📋)'}", callback_data="toggle_forward", style=ButtonStyle.PRIMARY if forward else ButtonStyle.DEFAULT)],
+        [InlineKeyboardButton(f"Sᴇɴᴅᴇʀ Nᴀᴍᴇ: {'True' if forward else 'False'}", callback_data="toggle_forward", style=ButtonStyle.SUCCESS if forward else ButtonStyle.DEFAULT)],
         [InlineKeyboardButton(f"Fʀᴏᴍ ʙᴏᴛ: {'ENABLED' if bot else 'DISABLED'}", callback_data="toggle_bot", style=ButtonStyle.PRIMARY if bot else ButtonStyle.DANGER)],
         for_bot if bot else [],
         [InlineKeyboardButton(f"Fʀᴏᴍ ᴜsᴇʀʙᴏᴛ: {'ENABLED' if userbot else 'DISABLED'}", callback_data="toggle_userbot", style=ButtonStyle.PRIMARY if userbot else ButtonStyle.DANGER)],
