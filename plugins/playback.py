@@ -453,14 +453,25 @@ async def play_handler_func(client, message):
     target_chat = None
     if channel_mode:
         target_chat = linked_chat
-        if getattr(linked_chat, "username", None):
+        try:
             try:
-                try:
-                    await session.get_chat(linked_chat.username)
-                except Exception:
+                await session.get_chat(linked_chat.id)
+            except Exception:
+                if getattr(linked_chat, "username", None):
                     await session.join_chat(linked_chat.username)
-            except Exception as e:
-                logger.debug(f"[play] Session public channel check: {e}")
+                else:
+                    try:
+                        chan_expire = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
+                        chan_link = await client.create_chat_invite_link(linked_chat.id, member_limit=1, expire_date=chan_expire)
+                        await session.join_chat(chan_link.invite_link)
+                    except UserAlreadyParticipant:
+                        pass
+                    except Exception as chan_err:
+                        logger.debug(f"[play] Assistant private channel join: {chan_err}")
+        except UserAlreadyParticipant:
+            pass
+        except Exception as e:
+            logger.debug(f"[play] Session channel check: {e}")
     else:
         # For regular mode, use the joined chat
         target_chat = joined_chat

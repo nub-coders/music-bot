@@ -686,15 +686,23 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
     except (ChatAdminRequired, ChatWriteForbidden) as e:
         logger.error(f"[join_call] Admin permission required in chat {chat.id}: {e}")
         ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
+        err_msg = str(e)
+        if "CreateGroupCall" in err_msg or "GroupCall" in err_msg or "group call" in err_msg.lower():
+            reply_text = Messages.NO_ACTIVE_VC
+        else:
+            reply_text = Messages.NEED_INVITE_PERMISSION
         try:
-            await clients["bot"].send_message(ui_chat_id, Messages.NEED_INVITE_PERMISSION, link_preview_options=None)
+            await clients["bot"].send_message(ui_chat_id, reply_text, link_preview_options=None)
         except Exception:
             pass
         return await remove_active_chat(chat.id)
     except NoActiveGroupCall:
         logger.error(f"[join_call] NoActiveGroupCall exception for chat {chat.id} - No active group calls")
         ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
-        await clients["bot"].send_message(ui_chat_id, Messages.NO_STREAM, link_preview_options=None)
+        try:
+            await clients["bot"].send_message(ui_chat_id, Messages.NO_ACTIVE_VC, link_preview_options=None)
+        except Exception:
+            pass
         return await remove_active_chat(chat.id)
     except Exception as e:
         logger.error(f"[join_call] Unexpected error in chat {chat.id}: {type(e).__name__} - {e}", exc_info=True)
