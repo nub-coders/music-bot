@@ -411,24 +411,105 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
 
 async def add_text_img(image_path, text):
     font_size = 12
-    stroke_width = 1
 
     if ";" in text:
-        upper_text, lower_text = text.split(";")
+        upper_text, lower_text = text.split(";", 1)
     else:
         upper_text = text
         lower_text = ""
 
+    font_path = "default.ttf"
+    if not os.path.exists(font_path):
+        base_dir = os.path.dirname(__file__)
+        font_path = os.path.join(base_dir, "default.ttf")
+
+    is_video = str(image_path).endswith((".webm", ".mp4", ".mkv", ".mov"))
+
+    if is_video:
+        import subprocess
+        import json
+
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "json", image_path
+        ]
+        out = subprocess.check_output(probe_cmd)
+        probe_data = json.loads(out)
+        image_width = probe_data["streams"][0]["width"]
+        image_height = probe_data["streams"][0]["height"]
+
+        overlay = Image.new("RGBA", (image_width, image_height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        font_px = max(12, int(image_height * font_size) // 100)
+        font = ImageFont.truetype(font_path, size=font_px)
+        stroke_width = max(1, font_px // 18)
+
+        char_width, char_height = draw.textbbox((0, 0), "A", font=font)[2:4]
+        chars_per_line = max(1, image_width // max(1, char_width))
+        top_lines = textwrap.wrap(upper_text, width=chars_per_line)
+        bottom_lines = textwrap.wrap(lower_text, width=chars_per_line)
+
+        if top_lines:
+            y = 10
+            for line in top_lines:
+                line_width, line_height = draw.textbbox((0, 0), line, font=font)[2:4]
+                x = (image_width - line_width) / 2
+                draw.text(
+                    (x, y),
+                    line,
+                    fill="white",
+                    font=font,
+                    stroke_width=stroke_width,
+                    stroke_fill="black",
+                )
+                y += line_height
+
+        if bottom_lines:
+            y = image_height - char_height * len(bottom_lines) - 15
+            for line in bottom_lines:
+                line_width, line_height = draw.textbbox((0, 0), line, font=font)[2:4]
+                x = (image_width - line_width) / 2
+                draw.text(
+                    (x, y),
+                    line,
+                    fill="white",
+                    font=font,
+                    stroke_width=stroke_width,
+                    stroke_fill="black",
+                )
+                y += line_height
+
+        overlay_temp = f"temp_overlay_{os.getpid()}.png"
+        overlay.save(overlay_temp)
+
+        final_video = os.path.join("memify.webm")
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-i", image_path,
+            "-i", overlay_temp,
+            "-filter_complex", "[0:v][1:v]overlay=0:0",
+            "-c:v", "libvpx-vp9",
+            "-pix_fmt", "yuva420p",
+            "-b:v", "500k",
+            "-an",
+            "-t", "3",
+            final_video
+        ]
+        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if os.path.exists(overlay_temp):
+            os.remove(overlay_temp)
+        return final_video
+
     img = Image.open(image_path).convert("RGBA")
     img_info = img.info
     image_width, image_height = img.size
-    font = ImageFont.truetype(
-        font="default.ttf",                                                                                       size=int(image_height * font_size) // 100,
-    )
+    font_px = max(12, int(image_height * font_size) // 100)
+    font = ImageFont.truetype(font_path, size=font_px)
+    stroke_width = max(1, font_px // 18)
     draw = ImageDraw.Draw(img)
 
-    char_width, char_height = draw.textbbox((0, 0), 'A', font=font)[2:4]
-    chars_per_line = image_width // char_width
+    char_width, char_height = draw.textbbox((0, 0), "A", font=font)[2:4]
+    chars_per_line = max(1, image_width // max(1, char_width))
     top_lines = textwrap.wrap(upper_text, width=chars_per_line)
     bottom_lines = textwrap.wrap(lower_text, width=chars_per_line)
 
@@ -443,6 +524,7 @@ async def add_text_img(image_path, text):
                 fill="white",
                 font=font,
                 stroke_width=stroke_width,
+                stroke_fill="black",
             )
             y += line_height
 
@@ -454,9 +536,10 @@ async def add_text_img(image_path, text):
             draw.text(
                 (x, y),
                 line,
-                fill="black",
+                fill="white",
                 font=font,
                 stroke_width=stroke_width,
+                stroke_fill="black",
             )
             y += line_height
 
