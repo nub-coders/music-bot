@@ -200,16 +200,16 @@ async def get_status(client, user_data=None):
     pin = user_data.get('pin', False)
     forward = user_data.get('forward', False)
 
-    bot_status = f"{EmojiTag.SUCCESS} <b>ᴇɴᴀʙʟᴇᴅ</b>" if bot else f"{EmojiTag.ERROR} <b>ᴅɪsᴀʙʟᴇᴅ</b>"
-    userbot_status = f"{EmojiTag.SUCCESS} <b>ᴇɴᴀʙʟᴇᴅ</b>" if userbot else f"{EmojiTag.ERROR} <b>ᴅɪsᴀʙʟᴇᴅ</b>"
-    sender_name_status = f"{EmojiTag.SUCCESS} <b>ᴛʀᴜᴇ</b>" if forward else f"{EmojiTag.ERROR} <b>ꜰᴀʟsᴇ</b>"
+    bot_status = f"{EmojiTag.TICK} <b>ʏᴇs</b>" if bot else f"{EmojiTag.UNTICK} <b>ɴᴏ</b>"
+    userbot_status = f"{EmojiTag.TICK} <b>ʏᴇs</b>" if userbot else f"{EmojiTag.UNTICK} <b>ɴᴏ</b>"
+    sender_name_status = f"{EmojiTag.TICK} <b>ᴛʀᴜᴇ</b>" if forward else f"{EmojiTag.UNTICK} <b>ꜰᴀʟsᴇ</b>"
 
-    bot_group_str = "✅ Yes" if group else "❌ No"
-    bot_private_str = "✅ Yes" if private else "❌ No"
-    bot_pin_str = "✅ Yes" if pin else "❌ No"
+    bot_group_str = f"{EmojiTag.TICK} Yes" if group else f"{EmojiTag.UNTICK} No"
+    bot_private_str = f"{EmojiTag.TICK} Yes" if private else f"{EmojiTag.UNTICK} No"
+    bot_pin_str = f"{EmojiTag.TICK} Yes" if pin else f"{EmojiTag.UNTICK} No"
 
-    ubot_group_str = "✅ Yes" if ugroup else "❌ No"
-    ubot_private_str = "✅ Yes" if uprivate else "❌ No"
+    ubot_group_str = f"{EmojiTag.TICK} Yes" if ugroup else f"{EmojiTag.UNTICK} No"
+    ubot_private_str = f"{EmojiTag.TICK} Yes" if uprivate else f"{EmojiTag.UNTICK} No"
 
     mess = (
         f"<u><b>{EmojiTag.BROADCAST} | ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs</b></u>\n"
@@ -379,21 +379,67 @@ async def broadcast_command_handler(client, message, user_data=None):
     forward = user_data.get('forward', False)
 
     for_bot = [
-        InlineKeyboardButton(f"Gʀᴏᴜᴘ: {'ON' if group else 'OFF'}", callback_data="toggle_group", style=ButtonStyle.SUCCESS if group else ButtonStyle.DEFAULT),
-        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ: {'ON' if private else 'OFF'}", callback_data="toggle_private", style=ButtonStyle.SUCCESS if private else ButtonStyle.DEFAULT),
-        InlineKeyboardButton(f"Pɪɴ: {'ON' if pin else 'OFF'}", callback_data="toggle_pin", style=ButtonStyle.SUCCESS if pin else ButtonStyle.DEFAULT),
+        InlineKeyboardButton(
+            "Group",
+            callback_data="toggle_group",
+            style=ButtonStyle.SUCCESS if group else ButtonStyle.DEFAULT,
+            icon_custom_emoji_id=Emoji.TICK if group else Emoji.UNTICK,
+        ),
+        InlineKeyboardButton(
+            "Private",
+            callback_data="toggle_private",
+            style=ButtonStyle.SUCCESS if private else ButtonStyle.DEFAULT,
+            icon_custom_emoji_id=Emoji.TICK if private else Emoji.UNTICK,
+        ),
+        InlineKeyboardButton(
+            "Pin",
+            callback_data="toggle_pin",
+            style=ButtonStyle.SUCCESS if pin else ButtonStyle.DEFAULT,
+            icon_custom_emoji_id=Emoji.TICK if pin else Emoji.UNTICK,
+        ),
     ]
 
     for_userbot = [
-        InlineKeyboardButton(f"Gʀᴏᴜᴘ: {'ON' if ugroup else 'OFF'}", callback_data="toggle_ugroup", style=ButtonStyle.SUCCESS if ugroup else ButtonStyle.DEFAULT),
-        InlineKeyboardButton(f"Pʀɪᴠᴀᴛᴇ: {'ON' if uprivate else 'OFF'}", callback_data="toggle_uprivate", style=ButtonStyle.SUCCESS if uprivate else ButtonStyle.DEFAULT),
+        InlineKeyboardButton(
+            "Group",
+            callback_data="toggle_ugroup",
+            style=ButtonStyle.SUCCESS if ugroup else ButtonStyle.DEFAULT,
+            icon_custom_emoji_id=Emoji.TICK if ugroup else Emoji.UNTICK,
+        ),
+        InlineKeyboardButton(
+            "Private",
+            callback_data="toggle_uprivate",
+            style=ButtonStyle.SUCCESS if uprivate else ButtonStyle.DEFAULT,
+            icon_custom_emoji_id=Emoji.TICK if uprivate else Emoji.UNTICK,
+        ),
     ]
 
     buttons = [
-        [InlineKeyboardButton(f"Sᴇɴᴅᴇʀ Nᴀᴍᴇ: {'True' if forward else 'False'}", callback_data="toggle_forward", style=ButtonStyle.SUCCESS if forward else ButtonStyle.DEFAULT)],
-        [InlineKeyboardButton(f"Fʀᴏᴍ ʙᴏᴛ: {'ENABLED' if bot else 'DISABLED'}", callback_data="toggle_bot", style=ButtonStyle.PRIMARY if bot else ButtonStyle.DANGER)],
+        [
+            InlineKeyboardButton(
+                "Sender Name",
+                callback_data="toggle_forward",
+                style=ButtonStyle.SUCCESS if forward else ButtonStyle.DEFAULT,
+                icon_custom_emoji_id=Emoji.TICK if forward else Emoji.UNTICK,
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "From Bot",
+                callback_data="toggle_bot",
+                style=ButtonStyle.SUCCESS if bot else ButtonStyle.DEFAULT,
+                icon_custom_emoji_id=Emoji.TICK if bot else Emoji.UNTICK,
+            )
+        ],
         for_bot if bot else [],
-        [InlineKeyboardButton(f"Fʀᴏᴍ ᴜsᴇʀʙᴏᴛ: {'ENABLED' if userbot else 'DISABLED'}", callback_data="toggle_userbot", style=ButtonStyle.PRIMARY if userbot else ButtonStyle.DANGER)],
+        [
+            InlineKeyboardButton(
+                "From Assistant",
+                callback_data="toggle_userbot",
+                style=ButtonStyle.SUCCESS if userbot else ButtonStyle.DEFAULT,
+                icon_custom_emoji_id=Emoji.TICK if userbot else Emoji.UNTICK,
+            )
+        ],
         for_userbot if userbot else [],
         [InlineKeyboardButton("🚀 sᴛᴀʀᴛ ʙʀᴏᴀᴅᴄᴀsᴛ", callback_data="broadcast", style=ButtonStyle.PRIMARY)],
     ]

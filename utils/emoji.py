@@ -50,6 +50,8 @@ class Emoji:
     # ── Success / Error ───────────────────────────────────────────────────────
     SUCCESS        = 5776375003280838798   # ✅  TgAndroidIcons
     ERROR          = 5778527486270770928   # ❌  TgAndroidIcons
+    TICK           = 5774022692642492953   # ✅  Custom tick
+    UNTICK         = 5778479949572738874   # ❌  Custom untick
     WARNING        = 5881702736843511327   # ⚠️  TgAndroidIcons
     BLOCKED        = 5877413297170419326   # 🚫  TgAndroidIcons
     LOCK           = 5879895758202735862   # 🔒  TgAndroidIcons
@@ -152,6 +154,8 @@ class EmojiTag:
 
     SUCCESS        = f'<emoji id="{Emoji.SUCCESS}">✅</emoji>'
     ERROR          = f'<emoji id="{Emoji.ERROR}">❌</emoji>'
+    TICK           = f'<emoji id="{Emoji.TICK}">✅</emoji>'
+    UNTICK         = f'<emoji id="{Emoji.UNTICK}">❌</emoji>'
     WARNING        = f'<emoji id="{Emoji.WARNING}">⚠️</emoji>'
     BLOCKED        = f'<emoji id="{Emoji.BLOCKED}">🚫</emoji>'
     LOCK           = f'<emoji id="{Emoji.LOCK}">🔐</emoji>'
