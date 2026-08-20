@@ -22,6 +22,7 @@ class Messages:
     # ── Controls Status ───────────────────────────────────────────────────
     NO_STREAM = f"{EmojiTag.ERROR} <b>ɴᴏ ᴀᴄᴛɪᴠᴇ sᴛʀᴇᴀᴍ ʀɪɢʜᴛ ɴᴏᴡ.</b>"
     NO_ACTIVE_VC = f"{EmojiTag.WARNING} <b>ɴᴏ ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ꜰᴏᴜɴᴅ.</b>\n<i>ᴘʟᴇᴀsᴇ sᴛᴀʀᴛ ᴛʜᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ꜰɪʀsᴛ, ᴏʀ ᴍᴀᴋᴇ ᴛʜᴇ ᴀssɪsᴛᴀɴᴛ ᴀɴ ᴀᴅᴍɪɴ ᴛᴏ sᴛᴀʀᴛ ɪᴛ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</i>"
+    NO_ACTIVE_VC_CHANNEL = f"{EmojiTag.WARNING} <b>ɴᴏ ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ꜰᴏᴜɴᴅ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ.</b>\n<i>ᴘʟᴇᴀsᴇ sᴛᴀʀᴛ ᴛʜᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ɪɴ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ ꜰɪʀsᴛ, ᴏʀ ᴍᴀᴋᴇ ᴛʜᴇ ᴀssɪsᴛᴀɴᴛ ᴀɴ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ᴛᴏ sᴛᴀʀᴛ ɪᴛ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</i>"
     SKIPPING = f"{EmojiTag.SKIP} <b>sᴋɪᴘᴘɪɴɢ ᴄᴜʀʀᴇɴᴛ ᴛʀᴀᴄᴋ...</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
     SKIPPED_EMPTY = f"{EmojiTag.SKIP} <b>ǫᴜᴇᴜᴇ ɪs ᴇᴍᴘᴛʏ ɴᴏᴡ.</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
     RESUMED = f"{EmojiTag.RESUME} <b>ᴘʟᴀʏʙᴀᴄᴋ ʀᴇsᴜᴍᴇᴅ.</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"

@@ -453,25 +453,40 @@ async def play_handler_func(client, message):
     target_chat = None
     if channel_mode:
         target_chat = linked_chat
+        # Step 1: Check if assistant is already a member of the linked channel
         try:
+            target_chat = await session.get_chat(linked_chat.id)
+            logger.info(f"[play] Session already in linked channel {linked_chat.id}")
+        except Exception:
+            # Step 2: Assistant is not in the channel yet. Try joining.
             try:
-                await session.get_chat(linked_chat.id)
-            except Exception:
                 if getattr(linked_chat, "username", None):
-                    await session.join_chat(linked_chat.username)
+                    target_chat = await session.join_chat(linked_chat.username)
+                    logger.info(f"[play] Session joined public linked channel @{linked_chat.username}")
                 else:
-                    try:
-                        chan_expire = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
-                        chan_link = await client.create_chat_invite_link(linked_chat.id, member_limit=1, expire_date=chan_expire)
-                        await session.join_chat(chan_link.invite_link)
-                    except UserAlreadyParticipant:
-                        pass
-                    except Exception as chan_err:
-                        logger.debug(f"[play] Assistant private channel join: {chan_err}")
-        except UserAlreadyParticipant:
-            pass
-        except Exception as e:
-            logger.debug(f"[play] Session channel check: {e}")
+                    # Private channel: create invite link and join
+                    chan_expire = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
+                    chan_link = await client.create_chat_invite_link(linked_chat.id, member_limit=1, expire_date=chan_expire)
+                    target_chat = await session.join_chat(chan_link.invite_link)
+                    logger.info(f"[play] Session joined private linked channel {linked_chat.id} via invite link")
+            except UserAlreadyParticipant:
+                target_chat = linked_chat
+            except (InviteHashExpired, ChannelPrivate):
+                await massage.edit(
+                    Messages.ASSISTANT_BANNED.format(session.me.mention(), session.me.id)
+                )
+                return await remove_active_chat(client, target_chat_id)
+            except (ChatAdminRequired, ChatWriteForbidden):
+                await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                return await remove_active_chat(client, target_chat_id)
+            except Exception as e:
+                err_str = str(e).lower()
+                if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
+                    await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                else:
+                    logger.error(f"[play] Failed to join linked channel {linked_chat.id}: {e}")
+                    await massage.edit(Messages.LINKED_CHANNEL_ERROR)
+                return await remove_active_chat(client, target_chat_id)
     else:
         # For regular mode, use the joined chat
         target_chat = joined_chat
