@@ -189,8 +189,9 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     label_text = "NOW PLAYING"
     label_text_x = text_x + waveform_width + 10
     draw_text_with_shadow(background, draw, (label_text_x, title_y - 45), label_text, info_font, (255, 255, 255), shadow_offset=(2, 2), shadow_blur=3)
-    draw_text_with_shadow(background, draw, (text_x, title_y), title1[0], title_font, (255, 255, 255), shadow_offset=(3, 3), shadow_blur=6)
-    if title1[1]:
+    if title1:
+        draw_text_with_shadow(background, draw, (text_x, title_y), title1[0], title_font, (255, 255, 255), shadow_offset=(3, 3), shadow_blur=6)
+    if len(title1) > 1 and title1[1]:
         draw_text_with_shadow(background, draw, (text_x, title_y + 60), title1[1], title_font, (255, 255, 255), shadow_offset=(3, 3), shadow_blur=6)
 
     artist_y = title_y + 140
