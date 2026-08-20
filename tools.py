@@ -8,6 +8,7 @@ import textwrap
 import datetime
 
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.enums import ChatType
 
 from pytgcalls.types import AudioQuality, MediaStream, VideoQuality, StreamEnded
 from pytgcalls.exceptions import NoActiveGroupCall
@@ -251,7 +252,7 @@ async def autoleave_vc(chat_id: int) -> bool:
     return False
 
 
-async def _swap_in_photo(thumb_task, chat_id, text, keyboard, text_msg, chat, duration):
+async def _swap_in_photo(thumb_task, ui_chat_id, chat_id, text, keyboard, text_msg, chat, duration):
     """Replace a text now-playing message with the photo card once the render lands.
     Telegram can't edit text->media, so this is delete + resend — the card jumps to
     the bottom of a busy chat, which is why it's only the fallback when the render
@@ -263,7 +264,7 @@ async def _swap_in_photo(thumb_task, chat_id, text, keyboard, text_msg, chat, du
     if not path:
         return
     try:
-        photo_msg = await clients["bot"].send_photo(chat_id, path, text, reply_markup=keyboard)
+        photo_msg = await clients["bot"].send_photo(ui_chat_id, path, text, reply_markup=keyboard)
     except Exception as e:
         logger.warning(f"[_swap_in_photo] send_photo failed, keeping text: {e}")
         return
@@ -609,7 +610,9 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         ))
 
         logger.debug("[join_call] Creating inline keyboard for playback controls")
-        keyboard = Buttons.playback_markup()
+        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat_id
+        is_channel = (ui_chat_id != chat_id) or (getattr(chat, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))
+        keyboard = Buttons.playback_markup(channel_mode=is_channel)
 
 
         logger.debug("[join_call] Constructing message text with play_styles")
@@ -632,7 +635,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             by.mention() if hasattr(by, 'mention') else by
         )
 
-        logger.debug(f"[join_call] Sending playback notification to chat {message.chat.id}")
+        logger.debug(f"[join_call] Sending playback notification to chat {ui_chat_id}")
         _msg_t0 = time.perf_counter()
         # Text-first: don't let a slow card render block the notification. Give the
         # render a short grace so fast/cached cards still post as a photo directly
@@ -650,26 +653,26 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         if thumb_ready:
             try:
                 sent_message = await clients["bot"].send_photo(
-                    chat_id, thumb_ready, message_text, reply_markup=keyboard
+                    ui_chat_id, thumb_ready, message_text, reply_markup=keyboard
                 )
                 state.set_now_playing(chat_id, sent_message)
                 logger.info(f"[join_call] Playback notification sent with photo, message_id: {sent_message.id}")
             except Exception as photo_err:
                 logger.warning(f"[join_call] Failed to send photo, sending as text instead: {photo_err}")
                 sent_message = await clients["bot"].send_message(
-                    chat_id, message_text, reply_markup=keyboard,
+                    ui_chat_id, message_text, reply_markup=keyboard,
                     link_preview_options=None)
                 state.set_now_playing(chat_id, sent_message)
                 logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
         else:
             sent_message = await clients["bot"].send_message(
-                chat_id, message_text, reply_markup=keyboard,
+                ui_chat_id, message_text, reply_markup=keyboard,
                 link_preview_options=None)
             state.set_now_playing(chat_id, sent_message)
             logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
             if thumb_task:  # card still rendering — swap it in when ready
                 asyncio.create_task(_swap_in_photo(
-                    thumb_task, chat_id, message_text, keyboard, sent_message, chat, duration
+                    thumb_task, ui_chat_id, chat_id, message_text, keyboard, sent_message, chat, duration
                 ))
         _msg_ms = (time.perf_counter() - _msg_t0) * 1000
         logger.info(f"[join_call] ⏱ Now-playing message sent in {_msg_ms:.1f}ms for chat {chat_id}")
@@ -681,11 +684,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
     except NoActiveGroupCall:
         logger.error(f"[join_call] NoActiveGroupCall exception for chat {chat.id} - No active group calls")
-        await clients["bot"].send_message(chat.id, Messages.NO_STREAM, link_preview_options=None)
+        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
+        await clients["bot"].send_message(ui_chat_id, Messages.NO_STREAM, link_preview_options=None)
         return await remove_active_chat(chat.id)
     except Exception as e:
         logger.error(f"[join_call] Unexpected error in chat {chat.id}: {type(e).__name__} - {e}", exc_info=True)
-        await clients["bot"].send_message(chat.id, Messages.ERROR_OCCURRED, link_preview_options=None)
+        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
+        await clients["bot"].send_message(ui_chat_id, Messages.ERROR_OCCURRED, link_preview_options=None)
         return await remove_active_chat(chat.id)
 
 

@@ -3,9 +3,17 @@
 from plugins._common import *  # noqa: F401,F403
 
 
-@Client.on_message(filters.command("queue"))
+@Client.on_message(filters.command(["queue", "cqueue"]))
 async def queue_command(client, message):
     chat_id = message.chat.id
+    is_channel = message.command[0].lower() == "cqueue"
+    if is_channel or (not state.queues.get(chat_id)):
+        try:
+            linked = (await client.get_chat(chat_id)).linked_chat
+            if linked and (is_channel or state.queues.get(linked.id)):
+                chat_id = linked.id
+        except Exception:
+            pass
     queue_list = state.queues.get(chat_id, [])
     items = queue_list[:20]
     if not items:
@@ -76,10 +84,18 @@ async def queue_command(client, message):
 
 
 
-@Client.on_message(filters.command("shuffle"))
+@Client.on_message(filters.command(["shuffle", "cshuffle"]))
 @admin_only()
 async def shuffle_queue(client, message):
     chat_id = message.chat.id
+    is_channel = message.command[0].lower() == "cshuffle"
+    if is_channel or (not state.queues.get(chat_id)):
+        try:
+            linked = (await client.get_chat(chat_id)).linked_chat
+            if linked and (is_channel or state.queues.get(linked.id)):
+                chat_id = linked.id
+        except Exception:
+            pass
     async with state.lock(chat_id):
         q = state.queues.get(chat_id)
         if not q or len(q) < 2:

@@ -154,7 +154,15 @@ def admin_only():
                 # --- Song-owner skip: whoever queued the current track may skip
                 # it, admin or not (in-memory, no I/O). ---
                 if command in ("skip", "cskip"):
-                    song = state.playing.get(chat_id)
+                    target_id = chat_id
+                    if command == "cskip":
+                        try:
+                            linked = (await client.get_chat(chat_id)).linked_chat
+                            if linked:
+                                target_id = linked.id
+                        except Exception:
+                            pass
+                    song = state.playing.get(target_id)
                     if song and getattr(song.get("by"), "id", None) == user_id:
                         logger.info(f"User {user_id} authorized for {func.__name__} (song owner)")
                         return await func(client, update)

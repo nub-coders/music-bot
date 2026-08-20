@@ -426,14 +426,16 @@ async def play_handler_func(client, message):
 
     # Set the target chat based on whether it's channel mode or not
     target_chat = None
-    linked_chat = None
     if channel_mode:
-        # For channel mode, use the linked chat
-        linked_chat = (await session.get_chat(message.chat.id)).linked_chat
-        if not linked_chat:
-            await massage.edit(Messages.LINKED_CHANNEL_ERROR)
-            return await remove_active_chat(client, target_chat_id)
         target_chat = linked_chat
+        if getattr(linked_chat, "username", None):
+            try:
+                try:
+                    await session.get_chat(linked_chat.username)
+                except Exception:
+                    await session.join_chat(linked_chat.username)
+            except Exception as e:
+                logger.debug(f"[play] Session public channel check: {e}")
     else:
         # For regular mode, use the joined chat
         target_chat = joined_chat
@@ -487,7 +489,7 @@ async def play_handler_func(client, message):
                             youtube_link = yt_result[2] if yt_result[2] else youtube_link
                     except Exception:
                         duration = "N/A"
-                position = len(state.queues.get(message.chat.id)) if state.queues.get(target_chat.id) else 1
+                position = len(state.queues.get(target_chat.id, []))
                 keyboard = Buttons.queue_markup(track_id, channel_mode)
                 is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
                 video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None
