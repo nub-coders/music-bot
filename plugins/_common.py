@@ -25,7 +25,11 @@ from pyrogram.errors import (
     ChannelPrivate,
     UserBlocked,
     PeerIdInvalid,
-    MessageDeleteForbidden
+    MessageDeleteForbidden,
+    ChatAdminRequired,
+    ChatWriteForbidden,
+    UserAlreadyParticipant,
+    UserNotParticipant
 )
 from pyrogram.raw.functions.messages import GetStickerSet
 from pyrogram.enums import MessageEntityType
@@ -116,12 +120,14 @@ async def is_authorized(client, chat_id, user_id, allow_auth_users=True):
     cache_key = (chat_id, user_id)
     now = time.time()
     cached_member = _admin_member_cache.get(cache_key)
-    if cached_member and cached_member[1] > now:
-        return _is_admin_member_status(cached_member[0])
-    chat_member = await client.get_chat_member(chat_id, user_id)
-    status_value = _chat_type_value(chat_member.status)
-    _admin_member_cache[cache_key] = (status_value, now + 60)
-    return _is_admin_member_status(status_value)
+    try:
+        chat_member = await client.get_chat_member(chat_id, user_id)
+        status_value = _chat_type_value(chat_member.status)
+        _admin_member_cache[cache_key] = (status_value, now + 60)
+        return _is_admin_member_status(status_value)
+    except Exception as e:
+        logger.debug(f"[is_authorized] Failed to get chat member for ({chat_id}, {user_id}): {e}")
+        return False
 def admin_only():
     def decorator(func):
         @wraps(func)

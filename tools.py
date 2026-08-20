@@ -9,6 +9,7 @@ import datetime
 
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ChatType
+from pyrogram.errors import ChatAdminRequired, ChatWriteForbidden
 
 from pytgcalls.types import AudioQuality, MediaStream, VideoQuality, StreamEnded
 from pytgcalls.exceptions import NoActiveGroupCall
@@ -682,6 +683,14 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         logger.info(f"[join_call] Completed successfully - Now streaming '{title}' in chat {chat_id}")
 
+    except (ChatAdminRequired, ChatWriteForbidden) as e:
+        logger.error(f"[join_call] Admin permission required in chat {chat.id}: {e}")
+        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
+        try:
+            await clients["bot"].send_message(ui_chat_id, Messages.NEED_INVITE_PERMISSION, link_preview_options=None)
+        except Exception:
+            pass
+        return await remove_active_chat(chat.id)
     except NoActiveGroupCall:
         logger.error(f"[join_call] NoActiveGroupCall exception for chat {chat.id} - No active group calls")
         ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id

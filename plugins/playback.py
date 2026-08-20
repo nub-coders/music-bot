@@ -195,7 +195,14 @@ async def play_handler_func(client, message):
     target_chat_id = message.chat.id
     # For channel commands, check for linked channel
     if channel_mode:
-        linked_chat = (await client.get_chat(message.chat.id)).linked_chat
+        try:
+            linked_chat = (await client.get_chat(message.chat.id)).linked_chat
+        except (ChatAdminRequired, ChatWriteForbidden):
+            await message.reply(Messages.NEED_INVITE_PERMISSION, link_preview_options=None)
+            return
+        except Exception as e:
+            logger.warning(f"[play] Error getting chat for channel mode: {e}")
+            linked_chat = None
         if not linked_chat:
             await message.reply(Messages.NO_LINKED_CHANNEL, link_preview_options=None)
             return
@@ -377,22 +384,35 @@ async def play_handler_func(client, message):
                 joined_chat = await session.get_chat(message.chat.username)
             except Exception:
                 joined_chat = await session.join_chat(message.chat.username)
+        except UserAlreadyParticipant:
+            pass
         except (InviteHashExpired, ChannelPrivate):
             await massage.edit(Messages.ASSISTANT_BANNED.format(session.me.username or session.me.id, session.me.id))
             return await remove_active_chat(client, target_chat_id)
+        except (ChatAdminRequired, ChatWriteForbidden):
+            await massage.edit(Messages.NEED_INVITE_PERMISSION)
+            return await remove_active_chat(client, target_chat_id)
         except Exception as e:
-            logger.error(f"[play] Failed to join group {target_chat_id}: {e}")
-            await massage.edit(Messages.FAILED_JOIN_GROUP)
+            err_str = str(e).lower()
+            if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
+                await massage.edit(Messages.NEED_INVITE_PERMISSION)
+            else:
+                logger.error(f"[play] Failed to join group {target_chat_id}: {e}")
+                await massage.edit(Messages.FAILED_JOIN_GROUP)
             return await remove_active_chat(client, target_chat_id)
     else:
-        # Private group — try to get/join without relying on privileges check.
-        # Pyrogram often returns privileges=None for admins even when permissions
-        # ARE granted, so we never pre-reject. We try directly and let Telegram's
-        # API raise an error if something is actually missing.
-        bot_member = await client.get_chat_member(message.chat.id, client.me.id)
-        is_admin_or_owner = bot_member.status in (
-            ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER
-        )
+        # Private group — check bot membership safely
+        is_admin_or_owner = False
+        try:
+            bot_member = await client.get_chat_member(message.chat.id, client.me.id)
+            is_admin_or_owner = bot_member.status in (
+                ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER
+            )
+        except (ChatAdminRequired, ChatWriteForbidden):
+            is_admin_or_owner = False
+        except Exception as e:
+            logger.debug(f"[play] Bot chat member check: {e}")
+            is_admin_or_owner = False
 
         # Step 1: Maybe the session is already a member — no join needed.
         try:
@@ -408,10 +428,15 @@ async def play_handler_func(client, message):
                 link_obj = await client.create_chat_invite_link(message.chat.id, member_limit=1, expire_date=expire_at)
                 joined_chat = await session.join_chat(link_obj.invite_link)
                 logger.info(f"[play] Session joined private group {message.chat.id} via invite link")
+            except UserAlreadyParticipant:
+                logger.info(f"[play] Session already participant in private group {message.chat.id}")
             except (InviteHashExpired, ChannelPrivate):
                 await massage.edit(
                     Messages.ASSISTANT_BANNED.format(session.me.mention(), session.me.id)
                 )
+                return await remove_active_chat(client, target_chat_id)
+            except (ChatAdminRequired, ChatWriteForbidden):
+                await massage.edit(Messages.NEED_INVITE_PERMISSION)
                 return await remove_active_chat(client, target_chat_id)
             except Exception as e:
                 # If Telegram rejects due to missing invite permission, tell the user
