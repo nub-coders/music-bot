@@ -119,7 +119,11 @@ async def is_authorized(client, chat_id, user_id, allow_auth_users=True):
 
     cache_key = (chat_id, user_id)
     now = time.time()
-    cached_member = _admin_member_cache.get(cache_key)
+    cached = _admin_member_cache.get(cache_key)
+    if cached:
+        status_value, expires_at = cached
+        if now < expires_at:
+            return _is_admin_member_status(status_value)
     try:
         chat_member = await client.get_chat_member(chat_id, user_id)
         status_value = _chat_type_value(chat_member.status)
