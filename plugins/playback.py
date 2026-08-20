@@ -472,20 +472,23 @@ async def play_handler_func(client, message):
             except UserAlreadyParticipant:
                 target_chat = linked_chat
             except (InviteHashExpired, ChannelPrivate):
+                chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
                 await massage.edit(
-                    Messages.ASSISTANT_BANNED.format(session.me.mention(), session.me.id)
+                    Messages.ASSISTANT_BANNED_CHANNEL.format(chan_title, session.me.mention(), session.me.id)
                 )
                 return await remove_active_chat(client, target_chat_id)
             except (ChatAdminRequired, ChatWriteForbidden):
-                await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
+                await massage.edit(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title))
                 return await remove_active_chat(client, target_chat_id)
             except Exception as e:
+                chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
                 err_str = str(e).lower()
                 if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
-                    await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                    await massage.edit(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title))
                 else:
                     logger.error(f"[play] Failed to join linked channel {linked_chat.id}: {e}")
-                    await massage.edit(Messages.LINKED_CHANNEL_ERROR)
+                    await massage.edit(Messages.FAILED_JOIN_CHANNEL.format(chan_title))
                 return await remove_active_chat(client, target_chat_id)
     else:
         # For regular mode, use the joined chat

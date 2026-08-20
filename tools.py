@@ -691,7 +691,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         if "CreateGroupCall" in err_msg or "GroupCall" in err_msg or "group call" in err_msg.lower():
             reply_text = Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC
         else:
-            reply_text = Messages.NEED_INVITE_PERMISSION
+            if is_channel:
+                chan_name = getattr(chat, 'title', None) or str(chat.id)
+                reply_text = Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_name)
+            else:
+                reply_text = Messages.NEED_INVITE_PERMISSION
         try:
             await clients["bot"].send_message(ui_chat_id, reply_text, link_preview_options=None)
         except Exception:

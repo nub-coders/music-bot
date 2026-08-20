@@ -159,6 +159,20 @@ class Messages:
     NO_QUERY_MATCH = f"{EmojiTag.ERROR} <b>ɴᴏ ᴍᴀᴛᴄʜɪɴɢ ʀᴇsᴜʟᴛ ꜰᴏᴜɴᴅ. ᴛʀʏ ᴀɴᴏᴛʜᴇʀ ǫᴜᴇʀʏ.</b>"
     NO_QUERY_GIVEN = f"{EmojiTag.INFO} <b>ɴᴏ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.</b>"
     NEED_INVITE_PERMISSION = f"{EmojiTag.LOCK} <b>ɪ ɴᴇᴇᴅ 'ɪɴᴠɪᴛᴇ ᴜsᴇʀs ᴠɪᴀ ʟɪɴᴋ' ᴘᴇʀᴍɪssɪᴏɴ ᴛᴏ ᴊᴏɪɴ.</b>"
+    NEED_INVITE_PERMISSION_CHANNEL = (
+        f"{EmojiTag.LOCK} <b>ɪ ɴᴇᴇᴅ ᴀᴅᴍɪɴ ʀɪɢʜᴛs ᴡɪᴛʜ 'ɪɴᴠɪᴛᴇ ᴜsᴇʀs ᴠɪᴀ ʟɪɴᴋ' ɪɴ ᴛʜᴇ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ:</b>\n"
+        f"‣ <b>ᴄʜᴀɴɴᴇʟ:</b> <code>{{}}</code>"
+    )
+    ASSISTANT_BANNED_CHANNEL = (
+        f"{EmojiTag.LOCK} <b>ᴀssɪsᴛᴀɴᴛ ɪs ʙᴀɴɴᴇᴅ ɪɴ ᴛʜᴇ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ.</b>\n\n"
+        f"<b>‣ ᴄʜᴀɴɴᴇʟ:</b> <code>{{0}}</code>\n"
+        f"<b>‣ ᴘʟᴇᴀsᴇ ᴜɴʙᴀɴ:</b> {{1}}\n"
+        f"<b>‣ ᴜsᴇʀ ɪᴅ:</b> <code>{{2}}</code>"
+    )
+    FAILED_JOIN_CHANNEL = (
+        f"{EmojiTag.ERROR} <b>ꜰᴀɪʟᴇᴅ ᴛᴏ ᴊᴏɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ:</b> <code>{{}}</code>\n"
+        f"<i>ᴘʟᴇᴀsᴇ ᴇɴsᴜʀᴇ ᴛʜᴇ ʙᴏᴛ ᴀɴᴅ ᴀssɪsᴛᴀɴᴛ ᴀʀᴇ ᴀᴅᴅᴇᴅ ᴛᴏ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ᴀs ᴀᴅᴍɪɴɪsᴛʀᴀᴛᴏʀs.</i>"
+    )
     LINKED_CHANNEL_ERROR = f"{EmojiTag.ERROR} <b>ꜰᴀɪʟᴇᴅ ᴛᴏ ᴀᴄᴄᴇss ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ.</b>"
     NO_OPERATIONAL_DATA = f"{EmojiTag.INFO} <b>ɴᴏ ᴏᴘᴇʀᴀᴛɪᴏɴᴀʟ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ ꜰᴏʀ ᴛʜɪs ʙᴏᴛ.</b>"
 
