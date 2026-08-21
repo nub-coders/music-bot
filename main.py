@@ -33,20 +33,41 @@ cache_dir = f"{ggg}/cache"
 os.makedirs(cache_dir, exist_ok=True)
 
 
+def _clean_stale_files_sync(root_dirs: list, max_age_s: float) -> int:
+    now = time.time()
+    removed = 0
+    for root_dir in root_dirs:
+        if not root_dir or not os.path.exists(root_dir):
+            continue
+        for root, dirs, files in os.walk(root_dir):
+            for fname in files:
+                fpath = os.path.join(root, fname)
+                try:
+                    if (now - os.path.getmtime(fpath)) > max_age_s:
+                        os.remove(fpath)
+                        removed += 1
+                except Exception:
+                    pass
+            for dname in dirs:
+                dpath = os.path.join(root, dname)
+                try:
+                    if not os.listdir(dpath) and (now - os.path.getmtime(dpath)) > max_age_s:
+                        os.rmdir(dpath)
+                except Exception:
+                    pass
+    return removed
+
+
 async def _cache_cleanup_loop(max_age_hours: int = 6, interval_hours: int = 6):
-    """Periodically delete stale files from cache/ directory."""
+    """Periodically delete stale files from cache/ and download directories off the event loop."""
     max_age_s = max_age_hours * 3600
     interval_s = interval_hours * 3600
     while True:
         try:
-            now = time.time()
-            removed = 0
-            for entry in os.scandir(cache_dir):
-                if entry.is_file() and (now - entry.stat().st_mtime) > max_age_s:
-                    os.remove(entry.path)
-                    removed += 1
+            target_dirs = [cache_dir, ggg, "downloads"]
+            removed = await asyncio.to_thread(_clean_stale_files_sync, target_dirs, max_age_s)
             if removed:
-                logger.info(f"[cache_cleanup] Removed {removed} stale file(s) from cache/")
+                logger.info(f"[cache_cleanup] Removed {removed} stale file(s) across temp directories")
         except Exception as e:
             logger.warning(f"[cache_cleanup] Error: {e}")
         await asyncio.sleep(interval_s)
@@ -165,30 +186,61 @@ async def main():
             assistants[idx] = ast_client
             calls[idx] = ast_call
 
+        AUTH_ERRORS = (
+            SessionRevoked, UserDeactivatedBan, AuthKeyInvalid,
+            AuthKeyUnregistered, AuthTokenExpired, AuthKeyDuplicated,
+            AccessTokenExpired, UserDeactivated,
+        )
+
+        async def _start_assistant(idx, ast, cp):
+            try:
+                await ast.start()
+                await cp.start()
+                me = ast.me
+                if not me:
+                    raise RuntimeError(f"Assistant {idx} started but .me is None")
+                name = f"{me.first_name} {me.last_name or ''}".strip()
+                mention = me.mention() if hasattr(me, "mention") else f"@{me.username or me.id}"
+                assistant_info[idx] = {
+                    "id": me.id,
+                    "first_name": me.first_name,
+                    "last_name": me.last_name,
+                    "username": me.username,
+                    "mention": mention,
+                    "name": name,
+                }
+                logger.info(f"Assistant {idx} authorized successfully! 🎉 Authorized as: {name} (@{me.username or me.id})")
+                return idx, True
+            except AUTH_ERRORS as e:
+                logger.warning(f"Assistant {idx} authorization failed ({type(e).__name__}: {e}). Skipping assistant {idx}.")
+                return idx, False
+            except Exception as e:
+                logger.error(f"Assistant {idx} encountered an error during startup ({e}). Skipping assistant {idx}.")
+                return idx, False
+
+        # Start all assistant clients and PyTgCalls instances concurrently
+        results = await asyncio.gather(*[
+            _start_assistant(idx, ast, calls[idx])
+            for idx, ast in list(assistants.items())
+        ])
+
+        for idx, success in results:
+            if not success:
+                assistants.pop(idx, None)
+                calls.pop(idx, None)
+                assistant_info.pop(idx, None)
+
+        if not assistants:
+            logger.error("No valid assistant sessions available to run the bot!")
+            return
+
         clients["assistants"] = assistants
         clients["calls"] = calls
         clients["assistant_info"] = assistant_info
-        clients["session"] = assistants[1]  # primary assistant fallback
-        clients["call_py"] = calls[1]      # primary call fallback
+        primary_idx = next(iter(assistants.keys()))
+        clients["session"] = assistants[primary_idx]
+        clients["call_py"] = calls[primary_idx]
         clients["bot"] = bot
-
-        # Start all assistant clients and PyTgCalls instances concurrently
-        for idx, ast in assistants.items():
-            await ast.start()
-            cp = calls[idx]
-            await cp.start()
-            me = ast.me
-            name = f"{me.first_name} {me.last_name or ''}".strip()
-            mention = me.mention() if hasattr(me, "mention") else f"@{me.username or me.id}"
-            assistant_info[idx] = {
-                "id": me.id,
-                "first_name": me.first_name,
-                "last_name": me.last_name,
-                "username": me.username,
-                "mention": mention,
-                "name": name,
-            }
-            logger.info(f"Assistant {idx} authorized successfully! 🎉 Authorized as: {name} (@{me.username or me.id})")
 
         # Start the bot client
         await bot.start()
@@ -238,7 +290,20 @@ async def main():
     asyncio.create_task(refresh_cookies_loop())  # periodic cookie re-export (no-op unless enabled)
     if AUTO_LEAVING_ASSISTANT:
         asyncio.create_task(_assistant_autoleave_loop())  # periodic idle group cleanup
-    await idle()
+    try:
+        await idle()
+    finally:
+        logger.info("Closing HTTP sessions and clients...")
+        try:
+            from thumbnails import close_session as close_thumbnail_session
+            await close_thumbnail_session()
+        except Exception as e:
+            logger.warning(f"Error closing thumbnail session: {e}")
+        try:
+            from youtube import close_http_client
+            await close_http_client()
+        except Exception as e:
+            logger.warning(f"Error closing youtube HTTP client: {e}")
 
 # Run the main function
 if __name__ == "__main__":

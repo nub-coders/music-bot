@@ -25,6 +25,7 @@ import time
 import httpx
 import yt_dlp
 
+from youtube import format_duration
 from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, YT_COOKIES_FILE
 
 logger = logging.getLogger(__name__)
@@ -63,14 +64,17 @@ def _extract_playlist_sync(url: str):
     entries = (info or {}).get("entries") or []
     out = []
     for e in entries[:MAX_PLAYLIST_ITEMS]:
-        vid = e.get("id")
+        vid = e.get("id") or e.get("url")
         if vid:
-            out.append((f"https://www.youtube.com/watch?v={vid}", e.get("title")))
+            raw_url = vid if str(vid).startswith("http") else f"https://www.youtube.com/watch?v={vid}"
+            dur = e.get("duration")
+            dur_str = format_duration(dur) if dur else None
+            out.append((raw_url, e.get("title"), dur_str))
     return out
 
 
 async def resolve_sources(argument: str):
-    """Return a list of (query, title) to enqueue. Never empty: on any failure
+    """Return a list of (query, title, duration) to enqueue. Never empty: on any failure
     or non-playlist input, falls back to a single passthrough element."""
     if is_spotify(argument):
         try:
@@ -90,7 +94,7 @@ async def resolve_sources(argument: str):
             logger.warning(f"[sources] Playlist expansion returned nothing: {argument[:80]}")
         except Exception as e:
             logger.error(f"[sources] Playlist expansion failed, treating as single query: {e}")
-    return [(argument, None)]
+    return [(argument, None, None)]
 
 
 # ── Spotify (Client Credentials flow — server-side metadata only) ───────────────

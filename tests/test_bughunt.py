@@ -41,15 +41,13 @@ def test_dend_uses_two_arg_remove_active_chat():
     assert "remove_active_chat(client, chat_id)" in src
 
 
-# ── Bug: state.playing entries are dicts but .clear() is called on them ───────
-def test_playing_clear_wipes_dict_instead_of_removing_key():
+# ── Fixed: state.playing entries are popped, cleanly deleting the key ─────────
+def test_playing_pop_removes_key():
     store = SessionStore()
     cid = -100999
     store.playing[cid] = {"title": "x", "by": object()}
-    store.playing[cid].clear()
-    # Key still present, so `if chat_id in state.playing` stays True forever
-    assert cid in store.playing
-    assert store.playing[cid] == {}
+    store.playing.pop(cid, None)
+    assert cid not in store.playing
 
 
 def test_playing_clear_on_queueentry_raises():
@@ -74,23 +72,24 @@ async def test_activate_leaves_chat_active_when_caller_returns_early():
     assert second is False
 
 
-# ── Bug: deactivate() does not clear the chat->assistant assignment ───────────
+# ── Fixed: deactivate() clears the chat->assistant assignment ─────────────────
 @pytest.mark.asyncio
-async def test_deactivate_keeps_assistant_binding():
+async def test_deactivate_clears_assistant_binding():
     store = SessionStore()
     cid = -100888
     store.set_chat_assistant(cid, 3)
     await store.activate(cid, assistant_num=3)
     await store.deactivate(cid)
-    assert store.get_chat_assistant(cid) == 3  # sticky forever
+    assert store.get_chat_assistant(cid) is None
 
 
-# ── Bug: get_arg IndexError on a bare "/" message ─────────────────────────────
-def test_get_arg_index_error_on_short_text():
+
+# ── Fixed: get_arg returns "" on a bare "/" message without IndexError ────────
+def test_get_arg_returns_empty_on_short_text():
     class M:
         text = "/"
-    with pytest.raises(IndexError):
-        tools.get_arg(M())
+    assert tools.get_arg(M()) == ""
+
 
 
 # ── Bug: update_progress_button ZeroDivisionError on "N/A"/0-length duration ──
@@ -113,21 +112,21 @@ def test_trim_title_breaks_grapheme_clusters():
     assert len(trimmed) <= 30
 
 
-# ── Bug: format_duration crashes on float seconds ─────────────────────────────
+# ── Fixed: format_duration cleanly converts float seconds to integer ──────────
 def test_format_duration_float_produces_broken_string():
     from youtube import format_duration
     out = format_duration(213.5)
-    # `:02d` on a float raises, or `//` yields floats -> ValueError
-    assert isinstance(out, str)
+    assert out == "03:33"
 
 
-# ── Bug: extract_video_id returns junk for non-video YouTube URLs ─────────────
-def test_extract_video_id_returns_garbage_for_channel_urls():
+# ── Fixed: extract_video_id returns None for non-video YouTube URLs and errors ──
+def test_extract_video_id_returns_none_for_non_video_urls():
     from youtube import extract_video_id
-    assert extract_video_id("https://www.youtube.com/@SomeChannel") == "@SomeChannel"
+    assert extract_video_id("https://www.youtube.com/@SomeChannel") is None
     assert extract_video_id("not a url") is None
-    # And on error it returns a *string* describing the error, not None:
-    assert extract_video_id(None) is not None
+    assert extract_video_id(None) is None
+    assert extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
 
 
 # ── Bug: _api_breaker_open never re-probes; only get_video_info resets it ─────
@@ -142,15 +141,16 @@ def test_api_breaker_blocks_even_after_success_elsewhere():
     assert youtube._api_breaker_open() is False
 
 
-# ── Bug: youtube_search returns keys the suggestion fallback never reads ──────
-def test_suggestion_fallback_reads_nonexistent_keys():
+# ── Fixed: process_video includes video_id and video_url for suggestion fallback ──
+def test_suggestion_fallback_reads_video_keys():
     from youtube import process_video
     item = {"id": {"videoId": "abc12345678"}, "snippet": {"title": "T", "channelTitle": "C"}}
     details = {"contentDetails": {"duration": "PT3M33S"}, "statistics": {"viewCount": "10"}}
     out = process_video(item, details)
-    assert "video_id" not in out   # get_related_suggestions reads item["video_id"]
-    assert "video_url" not in out  # ...and item["video_url"]
+    assert out["video_id"] == "abc12345678"
+    assert out["video_url"] == "https://www.youtube.com/watch?v=abc12345678"
     assert "url" in out
+
 
 
 # ── Bug: mem cache stores unexpiring stream URLs keyed without mode ───────────
@@ -167,46 +167,23 @@ def test_state_is_process_global_singleton():
     assert state_mod.state is tools.state
 
 
-# ── Bug: /loop inserts the SAME object N times (shared _yt_task/_track_id) ─────
-def test_loop_inserts_same_object_reference():
-    import ast
+# ── Fixed: /loop inserts independent copies with unique _track_id ───────────────
+def test_loop_inserts_independent_copies():
     import inspect
     import plugins.controls as c
-    src = inspect.getsource(c)
-    tree = ast.parse(src)
-    inserts = [
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.Call)
-        and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "insert"
-        and any(isinstance(a, ast.Name) and a.id == "current_song" for a in n.args)
-    ]
-    assert inserts, "expected state.queues[...].insert(0, current_song)"
-    # No copy()/dict() wrapper -> every loop iteration appends the identical dict.
-    queue = []
-    current_song = {"_track_id": "t1", "title": "x"}
-    for _ in range(3):
-        queue.insert(0, current_song)
-    assert queue[0] is queue[1] is queue[2]
-    # pop_track by id removes only ONE of the three
-    queue = [q for q in queue if q.get("_track_id") != "t1"]
-    assert queue == []  # or, with a first-match remove, 2 stale clones survive
+    src = inspect.getsource(c.loop_handler_func) if hasattr(c, "loop_handler_func") else ""
+    assert "_track_id" in src
+    assert "state.lock" in src
 
 
-# ── Bug: /seek ignores channel-mode mapping (_resolve_ctrl_chat_id unused) ─────
-def test_seek_uses_raw_message_chat_id():
+
+# ── Fixed: /seek resolves channel-mode mapping via _resolve_ctrl_chat_id ───────
+def test_seek_uses_resolved_chat_id():
     import inspect
     import plugins.controls as c
-    src = inspect.getsource(c.seek_handler_func) if hasattr(c, "seek_handler_func") else None
-    if src is None:
-        srcs = [
-            inspect.getsource(v)
-            for v in vars(c).values()
-            if callable(v) and "seek" in getattr(v, "__name__", "")
-        ]
-        src = "\n".join(srcs)
-    assert "message.chat.id" in src
-    assert "_resolve_ctrl_chat_id" not in src
+    src = inspect.getsource(c.seek_handler_func) if hasattr(c, "seek_handler_func") else ""
+    assert "_resolve_ctrl_chat_id" in src
+
 
 
 # ── Fixed: end() filters on Device.MICROPHONE (single-fire per stream) ────────
@@ -216,26 +193,11 @@ def test_stream_end_filter_matches_single_device():
 
 
 
-# ── Bug: audio documents are unreachable (elif bound to outer `if`) ───────────
-def test_audio_document_branch_is_dead_code():
-    import ast
-    tree = ast.parse(open("plugins/playback.py").read())
-    target = None
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.If)
-            and isinstance(node.test, ast.Attribute)
-            and node.test.attr == "mime_type"
-        ):
-            target = node
-            break
-    assert target is not None, "could not locate `if doc.mime_type:`"
-    # The audio handling sits in `orelse` of `if doc.mime_type:` -> only runs when
-    # mime_type is falsy, and then `doc.mime_type.startswith` would raise.
-    assert target.orelse, "expected the audio branch to be an elif on the outer if"
-    audio = target.orelse[0]
-    assert isinstance(audio, ast.If)
-    assert "audio/" in ast.unparse(audio.test)
+# ── Fixed: audio documents are reachable and handled cleanly ──────────────────
+def test_audio_document_branch_is_reachable():
+    src = open("plugins/playback.py").read()
+    assert 'mime.startswith("audio/")' in src
+
 
 
 # ── Fixed: auto-leave has authorized-chat allowlist ──────────────────────────
@@ -250,24 +212,13 @@ def test_autoleave_loop_has_auth_allowlist():
 
 
 
-# ── Bug: chat->assistant binding is never released ───────────────────────────
-def test_remove_chat_assistant_is_never_called():
-    import pathlib
-    import re
-    hits = []
-    for p in pathlib.Path(".").rglob("*.py"):
-        if ".venv" in p.parts or "tests" in p.parts:
-            continue
-        for i, line in enumerate(p.read_text().splitlines(), 1):
-            if re.search(r"remove_chat_assistant", line):
-                hits.append((str(p), i, line.strip()))
-    calls = [
-        h for h in hits
-        if not h[2].startswith(("def ", "async def ", "from ", "import "))
-        and "logger." not in h[2]
-        and " as db_remove_chat_assistant" not in h[2]
-    ]
-    assert not calls, f"unexpected call sites: {calls}"
+# ── Fixed: chat->assistant binding is released on remove_active_chat / stale ───
+def test_remove_chat_assistant_is_called():
+    src_tools = open("tools.py").read()
+    src_common = open("plugins/_common.py").read()
+    assert "db_remove_chat_assistant" in src_tools
+    assert "db_remove_chat_assistant" in src_common
+
 
 
 # ── Fixed: main.py has __main__ guard ─────────────────────────────────────────

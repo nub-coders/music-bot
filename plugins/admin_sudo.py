@@ -1,5 +1,6 @@
 """plugins/admin_sudo.py — Sudo management: /sudolist /addsudo /rmsudo /reboot /powers."""
 
+import sys
 from plugins._common import *  # noqa: F401,F403
 
 
@@ -21,7 +22,38 @@ async def reboot_handler(client: Client, message: Message):
 
     # Authorized: Reboot process
     await message.reply(Messages.REBOOTING, link_preview_options=None)
-    os.system(f"kill -9 {os.getpid()}")  # Hard kill (optional after client.stop())
+
+    # Gracefully leave active calls and cleanup
+    for cid in list(state.active):
+        try:
+            await remove_active_chat(client, cid)
+        except Exception as e:
+            logger.warning(f"[reboot] Error cleaning active chat {cid}: {e}")
+
+    # Stop all calls instances
+    for call in clients.get("calls", {}).values():
+        try:
+            await call.stop()
+        except Exception:
+            pass
+
+    # Close HTTP clients
+    try:
+        from thumbnails import close_session as close_thumbnail_session
+        await close_thumbnail_session()
+    except Exception:
+        pass
+    try:
+        from youtube import close_http_client
+        await close_http_client()
+    except Exception:
+        pass
+
+    # Restart process gracefully
+    try:
+        os.execl(sys.executable, sys.executable, *sys.argv)
+    except Exception:
+        sys.exit(0)
 
 
 @Client.on_message(filters.command("sudolist"))

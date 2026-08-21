@@ -1,5 +1,7 @@
 import re
+import html as _html
 import asyncio
+import uuid
 from dataclasses import dataclass
 import os
 import time
@@ -97,12 +99,17 @@ async def get_assistant(chat_id: int):
         ast_num = state.get_chat_assistant(cid)
         if ast_num and ast_num in assistants:
             return ast_num, assistants[ast_num], calls.get(ast_num, clients.get("call_py"))
+        elif ast_num:
+            state.remove_chat_assistant(cid)
 
         # 2. Database persistent assignment
         db_num = await db_get_chat_assistant(cid)
-        if db_num and db_num in assistants:
-            state.set_chat_assistant(cid, db_num)
-            return db_num, assistants[db_num], calls.get(db_num, clients.get("call_py"))
+        if db_num:
+            if db_num in assistants:
+                state.set_chat_assistant(cid, db_num)
+                return db_num, assistants[db_num], calls.get(db_num, clients.get("call_py"))
+            else:
+                db_task(db_remove_chat_assistant(cid))
 
         # 3. Dynamic least-loaded allocation
         assigned = get_least_loaded_assistant()
@@ -242,11 +249,13 @@ def clear_directory(directory_path):
 
 
 def get_arg(message):
-    msg = message.text
+    msg = getattr(message, "text", "") or getattr(message, "caption", "") or ""
+    if len(msg) < 2:
+        return ""
     msg = msg.replace(" ", "", 1) if msg[1] == " " else msg
     split = msg[1:].replace("\n", " \n").split(" ")
     if " ".join(split[1:]).strip() == "":
-      return ""
+        return ""
     return " ".join(split[1:])
 
 
@@ -255,6 +264,7 @@ def get_arg(message):
 
 async def remove_active_chat(chat_id):
     await state.deactivate(chat_id)
+    db_task(db_remove_chat_assistant(chat_id))
     bot_client = clients.get("bot")
     bot_id = getattr(bot_client.me, "id", None) if bot_client and getattr(bot_client, "me", None) else "default"
     chat_dir = f"{ggg}/user_{bot_id}/{chat_id}"
@@ -264,7 +274,11 @@ async def remove_active_chat(chat_id):
 
 async def update_progress_button(message, duration_str, chat, markup):
     try:
+        if not duration_str or duration_str in ("N/A", "Live", "0:00", "00:00") or ":" not in duration_str:
+            return
         total_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(duration_str.split(":"))))
+        if total_seconds <= 0:
+            return
 
         while True:
             # Check elapsed time from pytgcalls
@@ -442,13 +456,13 @@ async def convert_to_image(message, client) -> str | None:
         final_path = await message.reply_to_message.download()
     elif message.reply_to_message.sticker:
         if message.reply_to_message.sticker.mime_type == "image/webp":
-            final_path = "webp_to_png_s_proton.png"
+            final_path = f"webp_to_png_{uuid.uuid4().hex[:8]}.png"
             path_s = await message.reply_to_message.download()
             im = Image.open(path_s)
             im.save(final_path, "PNG")
         else:
             path_s = await client.download_media(message.reply_to_message)
-            final_path = "lottie_proton.png"
+            final_path = f"lottie_{uuid.uuid4().hex[:8]}.png"
             await run_cmd([
                 "lottie_convert.py", "--frame", "0",
                 "-if", "lottie", "-of", "png", path_s, final_path,
@@ -457,7 +471,7 @@ async def convert_to_image(message, client) -> str | None:
         thumb = message.reply_to_message.audio.thumbs[0].file_id
         final_path = await client.download_media(thumb)
     elif message.reply_to_message.video or message.reply_to_message.animation:
-        final_path = "fetched_thumb.png"
+        final_path = f"fetched_thumb_{uuid.uuid4().hex[:8]}.png"
         vid_path = await client.download_media(message.reply_to_message)
         await run_cmd([
             "ffmpeg", "-i", vid_path,
@@ -513,7 +527,7 @@ async def resize_media(media: str, video: bool, fast_forward: bool) -> str:
     new_size = (int(image.width * scale), int(image.height * scale))
 
     image = image.resize(new_size, Image.LANCZOS)
-    resized_photo = "sticker.png"
+    resized_photo = f"sticker_{uuid.uuid4().hex[:8]}.png"
     image.save(resized_photo)
     os.remove(media)
     return resized_photo
@@ -590,10 +604,10 @@ async def add_text_img(image_path, text):
                 )
                 y += line_height
 
-        overlay_temp = f"temp_overlay_{os.getpid()}.png"
+        overlay_temp = f"temp_overlay_{uuid.uuid4().hex[:8]}.png"
         overlay.save(overlay_temp)
 
-        final_video = os.path.join("memify.webm")
+        final_video = os.path.join(f"memify_{uuid.uuid4().hex[:8]}.webm")
         ffmpeg_cmd = [
             "ffmpeg", "-y",
             "-i", image_path,
@@ -654,7 +668,7 @@ async def add_text_img(image_path, text):
             )
             y += line_height
 
-    final_image = os.path.join("memify.webp")
+    final_image = os.path.join(f"memify_{uuid.uuid4().hex[:8]}.webp")
     img.save(final_image, **{str(k): v for k, v in img_info.items()})
     return final_image
 
@@ -828,7 +842,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         logger.debug("[join_call] Constructing message text with play_styles")
         mode_formatted = mode
-        title_formatted = title
+        title_formatted = _html.escape(trim_title(title))
 
         video_id = extract_video_id(youtube_link) if youtube_link and not os.path.exists(youtube_link) else None
         bot_user = clients["bot"].me.username if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None) else ""
@@ -840,7 +854,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         else:
             display_title = f'<b>{title_formatted}</b>'
 
-        chat_title = chat.title if (chat and hasattr(chat, 'title') and chat.title) else str(chat_id)
+        chat_title = _html.escape(chat.title) if (chat and hasattr(chat, 'title') and chat.title) else str(chat_id)
         requester_mention = by.mention() if hasattr(by, 'mention') else (by if by else "User")
 
         text = Messages.PLAY.format(
@@ -890,7 +904,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.info(f"[join_call] Successfully started playing: {title} in chat {chat_id} (Assistant {ast_num})")
 
         # In-place progress bar loop (cancelled via state.delete_now_playing or replaced)
-        if sent_message and duration and duration != "N/A" and ":" in duration:
+        if sent_message and duration and duration not in ("N/A", "Live", "0:00", "00:00") and ":" in duration:
             asyncio.create_task(update_progress_button(sent_message, duration, chat, keyboard))
 
     except NoActiveGroupCall:

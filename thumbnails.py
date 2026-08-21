@@ -23,6 +23,14 @@ def _get_session():
     return _session
 
 
+async def close_session():
+    """Gracefully close the global aiohttp session on shutdown."""
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
+        _session = None
+
+
 def draw_heart(draw, center_x, center_y, size, outline_color, fill_color=None, width=2):
     import math
     points = []

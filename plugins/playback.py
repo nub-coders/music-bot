@@ -288,16 +288,15 @@ async def play_handler_func(client, message):
         elif media_msg.document:
             doc = media_msg.document
             media = media_msg.document
-    # In Pyrogram, check the mime_type directly
-            if doc.mime_type:
-                if doc.mime_type.startswith("video/"):
-                    media_type = "video"
-                    title = trim_title(doc.file_name or "Telegram Video")
-                    duration = getattr(doc, 'duration', 0)  # duration might not always be available
-            elif doc.mime_type.startswith("audio/"):
-                     media_type = "audio"
-                     title = trim_title(doc.file_name or "Telegram Audio")
-                     duration = getattr(doc, 'duration', 0)
+            mime = (doc.mime_type or "").lower()
+            if mime.startswith("video/"):
+                media_type = "video"
+                title = trim_title(doc.file_name or "Telegram Video")
+                duration = getattr(doc, 'duration', 0)
+            elif mime.startswith("audio/"):
+                media_type = "audio"
+                title = trim_title(doc.file_name or "Telegram Audio")
+                duration = getattr(doc, 'duration', 0)
 
 
             if media_type and doc.thumbs:
@@ -341,12 +340,13 @@ async def play_handler_func(client, message):
         # Source seam: a playlist link expands into many per-track queries;
         # search text or a single video URL stays a one-element list.
         _sources = await resolve_sources(search_query)
-        search_query = _sources[0][0]
+        first_item = _sources[0]
+        search_query = first_item[0]
         _playlist_rest = _sources[1:]
 
         # Placeholder values — join_call will wait for the task to resolve
-        title = trim_title(search_query[:25])
-        duration = None
+        title = trim_title(first_item[1] if len(first_item) > 1 and first_item[1] else search_query[:25])
+        duration = first_item[2] if len(first_item) > 2 and first_item[2] else None
         youtube_link = None
         thumbnail = None
         _channel_name = None
@@ -504,25 +504,25 @@ async def play_handler_func(client, message):
         stream_url,
         yt_task=_yt_task,
     )
-    # Playlist: queue the remaining tracks behind the first. Each resolves
-    # lazily via its own handle_youtube task when it reaches the queue head
-    # (join_call awaits _yt_task), exactly like any normal queued search.
-    for _url, _ptitle in _playlist_rest:
-        _rest_task = asyncio.create_task(handle_youtube(_url))
-        _rest_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
+    # Playlist: queue the remaining tracks behind the first with direct URLs
+    # and metadata, avoiding spawning 50 unthrottled concurrent background tasks.
+    for item in _playlist_rest:
+        _url = item[0]
+        _ptitle = item[1] if len(item) > 1 and item[1] else "Playlist track"
+        _pdur = item[2] if len(item) > 2 and item[2] else "N/A"
         await put_queue(
             massage,
-            trim_title(_ptitle or "Playlist track"),
+            trim_title(_ptitle),
             client,
-            None,
+            _url,
             target_chat,
             by,
-            None,
+            _pdur,
             mode,
             None,
             False,
             None,
-            yt_task=_rest_task,
+            yt_task=None,
         )
     if _playlist_rest:
         await message.reply(

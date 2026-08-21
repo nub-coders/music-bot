@@ -19,11 +19,67 @@ from typing import List, Tuple, Dict
 
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache")
 os.makedirs(_CACHE_DIR, exist_ok=True)
-_MEM_CACHE = {}
+
+# Separate caches for permanent search mappings and expiring stream URLs
+_SEARCH_CACHE: dict = {}  # query -> video_id (long-lived)
+_STREAM_CACHE: dict = {}  # (mode, url) -> (stream_url, expire_timestamp)
+_MAX_SEARCH_CACHE_SIZE = 1000
+_MAX_STREAM_CACHE_SIZE = 500
+
+# Unified dict for backward compatibility with callers/tests accessing _MEM_CACHE
+_MEM_CACHE: dict = {}
 _MAX_MEM_CACHE_SIZE = 500
 
+
+def _mem_cache_get(key):
+    """Retrieve from in-memory cache with namespace separation and TTL enforcement."""
+    if isinstance(key, tuple) and len(key) == 2:
+        kind, val = key
+        if kind == "search":
+            if val in _SEARCH_CACHE:
+                return _SEARCH_CACHE[val]
+            return _MEM_CACHE.get(key)
+        elif kind in ("audio", "video"):
+            entry = _STREAM_CACHE.get((kind, val))
+            if entry:
+                stream_url, expire = entry
+                if expire and time.time() < expire - 15:
+                    return stream_url
+                else:
+                    _STREAM_CACHE.pop((kind, val), None)
+                    _MEM_CACHE.pop(key, None)
+                    return None
+            cached = _MEM_CACHE.get(key)
+            if cached:
+                expire = _extract_expire(cached)
+                if expire and time.time() < expire - 15:
+                    return cached
+                _MEM_CACHE.pop(key, None)
+                return None
+    return _MEM_CACHE.get(key)
+
+
 def _mem_cache_set(key, value):
-    """Set in memory cache with size bounds (FIFO eviction)."""
+    """Set in-memory cache with separate namespaces, TTL tracking, and size bounds."""
+    if isinstance(key, tuple) and len(key) == 2:
+        kind, val = key
+        if kind == "search":
+            if len(_SEARCH_CACHE) >= _MAX_SEARCH_CACHE_SIZE:
+                for k in list(_SEARCH_CACHE.keys())[:100]:
+                    _SEARCH_CACHE.pop(k, None)
+            _SEARCH_CACHE[val] = value
+        elif kind in ("audio", "video"):
+            expire = _extract_expire(value)
+            if len(_STREAM_CACHE) >= _MAX_STREAM_CACHE_SIZE:
+                now = time.time()
+                expired = [k for k, v in _STREAM_CACHE.items() if v[1] and now >= v[1] - 15]
+                for k in expired:
+                    _STREAM_CACHE.pop(k, None)
+                if len(_STREAM_CACHE) >= _MAX_STREAM_CACHE_SIZE:
+                    for k in list(_STREAM_CACHE.keys())[:100]:
+                        _STREAM_CACHE.pop(k, None)
+            _STREAM_CACHE[(kind, val)] = (value, expire)
+
     if len(_MEM_CACHE) >= _MAX_MEM_CACHE_SIZE:
         keys_to_remove = list(_MEM_CACHE.keys())[:100]
         for k in keys_to_remove:
@@ -57,6 +113,14 @@ def get_http_client() -> httpx.AsyncClient:
             limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=90),
         )
     return _http_client
+
+
+async def close_http_client():
+    """Gracefully close the global httpx client on shutdown."""
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
 
 
 # All config read from config.py (single source of truth)
@@ -129,6 +193,8 @@ def process_video(item, details):
         return {
             "title": title,
             "url": url,
+            "video_id": video_id,
+            "video_url": url,
             "artist_name": artist,
             "channel_name": channel,
             "views": format_ind(views),
@@ -143,44 +209,44 @@ async def youtube_search(query: str, limit: int = 1):
         return []
     if not YOUTUBE_API_KEYS:
         return []
-    async with httpx.AsyncClient(timeout=10) as client:
-        api_key = get_random_key()
-        search_params = {
-            "part": "snippet",
-            "q": query,
-            "maxResults": limit,
-            "type": "video",
-            "key": api_key,
-        }
-        search_res = await client.get(SEARCH_URL, params=search_params)
-        if search_res.status_code != 200:
-            return []
-        items = search_res.json().get("items", [])
-        video_ids = [item["id"]["videoId"] for item in items if "videoId" in item.get("id", {})]
-        if not video_ids:
-            return []
-        api_key = get_random_key()
-        details_params = {
-            "part": "contentDetails,statistics",
-            "id": ",".join(video_ids),
-            "key": api_key,
-        }
-        detail_res = await client.get(DETAILS_URL, params=details_params)
-        if detail_res.status_code != 200:
-            return []
-        detail_items = {v["id"]: v for v in detail_res.json().get("items", [])}
-        results = []
-        for item in items:
-            video_id = item["id"].get("videoId")
-            if not video_id:
-                continue
-            video_details = detail_items.get(video_id)
-            if not video_details:
-                continue
-            video_info = process_video(item, video_details)
-            if video_info:
-                results.append(video_info)
-        return results
+    client = get_http_client()
+    api_key = get_random_key()
+    search_params = {
+        "part": "snippet",
+        "q": query,
+        "maxResults": limit,
+        "type": "video",
+        "key": api_key,
+    }
+    search_res = await client.get(SEARCH_URL, params=search_params)
+    if search_res.status_code != 200:
+        return []
+    items = search_res.json().get("items", [])
+    video_ids = [item["id"]["videoId"] for item in items if "videoId" in item.get("id", {})]
+    if not video_ids:
+        return []
+    api_key = get_random_key()
+    details_params = {
+        "part": "contentDetails,statistics",
+        "id": ",".join(video_ids),
+        "key": api_key,
+    }
+    detail_res = await client.get(DETAILS_URL, params=details_params)
+    if detail_res.status_code != 200:
+        return []
+    detail_items = {v["id"]: v for v in detail_res.json().get("items", [])}
+    results = []
+    for item in items:
+        video_id = item["id"].get("videoId")
+        if not video_id:
+            continue
+        video_details = detail_items.get(video_id)
+        if not video_details:
+            continue
+        video_info = process_video(item, video_details)
+        if video_info:
+            results.append(video_info)
+    return results
 
 def _key(url: str, prefix: str = "") -> str:
     return hashlib.md5((prefix + url).encode()).hexdigest()
@@ -244,7 +310,8 @@ async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
         cmd.insert(2, cookies)
     # No cookies file → run without cookies. (Previously fell back to a Firefox
     # browser profile that isn't present in prod, causing a 40s stall per call.)
-    logger.info(f"[YT-DLP] Running: {' '.join(cmd)}")
+    sanitized_cmd = [c if (not cookies or c != cookies) else "[REDACTED]" for c in cmd]
+    logger.debug(f"[YT-DLP] Running: {' '.join(sanitized_cmd)}")
     start = time.time()
     try:
         process = await asyncio.create_subprocess_exec(
@@ -393,7 +460,7 @@ async def resolve_innertube(argument: str, mode: str = "audio") -> dict | None:
             # query -> video_id is stable, so cache it (no expiry): a replay of
             # the same search skips the search round-trip and only re-fetches a
             # fresh (unexpired) stream URL via the player call below.
-            vid = _MEM_CACHE.get(("search", argument))
+            vid = _mem_cache_get(("search", argument))
             if not vid:
                 search_resp = await _post_innertube_async("search", {"query": argument})
                 hit = _first_video_id(search_resp)
@@ -465,12 +532,10 @@ async def resolve_innertube(argument: str, mode: str = "audio") -> dict | None:
 
 async def get_stream(url: str, cookies: str | None = None) -> str | None:
     logger.info(f"[AUDIO] get_stream called: {url}")
-    cached = _MEM_CACHE.get(("audio", url))
+    cached = _mem_cache_get(("audio", url))
     if cached:
-        expire = _extract_expire(cached)
-        if expire and time.time() < expire - 15:
-            logger.info(f"[AUDIO] MEM_CACHE hit for {url[:80]}")
-            return cached
+        logger.info(f"[AUDIO] MEM_CACHE hit for {url[:80]}")
+        return cached
     cached = _read_cache(url, prefix="audio_")
     if cached:
         _mem_cache_set(("audio", url), cached)
@@ -501,12 +566,10 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
 
 async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     logger.info(f"[VIDEO] get_video_stream called: {url}")
-    cached = _MEM_CACHE.get(("video", url))
+    cached = _mem_cache_get(("video", url))
     if cached:
-        expire = _extract_expire(cached)
-        if expire and time.time() < expire - 15:
-            logger.info(f"[VIDEO] MEM_CACHE hit for {url[:80]}")
-            return cached
+        logger.info(f"[VIDEO] MEM_CACHE hit for {url[:80]}")
+        return cached
     cached = _read_cache(url, prefix="video_")
     if cached:
         _mem_cache_set(("video", url), cached)
@@ -666,24 +729,23 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
 
 def extract_video_id(url):
     """
-    Extract YouTube video ID from various forms of YouTube URLs.
+    Extract 11-character YouTube video ID from various forms of YouTube URLs.
 
     Args:
         url (str): YouTube video URL
 
     Returns:
-        str: Video ID or None if not found
+        str: 11-character Video ID or None if not found
     """
+    if not url or not isinstance(url, str):
+        return None
     try:
         logger.debug(f"[youtube.extract_video_id] Extracting video id from url='{url}'")
-        # Patterns for different types of YouTube URLs
         patterns = [
-            r'(?:v=|/v/|youtu\.be/|/embed/)([^&?/]+)',  # Standard, shortened and embed URLs
-            r'(?:watch\?|/v/|youtu\.be/)([^&?/]+)',     # Watch URLs
-            r'(?:youtube\.com/|youtu\.be/)([^&?/]+)'    # Channel URLs
+            r'(?:v=|\/v\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})',
+            r'(?:watch\?v=)([a-zA-Z0-9_-]{11})',
         ]
 
-        # Try each pattern
         for pattern in patterns:
             match = re.search(pattern, url)
             if match:
@@ -696,7 +758,7 @@ def extract_video_id(url):
 
     except Exception as e:
         logger.error(f"[youtube.extract_video_id] Error: {e}")
-        return f"Error extracting video ID: {str(e)}"
+        return None
 
 
 def format_number(num):
@@ -743,6 +805,7 @@ def format_duration(seconds):
         logger.debug(f"[youtube.format_duration] Invalid seconds input: {seconds}")
         return "N/A"
 
+    seconds = int(seconds)
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     secs = seconds % 60
@@ -1244,7 +1307,7 @@ async def get_related_suggestions(argument: str, limit: int = 5, exclude_ids: se
     vid = _innertube_extract_vid(argument)
     if not vid:
         # If argument is a song title / query, find its video_id first
-        vid = _MEM_CACHE.get(("search", argument))
+        vid = _mem_cache_get(("search", argument))
         if not vid:
             try:
                 search_resp = await _post_innertube_async("search", {"query": argument})

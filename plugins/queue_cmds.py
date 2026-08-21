@@ -3,45 +3,8 @@
 from plugins._common import *  # noqa: F401,F403
 
 
-@Client.on_message(filters.command(["queue", "cqueue"]))
-async def queue_command(client, message):
-    chat_id = message.chat.id
-    is_channel = message.command[0].lower() == "cqueue"
-    if is_channel or (not state.queues.get(chat_id)):
-        try:
-            linked = (await client.get_chat(chat_id)).linked_chat
-            if linked and (is_channel or state.queues.get(linked.id)):
-                chat_id = linked.id
-        except Exception:
-            pass
-    queue_list = state.queues.get(chat_id, [])
-    items = queue_list[:20]
-    if not items:
-        return await message.reply(Messages.QUEUE_EMPTY, link_preview_options=None)
-
-    # Build styled queue items & resolve pending yt_task if completed
-    header_text = "CURRENT QUEUE (MAX 20)"
-    display_items = []
-    for idx, item in enumerate(items, 1):
-        yt_task = item.get("_yt_task")
-        if yt_task and yt_task.done() and not yt_task.cancelled() and not yt_task.exception():
-            try:
-                res = yt_task.result()
-                if res and len(res) >= 2:
-                    if res[0] and res[0] != "Error":
-                        item["title"] = res[0]
-                    if res[1] and res[1] != "N/A":
-                        item["duration"] = res[1]
-            except Exception:
-                pass
-
-        raw_title = item.get("title") or "Unknown"
-        title = trim_title(raw_title) if raw_title else "Unknown"
-        dur = item.get("duration")
-        duration = str(dur) if dur and str(dur).lower() not in ("none", "n/a", "") else "-"
-        display_items.append((idx, title, duration))
-
-    # Create dark gradient-style image
+def _render_queue_image_sync(display_items, header_text="CURRENT QUEUE (MAX 20)"):
+    from io import BytesIO
     width, height = 900, 650
     img = Image.new("RGB", (width, height), (15, 15, 30))  # deep dark indigo
     draw = ImageDraw.Draw(img)
@@ -65,11 +28,52 @@ async def queue_command(client, message):
         draw.text((35, y), f"{idx}. {img_title}  [{duration}]", fill=(230, 230, 255), font=font_body)
         y += 36
 
-    # Save to bytes
-    from io import BytesIO
     buf = BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
+    return buf
+
+
+@Client.on_message(filters.command(["queue", "cqueue"]))
+async def queue_command(client, message):
+    chat_id = message.chat.id
+    is_channel = message.command[0].lower() == "cqueue"
+    if is_channel or (not state.queues.get(chat_id)):
+        try:
+            linked = (await client.get_chat(chat_id)).linked_chat
+            if linked and (is_channel or state.queues.get(linked.id)):
+                chat_id = linked.id
+        except Exception:
+            pass
+    queue_list = state.queues.get(chat_id, [])
+    items = queue_list[:20]
+    if not items:
+        return await message.reply(Messages.QUEUE_EMPTY, link_preview_options=None)
+
+    # Build styled queue items (read-only, does not mutate live QueueEntry objects)
+    header_text = "CURRENT QUEUE (MAX 20)"
+    display_items = []
+    for idx, item in enumerate(items, 1):
+        raw_title = item.get("title") or "Unknown"
+        dur = item.get("duration")
+        yt_task = item.get("_yt_task")
+        if yt_task and yt_task.done() and not yt_task.cancelled() and not yt_task.exception():
+            try:
+                res = yt_task.result()
+                if res and len(res) >= 2:
+                    if res[0] and res[0] != "Error":
+                        raw_title = res[0]
+                    if res[1] and res[1] != "N/A":
+                        dur = res[1]
+            except Exception:
+                pass
+
+        title = trim_title(raw_title) if raw_title else "Unknown"
+        duration = str(dur) if dur and str(dur).lower() not in ("none", "n/a", "") else "-"
+        display_items.append((idx, title, duration))
+
+    # Render image in worker thread to avoid blocking event loop
+    buf = await asyncio.to_thread(_render_queue_image_sync, display_items, header_text)
 
     styled_caption = (
         f"<u><b>{EmojiTag.MUSIC_NOTE} | ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ</b></u>\n"

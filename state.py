@@ -110,11 +110,24 @@ class SessionStore:
             return not was_active
 
     async def deactivate(self, chat_id: int):
-        """Remove a chat from active calls across all assistants."""
-        async with self.lock(chat_id):
+        """Remove a chat from active calls across all assistants and reap state."""
+        cid = int(chat_id)
+        async with self.lock(cid):
+            self.active.discard(cid)
             self.active.discard(chat_id)
+            self.chat_assistants.pop(cid, None)
             for ast_set in self.assistant_active.values():
+                ast_set.discard(cid)
                 ast_set.discard(chat_id)
+            self.queues.pop(cid, None)
+            self.queues.pop(chat_id, None)
+            self.playing.pop(cid, None)
+            self.playing.pop(chat_id, None)
+            self.now_playing_msgs.pop(cid, None)
+            self.now_playing_msgs.pop(chat_id, None)
+        for k in (cid, chat_id):
+            if k in self._locks and not self._locks[k].locked():
+                self._locks.pop(k, None)
 
     async def pop_track(self, chat_id, track_id):
         """Remove and return the queued entry with this _track_id, or None if it

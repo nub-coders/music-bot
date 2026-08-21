@@ -51,7 +51,7 @@ from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
 from utils.emoji import Emoji, EmojiTag, keycaps
 from utils.premium_emoji import position_tag
-from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task
+from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task, remove_chat_assistant as db_remove_chat_assistant
 from thumbnails import get_thumb
 from PIL import Image
 import imageio
@@ -207,6 +207,7 @@ async def add_active_chat(client, chat_id):  # noqa: F811
     state.active.add(chat_id)
 async def remove_active_chat(client, chat_id):
     await state.deactivate(chat_id)
+    db_task(db_remove_chat_assistant(chat_id))
     bot_id = getattr(client.me, "id", None) if client and getattr(client, "me", None) else "default"
     chat_dir = f"{ggg}/user_{bot_id}/{chat_id}"
     os.makedirs(chat_dir, exist_ok=True)

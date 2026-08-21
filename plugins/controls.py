@@ -1,5 +1,6 @@
 """plugins/controls.py — Transport commands and inline buttons: seek/skip/end/pause/resume/loop."""
 
+import uuid
 from plugins._common import *  # noqa: F401,F403
 
 
@@ -16,7 +17,7 @@ async def _resolve_ctrl_chat_id(client, update, is_channel: bool) -> int:
     return chat.id
 
 
-@Client.on_message(filters.command(["seek", "seekback"]))
+@Client.on_message(filters.command(["seek", "cseek", "seekback", "cseekback"]))
 @admin_only()
 async def seek_handler_func(client, message):
     try:
@@ -28,13 +29,17 @@ async def seek_handler_func(client, message):
         return
 
     try:
+        is_channel = message.command[0].lower() in ("cseek", "cseekback")
+        chat_id = await _resolve_ctrl_chat_id(client, message, is_channel)
+
         # Get seek value from command
         command_parts = message.text.split()
         if len(command_parts) != 2:
             await client.send_message(
                 message.chat.id,
                 Messages.SEEK_NO_ARGS,
-            link_preview_options=None)
+                link_preview_options=None,
+            )
             return
 
         try:
@@ -43,41 +48,55 @@ async def seek_handler_func(client, message):
                 await client.send_message(
                     message.chat.id,
                     Messages.SEEK_NEGATIVE,
-                link_preview_options=None)
+                    link_preview_options=None,
+                )
                 return
         except ValueError:
             await client.send_message(
                 message.chat.id,
                 Messages.SEEK_INVALID,
-            link_preview_options=None)
+                link_preview_options=None,
+            )
             return
 
         # Check if there's a song playing
-        if message.chat.id in state.playing and state.playing[message.chat.id]:
-            current_song = state.playing[message.chat.id]
-            duration_str = str(current_song['duration'])
+        if chat_id in state.playing and state.playing[chat_id]:
+            current_song = state.playing[chat_id]
+            duration_str = str(current_song.get('duration', 'N/A'))
 
-            # Convert HH:MM:SS to total seconds
-            duration_seconds = sum(
-                int(x) * 60 ** i
-                for i, x in enumerate(reversed(duration_str.split(":")))
-            )
-
-            # Get call client from main.py
+            # Convert HH:MM:SS to total seconds safely
+            try:
+                if ":" in duration_str and duration_str not in ("N/A", "Live"):
+                    duration_seconds = sum(
+                        int(x) * 60 ** i
+                        for i, x in enumerate(reversed(duration_str.split(":")))
+                    )
+                else:
+                    duration_seconds = 0
+            except (ValueError, TypeError):
+                duration_seconds = 0
 
             # Check if bot is actually streaming by fetching elapsed time
-            if message.chat.id not in state.played:
+            if chat_id not in state.played:
                 await client.send_message(
                     message.chat.id,
                     Messages.ASSISTANT_NOT_STREAMING,
-                link_preview_options=None)
+                    link_preview_options=None,
+                )
                 return
 
-            played_in_seconds = int(time.time() - state.played[message.chat.id])
+            played_in_seconds = int(time.time() - state.played[chat_id])
 
             # Check seek boundaries based on command
-            is_forward = command_parts[0].lower() == "/seek"
+            is_forward = message.command[0].lower() in ("seek", "cseek")
             if is_forward:
+                if duration_seconds <= 0:
+                    await client.send_message(
+                        message.chat.id,
+                        Messages.SEEK_BEYOND_REMAINING,
+                        link_preview_options=None,
+                    )
+                    return
                 limit = duration_seconds - played_in_seconds
                 error_msg = Messages.SEEK_BEYOND_REMAINING
             else:
@@ -86,57 +105,70 @@ async def seek_handler_func(client, message):
 
             if seek_value > limit:
                 await client.send_message(
-                    message.chat.id, error_msg, link_preview_options=None)
+                    message.chat.id, error_msg, link_preview_options=None
+                )
                 return
 
-            total_seek = played_in_seconds + (seek_value if is_forward else -seek_value)
+            total_seek = max(0, played_in_seconds + (seek_value if is_forward else -seek_value))
 
             # Set audio flags based on mode
-            mode = current_song['mode']
+            mode = current_song.get('mode', 'audio')
             audio_flags = MediaStream.Flags.IGNORE if mode == "audio" else None
 
             # Seek to specified position
             to_seek = format_duration(total_seek)
-            yt_link = current_song['yt_link']
+            yt_link = current_song.get('yt_link') or current_song.get('url')
 
             # Get stream URL (async-safe, thread-pooled)
             stream_url = await get_stream_url(yt_link)
             if not stream_url:
                 stream_url = yt_link  # Fallback to original link
 
-            active_cp = get_call_client(message.chat.id) or clients.get("call_py")
+            active_cp = get_call_client(chat_id) or clients.get("call_py")
+            if not active_cp:
+                await client.send_message(
+                    message.chat.id,
+                    Messages.NO_STREAM,
+                    link_preview_options=None,
+                )
+                return
+
+            ffmpeg_params = f"-ss {to_seek} -to {duration_str}" if duration_seconds > 0 else f"-ss {to_seek}"
             await active_cp.play(
-                message.chat.id,
+                chat_id,
                 MediaStream(
                     stream_url,
                     AudioQuality.STUDIO,
                     VideoQuality.HD_720p,
                     video_flags=audio_flags,
-                    ffmpeg_parameters=f"-ss {to_seek} -to {duration_str}"
+                    ffmpeg_parameters=ffmpeg_params,
                 ),
             )
 
             # Update played time based on command
             if is_forward:
-                state.played[message.chat.id] -= seek_value
+                state.played[chat_id] -= seek_value
             else:  # seekback
-                state.played[message.chat.id] += seek_value
+                state.played[chat_id] += seek_value
 
             await client.send_message(
                 message.chat.id,
                 Messages.SEEKED.format(to_seek, message.from_user.mention()),
-                link_preview_options=None)
+                link_preview_options=None,
+            )
         else:
             await client.send_message(
                 message.chat.id,
                 Messages.ASSISTANT_NOT_STREAMING,
-            link_preview_options=None)
+                link_preview_options=None,
+            )
     except Exception as e:
         logger.error(f"[seek] Error: {e}")
         await client.send_message(
             message.chat.id,
             Messages.ERROR_OCCURRED,
-        link_preview_options=None)
+            link_preview_options=None,
+        )
 
 
 @Client.on_callback_query(filters.regex("^(end|cend)$"))
@@ -285,9 +317,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
                 logger.warning(f"Error leaving call: {e}")
 
             await remove_active_chat(client, chat_id)
-
-            if chat_id in state.playing:
-                state.playing[chat_id].clear()
+            state.playing.pop(chat_id, None)
             await state.delete_now_playing(chat_id)
 
             try:
@@ -299,8 +329,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
 
     except NotInCallError:
         await remove_active_chat(client, chat_id)
-        if chat_id in state.playing:
-            state.playing[chat_id].clear()
+        state.playing.pop(chat_id, None)
         await state.delete_now_playing(chat_id)
         await callback_query.answer(Messages.STREAM_ENDED_NOT_IN_CALL, show_alert=False)
     except Exception as e:
@@ -381,7 +410,7 @@ async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
         await callback_query.answer(Messages.ERROR_OCCURRED, show_alert=True)
 
 
-@Client.on_message(filters.command("loop"))
+@Client.on_message(filters.command(["loop", "cloop"]))
 @admin_only()
 async def loop_handler_func(client, message):
     try:
@@ -393,13 +422,17 @@ async def loop_handler_func(client, message):
         return
 
     try:
+        is_channel = message.command[0].lower() == "cloop"
+        chat_id = await _resolve_ctrl_chat_id(client, message, is_channel)
+
         # Get loop count from command
         command_parts = message.text.split()
         if len(command_parts) != 2:
             await client.send_message(
                 message.chat.id,
                 Messages.LOOP_NO_ARGS,
-            link_preview_options=None)
+                link_preview_options=None,
+            )
             return
 
         try:
@@ -408,36 +441,45 @@ async def loop_handler_func(client, message):
                 await client.send_message(
                     message.chat.id,
                     Messages.LOOP_OUT_OF_BOUNDS,
-                link_preview_options=None)
+                    link_preview_options=None,
+                )
                 return
         except ValueError:
             await client.send_message(
                 message.chat.id,
                 Messages.LOOP_INVALID,
-            link_preview_options=None)
+                link_preview_options=None,
+            )
             return
 
         # Check if there's a song playing
-        if message.chat.id in state.playing and state.playing[message.chat.id]:
-            current_song = state.playing[message.chat.id]
+        if chat_id in state.playing and state.playing[chat_id]:
+            current_song = state.playing[chat_id]
 
-            # Initialize queue for this chat if it doesn't exist
-            if message.chat.id not in state.queues:
-                state.queues[message.chat.id] = []
+            async with state.lock(chat_id):
+                # Initialize queue for this chat if it doesn't exist
+                if chat_id not in state.queues:
+                    state.queues[chat_id] = []
 
-            # Add the current song to queue multiple times
-            for _ in range(loop_count):
-                state.queues[message.chat.id].insert(0, current_song)
+                # Add independent copies of the current song to queue
+                for _ in range(loop_count):
+                    entry = dict(current_song) if isinstance(current_song, dict) else dict(current_song.__dict__)
+                    entry["_track_id"] = str(uuid.uuid4())[:8]
+                    entry.pop("_yt_task", None)
+                    entry.pop("queue_msg", None)
+                    state.queues[chat_id].insert(0, entry)
 
             await client.send_message(
                 message.chat.id,
                 Messages.SONG_LOOPED.format(loop_count, message.from_user.mention()),
-                link_preview_options=None)
+                link_preview_options=None,
+            )
         else:
             await client.send_message(
                 message.chat.id,
                 Messages.ASSISTANT_NOT_STREAMING,
-            link_preview_options=None)
+                link_preview_options=None,
+            )
 
     except Exception as e:
         logger.error(f"[controls] Error: {e}")
@@ -484,18 +526,16 @@ async def skip_handler_func(client, message):
             queue_msg=next.get('queue_msg'),
         )
    else:
-       if active_cp:
-           await active_cp.leave_call(chat_id)
-       await remove_active_chat(client, chat_id)
-       if chat_id in state.playing:
-           state.playing[chat_id].clear()
-       await state.delete_now_playing(chat_id)
-       await client.send_message(message.chat.id, Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
+        if active_cp:
+            await active_cp.leave_call(chat_id)
+        await remove_active_chat(client, chat_id)
+        state.playing.pop(chat_id, None)
+        await state.delete_now_playing(chat_id)
+        await client.send_message(message.chat.id, Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
   except NotInCallError:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
-     if chat_id in state.playing:
-         state.playing[chat_id].clear()
-     await state.delete_now_playing(chat_id)
+      await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+      state.playing.pop(chat_id, None)
+      await state.delete_now_playing(chat_id)
 
 
 @Client.on_callback_query(filters.regex("^(resume|cresume)$"))
