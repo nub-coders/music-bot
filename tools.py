@@ -843,11 +843,10 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         chat_title = chat.title if (chat and hasattr(chat, 'title') and chat.title) else str(chat_id)
         requester_mention = by.mention() if hasattr(by, 'mention') else (by if by else "User")
 
-        text = Messages.NOW_PLAYING.format(
+        text = Messages.PLAY.format(
+            mode_formatted.capitalize(),
             display_title,
             duration,
-            mode_formatted.capitalize(),
-            chat_title,
             requester_mention,
         )
 
@@ -898,7 +897,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.warning(f"[join_call] No active voice chat in {chat_id}. Cleaning up.")
         await remove_active_chat(chat_id)
         if "bot" in clients and clients["bot"]:
-            await clients["bot"].send_message(ui_chat_id, Messages.VOICE_CHAT_NOT_FOUND, link_preview_options=None)
+            await clients["bot"].send_message(ui_chat_id, Messages.NO_ACTIVE_VC, link_preview_options=None)
     except Exception as e:
         logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
         await remove_active_chat(chat_id)
