@@ -4,7 +4,7 @@ import logging
 
 from pyrogram import idle
 from pytgcalls import PyTgCalls, filters as call_filters
-from pytgcalls.types import ChatUpdate
+from pytgcalls.types import ChatUpdate, Device
 from pyrogram import Client
 from pyrogram.errors.exceptions import (
     SessionRevoked, UserDeactivatedBan, AuthKeyInvalid,
@@ -52,6 +52,59 @@ async def _cache_cleanup_loop(max_age_hours: int = 6, interval_hours: int = 6):
         await asyncio.sleep(interval_s)
 
 
+async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
+    """Periodically scan groups and make assistants leave idle chats to stay under Telegram's 500-group limit."""
+    if not AUTO_LEAVING_ASSISTANT:
+        return
+    await asyncio.sleep(90)  # grace period on startup
+    while True:
+        try:
+            now = time.time()
+            # Allowlist: never leave authorized chats, logger group, or active calls
+            exempt_chat_ids = set()
+            if LOGGER_ID:
+                try:
+                    exempt_chat_ids.add(int(LOGGER_ID))
+                except (ValueError, TypeError):
+                    pass
+            for auth_cid in AUTH.keys():
+                try:
+                    exempt_chat_ids.add(int(auth_cid))
+                except (ValueError, TypeError):
+                    pass
+
+            for idx, ast in list(assistants.items()):
+                active_in_ast = state.assistant_active.get(idx, set())
+                try:
+                    async for dialog in ast.get_dialogs():
+                        chat = dialog.chat
+                        chat_type_str = str(getattr(chat, "type", "")).lower()
+                        if "group" in chat_type_str or "supergroup" in chat_type_str:
+                            cid = chat.id
+                            # If this chat has an active stream or is authorized / exempt, skip
+                            if cid in state.active or cid in active_in_ast or cid in exempt_chat_ids or str(cid) in AUTH or cid in AUTH:
+                                continue
+                            # If last played was within ASSISTANT_LEAVE_TIME, skip.
+                            # On startup, unrecorded chats use StartTime as baseline to prevent mass-leaves.
+                            last_played_ts = state.played.get(cid, StartTime)
+                            if (now - last_played_ts) < ASSISTANT_LEAVE_TIME:
+                                continue
+                            # Otherwise, leave idle chat to conserve group slots
+                            chat_title = getattr(chat, "title", str(cid))
+                            logger.info(f"[auto_leave] Assistant {idx} leaving idle chat '{chat_title}' ({cid}) (inactive for {int(now - last_played_ts)}s)...")
+                            try:
+                                await ast.leave_chat(cid)
+                                logger.info(f"[auto_leave] Assistant {idx} successfully left idle chat '{chat_title}' ({cid})")
+                                await asyncio.sleep(2.0)  # Rate limit safety spacing
+                            except Exception as leave_err:
+                                logger.warning(f"[auto_leave] Assistant {idx} failed to leave chat '{chat_title}' ({cid}): {leave_err}")
+                except Exception as dialog_err:
+                    logger.warning(f"[auto_leave] Error scanning dialogs for Assistant {idx}: {dialog_err}")
+        except Exception as e:
+            logger.warning(f"[auto_leave] Exception in auto-leave loop: {e}")
+        await asyncio.sleep(check_interval_seconds)
+
+
 async def main():
     logger.info("Starting bot initialization...")
 
@@ -78,35 +131,66 @@ async def main():
             lang_pack="tdesktop"
         )
 
-        # Initialize and store session client
-        session = Client("session",
-            api_id=API_ID,
-            api_hash=API_HASH,
-            session_string=STRING_SESSION,
-            in_memory=True,
-            #no_updates=True,
-            sleep_threshold=32,
-            device_model="Desktop",
-            system_version="Windows 10",
-            app_version="3.4.3 x64",
-            lang_code="en",
-            lang_pack="tdesktop"
-        )
+        # Collect configured assistant sessions
+        sessions_to_init = STRING_SESSIONS if STRING_SESSIONS else ([STRING_SESSION] if STRING_SESSION else [])
+        if not sessions_to_init:
+            raise SystemExit("No assistant STRING_SESSION found. Provide at least one session string in .env.")
 
-        call_py = PyTgCalls(session)
-        call_py.add_handler(end, call_filters.stream_end())
-        call_py.add_handler(hd_stream_closed_kicked,
-            call_filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT) |
-            call_filters.chat_update(ChatUpdate.Status.KICKED)
-        )
+        # Initialize all assistant clients and PyTgCalls instances
+        assistants.clear()
+        calls.clear()
+        assistant_info.clear()
 
+        for idx, s_str in enumerate(sessions_to_init, start=1):
+            ast_client = Client(
+                f"assistant_{idx}",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                session_string=s_str,
+                in_memory=True,
+                sleep_threshold=32,
+                device_model="Desktop",
+                system_version="Windows 10",
+                app_version="3.4.3 x64",
+                lang_code="en",
+                lang_pack="tdesktop",
+            )
+            ast_call = PyTgCalls(ast_client)
+            ast_call.add_handler(end, call_filters.stream_end(device=Device.MICROPHONE))
+            ast_call.add_handler(
+                hd_stream_closed_kicked,
+                call_filters.chat_update(ChatUpdate.Status.CLOSED_VOICE_CHAT) |
+                call_filters.chat_update(ChatUpdate.Status.KICKED),
+            )
+            assistants[idx] = ast_client
+            calls[idx] = ast_call
 
-        clients["session"] = session
-        clients["call_py"] = call_py
+        clients["assistants"] = assistants
+        clients["calls"] = calls
+        clients["assistant_info"] = assistant_info
+        clients["session"] = assistants[1]  # primary assistant fallback
+        clients["call_py"] = calls[1]      # primary call fallback
         clients["bot"] = bot
 
-        # Initialize global variables from database
-        await call_py.start()
+        # Start all assistant clients and PyTgCalls instances concurrently
+        for idx, ast in assistants.items():
+            await ast.start()
+            cp = calls[idx]
+            await cp.start()
+            me = ast.me
+            name = f"{me.first_name} {me.last_name or ''}".strip()
+            mention = me.mention() if hasattr(me, "mention") else f"@{me.username or me.id}"
+            assistant_info[idx] = {
+                "id": me.id,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "username": me.username,
+                "mention": mention,
+                "name": name,
+            }
+            logger.info(f"Assistant {idx} authorized successfully! 🎉 Authorized as: {name} (@{me.username or me.id})")
+
+        # Start the bot client
         await bot.start()
         await ensure_indexes()
         user_data = await async_user_sessions.find_one({"bot_id": bot.me.id})
@@ -135,7 +219,7 @@ async def main():
             db_admins = db_admins + seed
         ADMIN.extend(db_admins)
         client_name = f"{bot.me.first_name} {bot.me.last_name or ''}".strip()
-        logger.info(f"Bot authorized successfully! 🎉 Authorized as: {client_name}")
+        logger.info(f"Bot authorized successfully! 🎉 Authorized as: {client_name} with {len(assistants)} Assistant(s)")
 
         # Ask Telegram once whether this bot may send premium/custom emoji, then
         # bake the answer into the emoji constants. Everything built after this
@@ -152,6 +236,12 @@ async def main():
     logger.info("Bot initialization completed successfully")
     asyncio.create_task(_cache_cleanup_loop())  # periodic cache janitor
     asyncio.create_task(refresh_cookies_loop())  # periodic cookie re-export (no-op unless enabled)
+    if AUTO_LEAVING_ASSISTANT:
+        asyncio.create_task(_assistant_autoleave_loop())  # periodic idle group cleanup
     await idle()
+
 # Run the main function
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
+
+

@@ -17,6 +17,7 @@ db = client[DB_NAME]
 # Collections
 user_sessions = db["user_sessions"]
 collection = db["collection"]
+chat_assistants = db["chat_assistants"]
 
 
 async def ensure_indexes():
@@ -25,9 +26,40 @@ async def ensure_indexes():
         await user_sessions.create_index("bot_id")
         await user_sessions.create_index("user_id")
         await collection.create_index("bot_id")
-        logger.info("[db] Indexes ensured on user_sessions(bot_id, user_id) and collection(bot_id)")
+        await chat_assistants.create_index("chat_id", unique=True)
+        logger.info("[db] Indexes ensured on user_sessions(bot_id, user_id), collection(bot_id), and chat_assistants(chat_id)")
     except Exception as e:
         logger.warning(f"[db] Failed to ensure indexes: {e}")
+
+
+async def get_chat_assistant(chat_id: int) -> int | None:
+    """Retrieve the assigned assistant index (1..5) for a chat from MongoDB."""
+    try:
+        doc = await chat_assistants.find_one({"chat_id": int(chat_id)})
+        return int(doc["assistant_num"]) if doc and "assistant_num" in doc else None
+    except Exception as e:
+        logger.warning(f"[db] get_chat_assistant error for {chat_id}: {e}")
+        return None
+
+
+async def set_chat_assistant(chat_id: int, assistant_num: int):
+    """Persist the assigned assistant index (1..5) for a chat in MongoDB."""
+    try:
+        await chat_assistants.update_one(
+            {"chat_id": int(chat_id)},
+            {"$set": {"assistant_num": int(assistant_num)}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"[db] set_chat_assistant error for {chat_id} -> {assistant_num}: {e}")
+
+
+async def remove_chat_assistant(chat_id: int):
+    """Remove assistant assignment for a chat from MongoDB."""
+    try:
+        await chat_assistants.delete_one({"chat_id": int(chat_id)})
+    except Exception as e:
+        logger.warning(f"[db] remove_chat_assistant error for {chat_id}: {e}")
 
 
 async def _bg_db_task(coro):
@@ -55,4 +87,3 @@ async def pull_from_array(collection, filter, field, value, upsert=False):
 async def set_fields(collection, filter, fields, upsert=False):
     return await collection.update_one(filter, {"$set": fields}, upsert=upsert)
 
-# Add more helpers as needed

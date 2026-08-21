@@ -104,7 +104,8 @@ async def seek_handler_func(client, message):
             if not stream_url:
                 stream_url = yt_link  # Fallback to original link
 
-            await call_py.play(
+            active_cp = get_call_client(message.chat.id) or clients.get("call_py")
+            await active_cp.play(
                 message.chat.id,
                 MediaStream(
                     stream_url,
@@ -152,12 +153,14 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
 
         is_active = await is_active_chat(client, chat_id)
         state.cancel_suggest(chat_id)
+        active_cp = get_call_client(chat_id) or clients.get("call_py")
         if is_active:
             # Clear the song queue and end the session
             await remove_active_chat(client, chat_id)
             state.queues.pop(chat_id, None)
             try:
-                await call_py.leave_call(chat_id)
+                if active_cp:
+                    await active_cp.leave_call(chat_id)
             except Exception as e:
                 logger.warning(f"Error leaving call: {e}")
 
@@ -172,7 +175,8 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
         else:
             await remove_active_chat(client, chat_id)
             try:
-                await call_py.leave_call(chat_id)
+                if active_cp:
+                    await active_cp.leave_call(chat_id)
             except Exception as e:
                 logger.warning(f"Error leaving call: {e}")
 
@@ -209,6 +213,7 @@ async def end_handler_func(client, message):
    chat_id = await _resolve_ctrl_chat_id(client, message, is_channel)
    state.cancel_suggest(chat_id)
    is_active = await is_active_chat(client, chat_id)
+   active_cp = get_call_client(chat_id) or clients.get("call_py")
    if is_active:
         await remove_active_chat(client, chat_id)
         state.queues.pop(chat_id, None)
@@ -217,13 +222,15 @@ async def end_handler_func(client, message):
             Messages.QUEUE_CLEARED_STOPPED.format(message.from_user.mention()),
             link_preview_options=None,
         )
-        await call_py.leave_call(chat_id)
+        if active_cp:
+            await active_cp.leave_call(chat_id)
         state.playing.pop(chat_id, None)
         await state.delete_now_playing(chat_id)
    else:
         await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
         await remove_active_chat(client, chat_id)
-        await call_py.leave_call(chat_id)
+        if active_cp:
+            await active_cp.leave_call(chat_id)
         state.playing.pop(chat_id, None)
         await state.delete_now_playing(chat_id)
   except NotInCallError:
@@ -243,13 +250,15 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
     try:
         is_channel = callback_query.data == "cskip"
         chat_id = await _resolve_ctrl_chat_id(client, callback_query, is_channel)
+        active_cp = get_call_client(chat_id) or clients.get("call_py")
 
         if chat_id in state.queues and len(state.queues[chat_id]) > 0:
             # There's a next song in queue
             next_song = state.queues[chat_id].pop(0)
 
             try:
-                await clients['call_py'].pause(chat_id)
+                if active_cp:
+                    await active_cp.pause(chat_id)
             except Exception as e:
                 logger.warning(f"Could not pause before skip: {e}")
 
@@ -270,7 +279,8 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
         else:
             # No more songs in queue
             try:
-                await clients['call_py'].leave_call(chat_id)
+                if active_cp:
+                    await active_cp.leave_call(chat_id)
             except Exception as e:
                 logger.warning(f"Error leaving call: {e}")
 
@@ -296,6 +306,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
     except Exception as e:
         logger.error(f"Error in skip button handler: {e}")
         await callback_query.answer(Messages.ERROR_OCCURRED, show_alert=True)
+
 
 
 @Client.on_callback_query(filters.regex(r"^c?playnow_"))
@@ -345,8 +356,10 @@ async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
 
         await callback_query.answer(clean_alert(Messages.PLAYING_NOW.format(user.first_name or "User")), show_alert=False)
 
+        active_cp = get_call_client(chat_id) or clients.get("call_py")
         try:
-            await call_py.pause(chat_id)
+            if active_cp:
+                await active_cp.pause(chat_id)
         except Exception as e:
             logger.warning(f"Could not pause before play-now: {e}")
 
@@ -447,12 +460,14 @@ async def skip_handler_func(client, message):
   try:
    is_channel = message.command[0].lower() == "cskip"
    chat_id = await _resolve_ctrl_chat_id(client, message, is_channel)
+   active_cp = get_call_client(chat_id) or clients.get("call_py")
    if chat_id in state.queues and len(state.queues[chat_id]) > 0:
        next = state.queues[chat_id].pop(0)
        await client.send_message(message.chat.id, Messages.SKIPPING.format(message.from_user.mention()), link_preview_options=None)
        state.playing[chat_id] = next
        try:
-          await call_py.pause(chat_id)
+          if active_cp:
+              await active_cp.pause(chat_id)
        except Exception:
           pass
        await join_call(
@@ -469,7 +484,8 @@ async def skip_handler_func(client, message):
             queue_msg=next.get('queue_msg'),
         )
    else:
-       await call_py.leave_call(chat_id)
+       if active_cp:
+           await active_cp.leave_call(chat_id)
        await remove_active_chat(client, chat_id)
        if chat_id in state.playing:
            state.playing[chat_id].clear()
@@ -493,9 +509,11 @@ async def button_resume_handler(client: Client, callback_query: CallbackQuery):
     try:
         is_channel = callback_query.data == "cresume"
         chat_id = await _resolve_ctrl_chat_id(client, callback_query, is_channel)
+        active_cp = get_call_client(chat_id) or clients.get("call_py")
 
         if await is_active_chat(client, chat_id):
-            await call_py.resume(chat_id)
+            if active_cp:
+                await active_cp.resume(chat_id)
             await callback_query.answer(clean_alert(Messages.RESUMED.format(callback_query.from_user.first_name or "User")), show_alert=False)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING, show_alert=True)
@@ -514,9 +532,11 @@ async def button_pause_handler(client: Client, callback_query: CallbackQuery):
     try:
         is_channel = callback_query.data == "cpause"
         chat_id = await _resolve_ctrl_chat_id(client, callback_query, is_channel)
+        active_cp = get_call_client(chat_id) or clients.get("call_py")
 
         if await is_active_chat(client, chat_id):
-            await call_py.pause(chat_id)
+            if active_cp:
+                await active_cp.pause(chat_id)
             await callback_query.answer(clean_alert(Messages.PAUSED.format(callback_query.from_user.first_name or "User")), show_alert=False)
         else:
             await callback_query.answer(Messages.ASSISTANT_NOT_STREAMING, show_alert=True)
@@ -533,8 +553,10 @@ async def resume_handler_func(client, message):
   try:
    is_channel = message.command[0].lower() == "cresume"
    chat_id = await _resolve_ctrl_chat_id(client, message, is_channel)
+   active_cp = get_call_client(chat_id) or clients.get("call_py")
    if await is_active_chat(client, chat_id):
-       await call_py.resume(chat_id)
+       if active_cp:
+           await active_cp.resume(chat_id)
        await client.send_message(message.chat.id, Messages.RESUMED.format(message.from_user.mention()), link_preview_options=None)
    else:
        await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
@@ -551,8 +573,10 @@ async def pause_handler_func(client, message):
   try:
    is_channel = message.command[0].lower() == "cpause"
    chat_id = await _resolve_ctrl_chat_id(client, message, is_channel)
+   active_cp = get_call_client(chat_id) or clients.get("call_py")
    if await is_active_chat(client, chat_id):
-       await call_py.pause(chat_id)
+       if active_cp:
+           await active_cp.pause(chat_id)
        await client.send_message(message.chat.id, Messages.PAUSED.format(message.from_user.mention()),
 link_preview_options=None)
    else:
@@ -626,9 +650,11 @@ async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery)
 
     chat_id = callback_query.message.chat.id
     state.cancel_suggest(chat_id)
+    active_cp = get_call_client(chat_id) or clients.get("call_py")
 
     try:
-        await call_py.leave_call(chat_id)
+        if active_cp:
+            await active_cp.leave_call(chat_id)
     except Exception:
         pass
 

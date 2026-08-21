@@ -34,7 +34,9 @@
  - `API_ID` (default in `config.py` shown for convenience)
  - `API_HASH`
  - `BOT_TOKEN`
- - `STRING_SESSION`
+ - `STRING_SESSION` (Primary assistant session string — *Required)
+ - Optional multi-assistant sessions: `STRING_SESSION2`, `STRING_SESSION3`, `STRING_SESSION4`, `STRING_SESSION5`
+ - `AUTO_LEAVING_ASSISTANT` (True/False) / `ASSISTANT_LEAVE_TIME` (default 5400s) — auto-leave inactive chats to stay under Telegram's 500-group limit.
  - `OWNER_ID`
  - Optional: `LOGGER_ID`, `DB_NAME`, `YOUTUBE_API_KEYS`, `YTUBE_API_TOKEN` (or `YT_API_TOKEN`), `YTUBE_API_BASE_URL` (or `NUB_YT_API_BASE_URL`)
  - Optional: `YT_COOKIES_FILE` — path to a Netscape-format `cookies.txt` for yt-dlp
@@ -72,7 +74,7 @@
  python3 -m pip install -r requirements.txt
  ```
 
- 3. Provide environment variables (example using a `.env` file or export commands). At a minimum set `BOT_TOKEN` and either `STRING_SESSION` or Pyrogram credentials.
+ 3. Provide environment variables (example using a `.env` file or export commands). At a minimum set `BOT_TOKEN`, `STRING_SESSION`, and `MONGODB_URI`. For multi-assistant mode, provide `STRING_SESSION2`..`5`.
 
  4. Run the bot:
 
@@ -103,6 +105,7 @@
  | `/seek <sec>` · `/seekback <sec>` | Seek forward / backward |
  | `/loop <n>` | Loop current track n times (`0` disables) |
  | `/autoplay [on|off]` | Toggle automatic suggestions on queue end (admins only) |
+ | `/changeassistant` · `/assistant` | Switch the assistant assigned to this group (admins only) |
  | `/end` | Stop playback and clear the queue |
 
 
@@ -121,6 +124,8 @@
  |---|---|
  | `/start` · `/ping` | Health check and welcome |
  | `/np` · `/nowplaying` | Show the current track |
+ | `/ac` | Show active calls across all assistants |
+ | `/assistants` · `/userbot` | List connected assistants and their loads |
  | `/lang` · `/setlang` · `/language` | Get/set group language |
  | `/kang` | Steal a sticker into your pack |
  | `/mmf` · `/font` · `/style` | Meme/text styling utilities |
@@ -134,6 +139,7 @@
  | `/addsudo` · `/rmsudo` · `/sudolist` | Manage sudo users |
  | `/tagall` | Mention everyone in the group |
  | `/broadcast` · `/fbroadcast` · `/stats` | Broadcast to chats / show stats |
+ | `/leaveall` | Force all assistants to leave idle groups |
  | `/reboot` | Restart the bot |
 
  > Tip: `/start` opens an inline menu that lists these commands by category.

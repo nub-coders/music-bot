@@ -28,9 +28,39 @@
       "required": true
     },
     "STRING_SESSION": {
-      "description": "Pyrogram v2 user session string for the assistant account",
+      "description": "Pyrogram v2 user session string for primary assistant account (* Required)",
       "value": "",
       "required": true
+    },
+    "STRING_SESSION2": {
+      "description": "Pyrogram v2 user session string for 2nd assistant account (Multi-Assistant Mode)",
+      "value": "",
+      "required": false
+    },
+    "STRING_SESSION3": {
+      "description": "Pyrogram v2 user session string for 3rd assistant account (Multi-Assistant Mode)",
+      "value": "",
+      "required": false
+    },
+    "STRING_SESSION4": {
+      "description": "Pyrogram v2 user session string for 4th assistant account (Multi-Assistant Mode)",
+      "value": "",
+      "required": false
+    },
+    "STRING_SESSION5": {
+      "description": "Pyrogram v2 user session string for 5th assistant account (Multi-Assistant Mode)",
+      "value": "",
+      "required": false
+    },
+    "AUTO_LEAVING_ASSISTANT": {
+      "description": "Auto-leave idle chats for assistant accounts to prevent hitting Telegram's 500-group limit (True/False)",
+      "value": "True",
+      "required": false
+    },
+    "ASSISTANT_LEAVE_TIME": {
+      "description": "Duration (in seconds) the assistant waits before leaving an inactive chat (default: 5400 / 90 min)",
+      "value": "5400",
+      "required": false
     },
     "OWNER_ID": {
       "description": "Your Telegram user ID (get it from @userinfobot)",

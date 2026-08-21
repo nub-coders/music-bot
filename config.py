@@ -12,8 +12,26 @@ OWNER_ID    = int(os.getenv("OWNER_ID", "6076474757"))
 GROUP       = os.getenv("GROUP", "nub_coder_s")
 
 # ── Sensitive — must be set via environment, no defaults ────────────────────────
-BOT_TOKEN      = os.getenv("BOT_TOKEN", "")
-STRING_SESSION = os.getenv("STRING_SESSION", "")
+BOT_TOKEN       = os.getenv("BOT_TOKEN", "")
+STRING_SESSION  = os.getenv("STRING_SESSION", os.getenv("STRING_SESSION1", ""))
+STRING_SESSION1 = os.getenv("STRING_SESSION1", STRING_SESSION)
+STRING_SESSION2 = os.getenv("STRING_SESSION2", "")
+STRING_SESSION3 = os.getenv("STRING_SESSION3", "")
+STRING_SESSION4 = os.getenv("STRING_SESSION4", "")
+STRING_SESSION5 = os.getenv("STRING_SESSION5", "")
+
+# Collect all non-empty assistant session strings (supports 1 to 5 assistants)
+STRING_SESSIONS = [
+    s for s in [STRING_SESSION1, STRING_SESSION2, STRING_SESSION3, STRING_SESSION4, STRING_SESSION5] if s
+]
+
+# Auto-leave idle chats for assistant accounts to stay under Telegram's 500-group limit
+AUTO_LEAVING_ASSISTANT = os.getenv("AUTO_LEAVING_ASSISTANT", "True").lower() in ("true", "1", "yes")
+try:
+    ASSISTANT_LEAVE_TIME = int(os.getenv("ASSISTANT_LEAVE_TIME", "5400"))  # default: 90 minutes (seconds)
+except ValueError:
+    ASSISTANT_LEAVE_TIME = 5400
+
 try:
     MONGODB_URI = os.environ["MONGODB_URI"]  # fail fast on startup if unset — never bake in a cluster
 except KeyError:

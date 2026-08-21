@@ -206,8 +206,9 @@ async def is_active_chat(client, chat_id):  # noqa: F811
 async def add_active_chat(client, chat_id):  # noqa: F811
     state.active.add(chat_id)
 async def remove_active_chat(client, chat_id):
-    state.active.discard(chat_id)
-    chat_dir = f"{ggg}/user_{client.me.id}/{chat_id}"
+    await state.deactivate(chat_id)
+    bot_id = getattr(client.me, "id", None) if client and getattr(client, "me", None) else "default"
+    chat_dir = f"{ggg}/user_{bot_id}/{chat_id}"
     os.makedirs(chat_dir, exist_ok=True)
     clear_directory(chat_dir)
 async def get_user_data(user_id, key):

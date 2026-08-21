@@ -45,10 +45,14 @@ async def dend(client, update, channel_id= None):
         else:
             logger.info(f"Song queue for chat {chat_id} is empty.")
             await state.delete_now_playing(chat_id)
-            await client.leave_call(chat_id)
+            call_py = get_call_client(chat_id)
+            if call_py:
+                try:
+                    await call_py.leave_call(chat_id)
+                except Exception:
+                    pass
             await remove_active_chat(client, chat_id)
-            if chat_id in state.playing:
-                state.playing[chat_id].clear()
+            state.playing.pop(chat_id, None)
     except Exception as e:
         logger.error(f"Error in dend function: {e}")
 
@@ -375,122 +379,116 @@ async def play_handler_func(client, message):
         thumb.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
 
     # Set the target chat and ensure assistant has joined the target chat
+    ast_num, ast_session, ast_call_py = await get_assistant(target_chat_id)
+    if not ast_session:
+        ast_session = clients.get("session")
+
     target_chat = None
-    if channel_mode:
-        target_chat = linked_chat
-        # Step 1: Check if assistant is already a member of the linked channel
+    max_retries = get_assistant_count()
+    attempt = 0
+
+    while attempt < max_retries:
+        attempt += 1
         try:
-            target_chat = await session.get_chat(linked_chat.id)
-            logger.info(f"[play] Session already in linked channel {linked_chat.id}")
-        except Exception:
-            # Step 2: Assistant is not in the channel yet. Try joining via username or invite link.
-            try:
-                if getattr(linked_chat, "username", None):
-                    target_chat = await session.join_chat(linked_chat.username)
-                    logger.info(f"[play] Session joined public linked channel @{linked_chat.username}")
-                else:
-                    # Private channel: create invite link and join
-                    chan_expire = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
-                    chan_link = await client.create_chat_invite_link(linked_chat.id, member_limit=1, expire_date=chan_expire)
-                    target_chat = await session.join_chat(chan_link.invite_link)
-                    logger.info(f"[play] Session joined private linked channel {linked_chat.id} via invite link")
-            except UserAlreadyParticipant:
+            if channel_mode:
                 target_chat = linked_chat
-            except (InviteHashExpired, ChannelPrivate):
-                chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
-                await massage.edit(
-                    Messages.ASSISTANT_BANNED_CHANNEL.format(chan_title, session.me.mention(), session.me.id)
-                )
+                try:
+                    target_chat = await ast_session.get_chat(linked_chat.id)
+                    logger.info(f"[play] Assistant {ast_num} already in linked channel {linked_chat.id}")
+                except Exception:
+                    if getattr(linked_chat, "username", None):
+                        target_chat = await ast_session.join_chat(linked_chat.username)
+                        logger.info(f"[play] Assistant {ast_num} joined public linked channel @{linked_chat.username}")
+                    else:
+                        chan_expire = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
+                        chan_link = await client.create_chat_invite_link(linked_chat.id, member_limit=1, expire_date=chan_expire)
+                        target_chat = await ast_session.join_chat(chan_link.invite_link)
+                        logger.info(f"[play] Assistant {ast_num} joined private linked channel {linked_chat.id} via invite link")
+                break
+            else:
+                joined_chat = None
+                if message.chat.username:
+                    try:
+                        try:
+                            joined_chat = await ast_session.get_chat(message.chat.username)
+                        except Exception:
+                            joined_chat = await ast_session.join_chat(message.chat.username)
+                    except UserAlreadyParticipant:
+                        joined_chat = message.chat
+                    target_chat = joined_chat
+                    break
+                else:
+                    # Private group
+                    is_admin_or_owner = False
+                    try:
+                        bot_member = await client.get_chat_member(message.chat.id, client.me.id)
+                        is_admin_or_owner = bot_member.status in (
+                            ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER
+                        )
+                    except Exception:
+                        is_admin_or_owner = False
+
+                    try:
+                        joined_chat = await ast_session.get_chat(message.chat.id)
+                        logger.info(f"[play] Assistant {ast_num} already in private group {message.chat.id}")
+                    except Exception:
+                        if not is_admin_or_owner:
+                            await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                            return await remove_active_chat(client, target_chat_id)
+                        expire_at = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
+                        link_obj = await client.create_chat_invite_link(message.chat.id, member_limit=1, expire_date=expire_at)
+                        joined_chat = await ast_session.join_chat(link_obj.invite_link)
+                        logger.info(f"[play] Assistant {ast_num} joined private group {message.chat.id} via invite link")
+                    target_chat = joined_chat or message.chat
+                    break
+
+        except UserAlreadyParticipant:
+            target_chat = linked_chat if channel_mode else message.chat
+            break
+        except (InviteHashExpired, ChannelPrivate, UserBlocked) as ban_err:
+            if attempt < max_retries:
+                logger.warning(f"[play] Assistant {ast_num} banned/failed ({ban_err}), trying next assistant...")
+                ast_num, ast_session, ast_call_py = await change_assistant(target_chat_id)
+                continue
+            else:
+                ast_mention = ast_session.me.mention() if hasattr(ast_session.me, 'mention') else f"@{ast_session.me.username or ast_session.me.id}"
+                if channel_mode:
+                    chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
+                    await massage.edit(Messages.ASSISTANT_BANNED_CHANNEL.format(chan_title, ast_mention, ast_session.me.id))
+                else:
+                    await massage.edit(Messages.ASSISTANT_BANNED.format(ast_mention, ast_session.me.id))
                 return await remove_active_chat(client, target_chat_id)
-            except (ChatAdminRequired, ChatWriteForbidden):
+        except (ChatAdminRequired, ChatWriteForbidden):
+            if channel_mode:
                 chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
                 await massage.edit(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title))
-                return await remove_active_chat(client, target_chat_id)
-            except Exception as e:
-                chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
-                err_str = str(e).lower()
-                if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
+            else:
+                await massage.edit(Messages.NEED_INVITE_PERMISSION)
+            return await remove_active_chat(client, target_chat_id)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
+                if channel_mode:
+                    chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
                     await massage.edit(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title))
                 else:
-                    logger.error(f"[play] Failed to join linked channel {linked_chat.id}: {e}")
-                    await massage.edit(Messages.FAILED_JOIN_CHANNEL.format(chan_title))
-                return await remove_active_chat(client, target_chat_id)
-    else:
-        # Regular group mode: join the group
-        joined_chat = None
-        if message.chat.username:
-            # Public group
-            try:
-                try:
-                    joined_chat = await session.get_chat(message.chat.username)
-                except Exception:
-                    joined_chat = await session.join_chat(message.chat.username)
-            except UserAlreadyParticipant:
-                joined_chat = message.chat
-            except (InviteHashExpired, ChannelPrivate):
-                await massage.edit(Messages.ASSISTANT_BANNED.format(session.me.username or session.me.id, session.me.id))
-                return await remove_active_chat(client, target_chat_id)
-            except (ChatAdminRequired, ChatWriteForbidden):
-                await massage.edit(Messages.NEED_INVITE_PERMISSION)
-                return await remove_active_chat(client, target_chat_id)
-            except Exception as e:
-                err_str = str(e).lower()
-                if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
                     await massage.edit(Messages.NEED_INVITE_PERMISSION)
-                else:
-                    logger.error(f"[play] Failed to join group {target_chat_id}: {e}")
-                    await massage.edit(Messages.FAILED_JOIN_GROUP)
                 return await remove_active_chat(client, target_chat_id)
-        else:
-            # Private group — check bot membership safely
-            is_admin_or_owner = False
-            try:
-                bot_member = await client.get_chat_member(message.chat.id, client.me.id)
-                is_admin_or_owner = bot_member.status in (
-                    ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER
-                )
-            except (ChatAdminRequired, ChatWriteForbidden):
-                is_admin_or_owner = False
-            except Exception as e:
-                logger.debug(f"[play] Bot chat member check: {e}")
-                is_admin_or_owner = False
+            if attempt < max_retries:
+                logger.warning(f"[play] Assistant {ast_num} join error ({e}), trying next assistant...")
+                ast_num, ast_session, ast_call_py = await change_assistant(target_chat_id)
+                continue
+            logger.error(f"[play] Failed to join target {target_chat_id}: {e}")
+            if channel_mode:
+                chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
+                await massage.edit(Messages.FAILED_JOIN_CHANNEL.format(chan_title))
+            else:
+                await massage.edit(Messages.FAILED_JOIN_GROUP)
+            return await remove_active_chat(client, target_chat_id)
 
-            # Step 1: Maybe the session is already a member — no join needed.
-            try:
-                joined_chat = await session.get_chat(message.chat.id)
-                logger.info(f"[play] Session already in private group {message.chat.id}")
-            except Exception:
-                # Step 2: Not a member yet. Create a one-time invite link and join.
-                if not is_admin_or_owner:
-                    await massage.edit(Messages.NEED_INVITE_PERMISSION)
-                    return await remove_active_chat(client, target_chat_id)
-                try:
-                    expire_at = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
-                    link_obj = await client.create_chat_invite_link(message.chat.id, member_limit=1, expire_date=expire_at)
-                    joined_chat = await session.join_chat(link_obj.invite_link)
-                    logger.info(f"[play] Session joined private group {message.chat.id} via invite link")
-                except UserAlreadyParticipant:
-                    joined_chat = message.chat
-                    logger.info(f"[play] Session already participant in private group {message.chat.id}")
-                except (InviteHashExpired, ChannelPrivate):
-                    await massage.edit(
-                        Messages.ASSISTANT_BANNED.format(session.me.mention(), session.me.id)
-                    )
-                    return await remove_active_chat(client, target_chat_id)
-                except (ChatAdminRequired, ChatWriteForbidden):
-                    await massage.edit(Messages.NEED_INVITE_PERMISSION)
-                    return await remove_active_chat(client, target_chat_id)
-                except Exception as e:
-                    # If Telegram rejects due to missing invite permission, tell the user
-                    err_str = str(e).lower()
-                    if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
-                        await massage.edit(Messages.NEED_INVITE_PERMISSION)
-                    else:
-                        logger.error(f"[play] Failed to join private group {target_chat_id}: {e}")
-                        await massage.edit(Messages.FAILED_JOIN_GROUP)
-                    return await remove_active_chat(client, target_chat_id)
+    if not target_chat:
+        target_chat = linked_chat if channel_mode else message.chat
 
-        target_chat = joined_chat
 
     track_id, put_entry = await put_queue(
         massage,

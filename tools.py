@@ -20,7 +20,12 @@ from pymediainfo import MediaInfo
 
 from config import *
 from youtube import extract_video_id, get_stream, get_related_suggestions, handle_youtube
-from database import user_sessions, db_task, collection
+from database import (
+    user_sessions, db_task, collection,
+    get_chat_assistant as db_get_chat_assistant,
+    set_chat_assistant as db_set_chat_assistant,
+    remove_chat_assistant as db_remove_chat_assistant,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -49,7 +54,110 @@ async def get_stream_url(youtube_url: str):
 from state import state  # state.queues / playing / played / active now live on this store
 
 clients = {}
+assistants = {}      # idx (1..5) -> Pyrogram Client
+calls = {}           # idx (1..5) -> PyTgCalls instance
+assistant_info = {}  # idx (1..5) -> dict(id, name, username, mention)
 spam_chats = []
+
+
+def get_assistant_count() -> int:
+    """Return the total number of connected assistants."""
+    return len(assistants) if assistants else 1
+
+
+_assistant_alloc_lock = asyncio.Lock()
+
+
+def get_least_loaded_assistant() -> int:
+    """Return the assistant index (1..N) with the fewest active voice calls."""
+    if not assistants:
+        return 1
+    active_keys = sorted(assistants.keys())
+
+    def get_load(idx: int) -> int:
+        active_count = len(state.assistant_active.get(idx, set()))
+        assigned_active_count = sum(
+            1 for cid in state.active
+            if state.get_chat_assistant(cid) == idx and cid not in state.assistant_active.get(idx, set())
+        )
+        return active_count + assigned_active_count
+
+    return min(active_keys, key=get_load)
+
+
+async def get_assistant(chat_id: int):
+    """
+    Retrieve the assigned (assistant_num, userbot_client, pytgcalls_client) for chat_id.
+    Resolution order: in-memory state -> MongoDB -> least-loaded allocation.
+    Guarded by _assistant_alloc_lock to prevent concurrent allocation race conditions.
+    """
+    cid = int(chat_id)
+    async with _assistant_alloc_lock:
+        # 1. In-memory cache
+        ast_num = state.get_chat_assistant(cid)
+        if ast_num and ast_num in assistants:
+            return ast_num, assistants[ast_num], calls.get(ast_num, clients.get("call_py"))
+
+        # 2. Database persistent assignment
+        db_num = await db_get_chat_assistant(cid)
+        if db_num and db_num in assistants:
+            state.set_chat_assistant(cid, db_num)
+            return db_num, assistants[db_num], calls.get(db_num, clients.get("call_py"))
+
+        # 3. Dynamic least-loaded allocation
+        assigned = get_least_loaded_assistant()
+        state.set_chat_assistant(cid, assigned)
+        db_task(db_set_chat_assistant(cid, assigned))
+        userbot = assistants.get(assigned, clients.get("session"))
+        call_py = calls.get(assigned, clients.get("call_py"))
+        return assigned, userbot, call_py
+
+
+async def set_assistant(chat_id: int, assistant_num: int):
+    """Explicitly assign an assistant index (1..N) to chat_id."""
+    cid = int(chat_id)
+    ast_num = int(assistant_num)
+    state.set_chat_assistant(cid, ast_num)
+    await db_set_chat_assistant(cid, ast_num)
+
+
+async def change_assistant(chat_id: int):
+    """Switch to the next available assistant in the pool."""
+    cid = int(chat_id)
+    if not assistants:
+        return 1, clients.get("session"), clients.get("call_py")
+    available = sorted(assistants.keys())
+    curr = state.get_chat_assistant(cid) or 1
+    if curr in available:
+        next_idx = available[(available.index(curr) + 1) % len(available)]
+    else:
+        next_idx = available[0]
+    await set_assistant(cid, next_idx)
+    return next_idx, assistants.get(next_idx), calls.get(next_idx)
+
+
+def get_call_client(chat_id: int):
+    """Retrieve the PyTgCalls instance responsible for this chat."""
+    cid = int(chat_id)
+    ast_num = state.get_chat_assistant(cid)
+    if ast_num and ast_num in calls:
+        return calls[ast_num]
+    playing_info = state.playing.get(cid)
+    if playing_info and isinstance(playing_info, dict) and "assistant_num" in playing_info:
+        p_num = playing_info["assistant_num"]
+        if p_num in calls:
+            return calls[p_num]
+    return clients.get("call_py")
+
+
+def get_userbot_client(chat_id: int):
+    """Retrieve the Pyrogram userbot Client responsible for this chat."""
+    cid = int(chat_id)
+    ast_num = state.get_chat_assistant(cid)
+    if ast_num and ast_num in assistants:
+        return assistants[ast_num]
+    return clients.get("session")
+
 
 
 @dataclass
@@ -146,8 +254,10 @@ def get_arg(message):
 
 
 async def remove_active_chat(chat_id):
-    state.active.discard(chat_id)
-    chat_dir = f"{ggg}/user_{clients['bot'].me.id}/{chat_id}"
+    await state.deactivate(chat_id)
+    bot_client = clients.get("bot")
+    bot_id = getattr(bot_client.me, "id", None) if bot_client and getattr(bot_client, "me", None) else "default"
+    chat_dir = f"{ggg}/user_{bot_id}/{chat_id}"
     os.makedirs(chat_dir, exist_ok=True)
     clear_directory(chat_dir)
 
@@ -199,7 +309,7 @@ async def update_progress_button(message, duration_str, chat, markup):
 
 async def count_listeners(chat_id: int) -> int:
     """Count non-bot, active human participants currently in the voice chat."""
-    session = clients.get("session")
+    session = get_userbot_client(chat_id)
     if not session:
         return 1
     try:
@@ -226,7 +336,7 @@ async def autoleave_vc(chat_id: int) -> bool:
         listeners = await count_listeners(chat_id)
         if listeners == 0:
             logger.info(f"[autoleave_vc] No listeners detected in chat {chat_id}. Leaving voice chat immediately.")
-            call_py = clients.get("call_py")
+            call_py = get_call_client(chat_id)
             if call_py:
                 try:
                     await call_py.leave_call(chat_id)
@@ -251,6 +361,7 @@ async def autoleave_vc(chat_id: int) -> bool:
     except Exception as e:
         logger.warning(f"[autoleave_vc] Error: {e}")
     return False
+
 
 
 async def _swap_in_photo(thumb_task, ui_chat_id, chat_id, text, keyboard, text_msg, chat, duration):
@@ -558,7 +669,7 @@ async def hd_stream_closed_kicked(client, update):
     state.playing.pop(chat_id, None)
 
 
-async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None, queue_msg=None):
+async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None, queue_msg=None, assistant_num=None):
     """Join voice call and start streaming"""
     original_title = title
     title = trim_title(title)
@@ -567,6 +678,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
     try:
         chat_id = chat.id
+        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat_id
         audio_flags = MediaStream.Flags.IGNORE if mode == "audio" else None
 
         # Clean up old messages: delete previous track's now-playing card and this track's queue card
@@ -635,7 +747,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             logger.debug(f"[join_call] chat={chat_id} title='{title}' mode={mode} position={position} thumb={'set' if thumb else 'None'}")
         if stream_url:
             stream_source = stream_url
-            logger.info(f"[join_call] Using provided stream URL: {stream_url[:100]}... (len={len(stream_url)})")
+            logger.info(f"[join_call] Using provided stream URL: {stream_source[:100]}... (len={len(stream_source)})")
         elif youtube_link:
             logger.info(f"[join_call] Extracting stream URL from YouTube link: {youtube_link}")
             stream_source = await get_stream_url(youtube_link)
@@ -651,14 +763,25 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.debug(f"[join_call] Final stream source resolved: {stream_source[:120]}..." if stream_source else "[join_call] Final stream source resolved: None")
         if not stream_source:
             logger.error(f"[join_call] No stream source provided (neither stream_url nor youtube_link) for chat {chat_id}")
-            await clients["bot"].send_message(chat.id, Messages.ERROR_STREAM, link_preview_options=None)
+            if "bot" in clients and clients["bot"]:
+                await clients["bot"].send_message(chat.id, Messages.ERROR_STREAM, link_preview_options=None)
             return await remove_active_chat(chat_id)
 
-        logger.info(f"[join_call] Attempting to play: {title} from {stream_source[:100]}... in chat {chat_id}")
-        logger.debug(f"[join_call] Calling clients['call_py'].play with AudioQuality.MEDIUM and VideoQuality.HD_720p; audio_flags={audio_flags}")
+        # Resolve the active assistant and PyTgCalls instance
+        if assistant_num is None:
+            ast_num, _userbot, call_py = await get_assistant(chat_id)
+        else:
+            ast_num = int(assistant_num)
+            call_py = calls.get(ast_num, clients.get("call_py"))
+
+        if not call_py:
+            call_py = clients.get("call_py")
+
+        logger.info(f"[join_call] Attempting to play: {title} via Assistant {ast_num} from {stream_source[:100]}... in chat {chat_id}")
+        logger.debug(f"[join_call] Calling call_py.play (Assistant {ast_num}); audio_flags={audio_flags}")
 
         _jc_t0 = time.perf_counter()
-        await clients["call_py"].play(
+        await call_py.play(
             chat_id,
             MediaStream(
                 stream_source,
@@ -668,7 +791,10 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             ),
         )
         _jc_call_ms = (time.perf_counter() - _jc_t0) * 1000
-        logger.info(f"[join_call] ⏱ call_py.play() took {_jc_call_ms:.1f}ms for chat {chat_id}")
+        logger.info(f"[join_call] ⏱ call_py.play() took {_jc_call_ms:.1f}ms for chat {chat_id} (Assistant {ast_num})")
+
+        # Mark chat active with this assistant
+        await state.activate(chat_id, assistant_num=ast_num)
 
         logger.debug(f"[join_call] Updating playing status for chat {chat_id}")
         state.playing[chat_id] = {
@@ -680,21 +806,22 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             "by": by,
             "duration": duration,
             "mode": mode,
-            "thumb": thumb
+            "thumb": thumb,
+            "assistant_num": ast_num,
         }
         state.played[chat_id] = int(time.time())
         state.last_played[chat_id] = state.playing[chat_id]
         logger.debug(f"[join_call] Playing status updated, timestamp: {state.played[chat_id]}")
 
-        logger.debug(f"[join_call] Scheduling playtime save to database for bot {clients['bot'].me.id}")
-        db_task(collection.update_one(
-            {"bot_id": clients["bot"].me.id},
-            {"$push": {"dates": {"$each": [datetime.datetime.now()], "$slice": -5000}}},
-            upsert=True
-        ))
+        if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None):
+            logger.debug(f"[join_call] Scheduling playtime save to database for bot {clients['bot'].me.id}")
+            db_task(collection.update_one(
+                {"bot_id": clients["bot"].me.id},
+                {"$push": {"dates": {"$each": [datetime.datetime.now()], "$slice": -5000}}},
+                upsert=True
+            ))
 
         logger.debug("[join_call] Creating inline keyboard for playback controls")
-        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat_id
         is_channel = (ui_chat_id != chat_id) or (getattr(chat, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))
         keyboard = Buttons.playback_markup(channel_mode=is_channel)
 
@@ -704,140 +831,130 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         title_formatted = title
 
         video_id = extract_video_id(youtube_link) if youtube_link and not os.path.exists(youtube_link) else None
+        bot_user = clients["bot"].me.username if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None) else ""
         if video_id:
             state.add_to_history(chat_id, video_id)
-            display_title = f'<a href="https://t.me/{clients["bot"].me.username}?start=vidid_{video_id}"><b>{title_formatted}</b></a>'
+            display_title = f'<a href="https://t.me/{bot_user}?start=vidid_{video_id}"><b>{title_formatted}</b></a>' if bot_user else f'<b>{title_formatted}</b>'
         elif youtube_link and youtube_link.startswith("http"):
             display_title = f'<a href="{youtube_link}"><b>{title_formatted}</b></a>'
         else:
             display_title = f'<b>{title_formatted}</b>'
 
-        message_text = Messages.PLAY.format(
-            mode_formatted,
+        chat_title = chat.title if (chat and hasattr(chat, 'title') and chat.title) else str(chat_id)
+        requester_mention = by.mention() if hasattr(by, 'mention') else (by if by else "User")
+
+        text = Messages.NOW_PLAYING.format(
             display_title,
             duration,
-            by.mention() if hasattr(by, 'mention') else by
+            mode_formatted.capitalize(),
+            chat_title,
+            requester_mention,
         )
 
-        logger.debug(f"[join_call] Sending playback notification to chat {ui_chat_id}")
-        _msg_t0 = time.perf_counter()
-        # Text-first: don't let a slow card render block the notification. Give the
-        # render a short grace so fast/cached cards still post as a photo directly
-        # (no flicker); if it misses, post text now and swap the photo in when it lands.
-        thumb_task = thumb if (asyncio.isfuture(thumb) or asyncio.iscoroutine(thumb)) else None
-        thumb_ready = None if thumb_task else thumb
-        if thumb_task:
+        logger.debug(f"[join_call] Sending now playing message to ui_chat_id {ui_chat_id}")
+        sent_message = None
+
+        # ── Fast-path: thumbnail already cached ──
+        # If get_thumb returned immediately (cached file on disk), we already
+        # have a finished Task with the path: send the photo card directly.
+        # No intermediate text message, no photo-replace jump.
+        if thumb and thumb.done() and not thumb.cancelled():
             try:
-                thumb_ready = await asyncio.wait_for(asyncio.shield(thumb_task), 2.0)
-            except asyncio.TimeoutError:
-                thumb_ready = None  # still rendering — post text, swap in when ready
-            except Exception as thumb_err:
-                logger.warning(f"[join_call] Thumbnail task failed, sending text instead: {thumb_err}")
-                thumb_ready = None
-        if thumb_ready:
-            try:
-                sent_message = await clients["bot"].send_photo(
-                    ui_chat_id, thumb_ready, message_text, reply_markup=keyboard
-                )
-                state.set_now_playing(chat_id, sent_message)
-                logger.info(f"[join_call] Playback notification sent with photo, message_id: {sent_message.id}")
-            except Exception as photo_err:
-                logger.warning(f"[join_call] Failed to send photo, sending as text instead: {photo_err}")
-                sent_message = await clients["bot"].send_message(
-                    ui_chat_id, message_text, reply_markup=keyboard,
-                    link_preview_options=None)
-                state.set_now_playing(chat_id, sent_message)
-                logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
-        else:
+                path = thumb.result()
+                if path and os.path.exists(path):
+                    sent_message = await clients["bot"].send_photo(
+                        ui_chat_id, path, caption=text, reply_markup=keyboard,
+                    )
+            except Exception as e:
+                logger.warning(f"[join_call] Cached photo send failed, falling back to text: {e}")
+                sent_message = None
+
+        if not sent_message and "bot" in clients and clients["bot"]:
             sent_message = await clients["bot"].send_message(
-                ui_chat_id, message_text, reply_markup=keyboard,
-                link_preview_options=None)
-            state.set_now_playing(chat_id, sent_message)
-            logger.info(f"[join_call] Playback notification sent as text, message_id: {sent_message.id}")
-            if thumb_task:  # card still rendering — swap it in when ready
-                asyncio.create_task(_swap_in_photo(
-                    thumb_task, ui_chat_id, chat_id, message_text, keyboard, sent_message, chat, duration
-                ))
-        _msg_ms = (time.perf_counter() - _msg_t0) * 1000
-        logger.info(f"[join_call] ⏱ Now-playing message sent in {_msg_ms:.1f}ms for chat {chat_id}")
-
-        logger.debug(f"[join_call] Creating progress update task for duration: {duration}")
-        asyncio.create_task(update_progress_button(sent_message, duration, chat, keyboard))
-
-        logger.info(f"[join_call] Completed successfully - Now streaming '{title}' in chat {chat_id}")
-
-    except (ChatAdminRequired, ChatWriteForbidden) as e:
-        logger.error(f"[join_call] Admin permission required in chat {chat.id}: {e}")
-        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
-        is_channel = (ui_chat_id != chat.id) or (getattr(chat, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))
-        err_msg = str(e)
-        if "CreateGroupCall" in err_msg or "GroupCall" in err_msg or "group call" in err_msg.lower():
-            reply_text = Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC
-        else:
-            if is_channel:
-                chan_name = getattr(chat, 'title', None) or str(chat.id)
-                reply_text = Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_name)
-            else:
-                reply_text = Messages.NEED_INVITE_PERMISSION
-        try:
-            await clients["bot"].send_message(ui_chat_id, reply_text, link_preview_options=None)
-        except Exception:
-            pass
-        return await remove_active_chat(chat.id)
-    except NoActiveGroupCall:
-        logger.error(f"[join_call] NoActiveGroupCall exception for chat {chat.id} - No active group calls")
-        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
-        is_channel = (ui_chat_id != chat.id) or (getattr(chat, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))
-        try:
-            await clients["bot"].send_message(
-                ui_chat_id,
-                Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC,
-                link_preview_options=None
+                ui_chat_id, text, reply_markup=keyboard, link_preview_options=None
             )
-        except Exception:
-            pass
-        return await remove_active_chat(chat.id)
+
+        if sent_message:
+            state.set_now_playing(chat_id, sent_message)
+
+        # ── Slow-path: thumbnail is still downloading / rendering ──
+        # We sent a text message above; once the thumb task finishes, swap in
+        # the photo card so the chat gets the full artwork without delay on voice join.
+        if thumb and not thumb.done():
+            asyncio.create_task(
+                _swap_in_photo(
+                    thumb, ui_chat_id, chat_id, text, keyboard,
+                    sent_message, chat, duration,
+                )
+            )
+
+        logger.info(f"[join_call] Successfully started playing: {title} in chat {chat_id} (Assistant {ast_num})")
+
+        # In-place progress bar loop (cancelled via state.delete_now_playing or replaced)
+        if sent_message and duration and duration != "N/A" and ":" in duration:
+            asyncio.create_task(update_progress_button(sent_message, duration, chat, keyboard))
+
+    except NoActiveGroupCall:
+        logger.warning(f"[join_call] No active voice chat in {chat_id}. Cleaning up.")
+        await remove_active_chat(chat_id)
+        if "bot" in clients and clients["bot"]:
+            await clients["bot"].send_message(ui_chat_id, Messages.VOICE_CHAT_NOT_FOUND, link_preview_options=None)
     except Exception as e:
-        logger.error(f"[join_call] Unexpected error in chat {chat.id}: {type(e).__name__} - {e}", exc_info=True)
-        ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat.id
-        await clients["bot"].send_message(ui_chat_id, Messages.ERROR_OCCURRED, link_preview_options=None)
-        return await remove_active_chat(chat.id)
+        logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
+        await remove_active_chat(chat_id)
+        err_str = str(e).lower()
+        if "bot" in clients and clients["bot"]:
+            if "chat_admin_required" in err_str or "admin" in err_str:
+                await clients["bot"].send_message(
+                    ui_chat_id,
+                    Messages.NEED_INVITE_PERMISSION,
+                    link_preview_options=None,
+                )
+            elif "user_already_participant" in err_str:
+                logger.info(f"[join_call] Assistant was already in call for chat {chat_id}")
+            else:
+                await clients["bot"].send_message(ui_chat_id, Messages.ERROR_OCCURRED, link_preview_options=None)
 
 
 async def _trigger_suggestions(client, chat_id: int, last_song: dict):
-    """Fetch related recommendations, send suggestion card with countdown and auto-stream #1."""
+    """
+    Called when a chat's queue is empty and playback has ended.
+    Fetches suggestions related to the last played track and posts an interactive
+    suggestion card with a 5-second countdown to autoplay the top result.
+    """
     try:
-        # Quick check: if no listeners, leave immediately and cancel autoplay
-        if await autoleave_vc(chat_id):
-            return
+        last_vid = None
+        seed_title = last_song.get("title", "")
+        yt_link = last_song.get("yt_link", "")
 
-        seed_url = last_song.get("yt_link") or ""
-        seed_title = last_song.get("title") or "Last Track"
-        seed_vid = extract_video_id(seed_url) if seed_url else None
-        lookup_seed = seed_vid or seed_url or seed_title
+        if yt_link:
+            last_vid = extract_video_id(yt_link)
+        if not last_vid and last_song.get("video_id"):
+            last_vid = last_song.get("video_id")
 
-        # Exclude recently played songs and queued songs to avoid loops (A -> B -> A)
-        exclude_ids = set(state.get_history_ids(chat_id))
-        if seed_vid:
-            exclude_ids.add(seed_vid)
-            state.add_to_history(chat_id, seed_vid)
-        for q in state.queues.get(chat_id, []):
-            q_url = q.get("yt_link") or ""
-            q_vid = extract_video_id(q_url) if q_url else None
-            if q_vid:
-                exclude_ids.add(q_vid)
-
-        # Delete previous now-playing message when entering suggestion mode
-        await state.delete_now_playing(chat_id)
-
-        suggestions = await get_related_suggestions(lookup_seed, limit=5, exclude_ids=exclude_ids)
-
-        if not suggestions:
-            logger.info(f"[Suggest] No recommendations found for chat {chat_id}, leaving call.")
+        if not last_vid:
+            logger.info(f"[Suggest] No video_id extractable for chat {chat_id} from {yt_link}; leaving call.")
             await state.delete_now_playing(chat_id)
             await client.leave_call(chat_id)
             await remove_active_chat(chat_id)
             return
+
+        exclude_ids = state.get_history_ids(chat_id)
+        exclude_ids.add(last_vid)
+
+        suggestions = await get_related_suggestions(last_vid, exclude_ids=exclude_ids, limit=5)
+
+        if not suggestions:
+            logger.info(f"[Suggest] No related suggestions found for {last_vid} in chat {chat_id}; leaving call.")
+            await state.delete_now_playing(chat_id)
+            await client.leave_call(chat_id)
+            await remove_active_chat(chat_id)
+            return
+
+        for s in suggestions:
+            vid = s.get("video_id")
+            if vid:
+                state.add_to_history(chat_id, vid)
 
         lines = []
         for idx, item in enumerate(suggestions[:5], 1):
@@ -907,6 +1024,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
 
                 by_user = "AUTO"
                 chat_obj = last_song.get("chat") or getattr(sent_msg, 'chat', None)
+                ast_num = state.get_chat_assistant(chat_id) or 1
                 await join_call(
                     sent_msg,
                     top_title,
@@ -918,6 +1036,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                     None,
                     stream_url=None,
                     yt_task=yt_task,
+                    assistant_num=ast_num,
                 )
             except asyncio.CancelledError:
                 pass
@@ -941,47 +1060,48 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
 
 
 async def end(client, update):
-    db_task(collection.update_one(
-        {"bot_id": clients["bot"].me.id},
-        {"$push": {'dates': {"$each": [datetime.datetime.now()], "$slice": -5000}}},
-        upsert=True
-    ))
+    if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None):
+        db_task(collection.update_one(
+            {"bot_id": clients["bot"].me.id},
+            {"$push": {'dates': {"$each": [datetime.datetime.now()], "$slice": -5000}}},
+            upsert=True
+        ))
     try:
         chat_id = update.chat_id
-        state.cancel_suggest(chat_id)
+        async with state.lock(chat_id):
+            state.cancel_suggest(chat_id)
 
-        if chat_id in state.queues and state.queues[chat_id]:
-            next_song = state.queues[chat_id].pop(0)
-            if chat_id in state.playing:
-                if update.stream_type == StreamEnded.Type.VIDEO:
-                    await client.leave_call(chat_id)
-            state.playing[chat_id] = next_song
-            state.last_played[chat_id] = next_song
-            await join_call(
-                next_song['message'],
-                next_song['title'],
-                next_song['yt_link'],
-                next_song['chat'],
-                next_song['by'],
-                next_song['duration'],
-                next_song['mode'],
-                next_song['thumb'],
-                next_song.get('stream_url'),
-                yt_task=next_song.get('_yt_task'),
-                queue_msg=next_song.get('queue_msg'),
-            )
-        else:
-            logger.info(f"Song queue for chat {chat_id} is empty.")
-            last_song = state.playing.pop(chat_id, None) or state.last_played.get(chat_id)
-            if last_song:
-                state.last_played[chat_id] = last_song
-
-            if last_song:
-                asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+            if chat_id in state.queues and state.queues[chat_id]:
+                next_song = state.queues[chat_id].pop(0)
+                state.playing[chat_id] = next_song
+                state.last_played[chat_id] = next_song
+                ast_num = state.get_chat_assistant(chat_id) or 1
+                await join_call(
+                    next_song['message'],
+                    next_song['title'],
+                    next_song['yt_link'],
+                    next_song['chat'],
+                    next_song['by'],
+                    next_song['duration'],
+                    next_song['mode'],
+                    next_song['thumb'],
+                    next_song.get('stream_url'),
+                    yt_task=next_song.get('_yt_task'),
+                    queue_msg=next_song.get('queue_msg'),
+                    assistant_num=ast_num,
+                )
             else:
-                await state.delete_now_playing(chat_id)
-                await client.leave_call(chat_id)
-                await remove_active_chat(chat_id)
+                logger.info(f"Song queue for chat {chat_id} is empty.")
+                last_song = state.playing.pop(chat_id, None) or state.last_played.get(chat_id)
+                if last_song:
+                    state.last_played[chat_id] = last_song
+
+                if last_song:
+                    asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+                else:
+                    await state.delete_now_playing(chat_id)
+                    await client.leave_call(chat_id)
+                    await remove_active_chat(chat_id)
     except Exception as e:
         logger.warning(f"Error in end function: {e}")
 

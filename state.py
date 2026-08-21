@@ -24,6 +24,8 @@ class SessionStore:
         self.autoplay_settings = {}  # chat_id -> bool (autoplay preference, default True)
         self.now_playing_msgs = {}   # chat_id -> Message (active now-playing message)
         self.history = defaultdict(lambda: deque(maxlen=50))  # chat_id -> deque of recent video_ids
+        self.chat_assistants = {}    # chat_id -> int (assigned assistant index 1..5)
+        self.assistant_active = defaultdict(set)  # assistant_num -> set of active chat_ids
         # ponytail: one lock per chat_id, created on demand and never reaped;
         # locks are tiny, and a bot serving even 100k chats is well within budget.
         self._locks = defaultdict(asyncio.Lock)
@@ -82,13 +84,37 @@ class SessionStore:
         """Return set of recently played/suggested video IDs for chat_id."""
         return set(self.history.get(chat_id, []))
 
-    async def activate(self, chat_id):
+    def set_chat_assistant(self, chat_id: int, assistant_num: int):
+        """Record the active assistant index in memory for chat_id."""
+        self.chat_assistants[int(chat_id)] = int(assistant_num)
+
+    def get_chat_assistant(self, chat_id: int) -> int | None:
+        """Retrieve the in-memory assigned assistant index for chat_id."""
+        return self.chat_assistants.get(int(chat_id))
+
+    def remove_chat_assistant(self, chat_id: int):
+        """Remove the in-memory assistant assignment for chat_id."""
+        self.chat_assistants.pop(int(chat_id), None)
+
+    async def activate(self, chat_id: int, assistant_num: int | None = None):
         """Atomically mark a chat active. Returns True iff it was NOT already active
         (i.e. this caller is the one that should start playback, not enqueue)."""
         async with self.lock(chat_id):
             was_active = chat_id in self.active
             self.active.add(chat_id)
+            if assistant_num is not None:
+                for ast_idx, ast_set in self.assistant_active.items():
+                    if ast_idx != int(assistant_num):
+                        ast_set.discard(chat_id)
+                self.assistant_active[int(assistant_num)].add(chat_id)
             return not was_active
+
+    async def deactivate(self, chat_id: int):
+        """Remove a chat from active calls across all assistants."""
+        async with self.lock(chat_id):
+            self.active.discard(chat_id)
+            for ast_set in self.assistant_active.values():
+                ast_set.discard(chat_id)
 
     async def pop_track(self, chat_id, track_id):
         """Remove and return the queued entry with this _track_id, or None if it
@@ -101,5 +127,5 @@ class SessionStore:
         return None
 
 
-
 state = SessionStore()
+
