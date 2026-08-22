@@ -95,7 +95,7 @@ async def pingme(client, message):
         f"Sonic boom! {EmojiTag.ROCKET}",
     ]
 
-    owner_line = None if owner is None else owner.mention()
+    owner_line = None if owner is None else rich_esc(owner.first_name)
     response = (
         rich_heading(f"{EmojiTag.PING} ᴘᴏɴɢ!", 1)
         + rich_kv_table([

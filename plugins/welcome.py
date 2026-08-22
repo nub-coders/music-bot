@@ -198,7 +198,9 @@ async def set_welcome_handler(client, message):
                 if not logo and client.me.photo:
                     photos = await client.get_profile_photos("me")
                     if photos:
-                        logo = await client.download_media(photos[0].file_id, logo_path_jpg)
+                        photo_id = getattr(photos[0], "big_file_id", getattr(photos[0], "file_id", None))
+                        if photo_id:
+                            logo = await client.download_media(photo_id, logo_path_jpg)
                 if not logo:
                     logo = "music.jpg"
 

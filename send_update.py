@@ -15,33 +15,15 @@ from utils.emoji import EmojiTag
 from config import API_ID, API_HASH, BOT_TOKEN as CONFIG_BOT_TOKEN
 
 
-MESSAGE_TEMPLATE = f"""<u><b>{EmojiTag.ROCKET} | ᴄʜᴀɴɢᴇs sɪɴᴄᴇ 2ᴄᴇ88ꜰ5</b></u>
+MESSAGE_TEMPLATE = f"""<u><b>{EmojiTag.ROCKET} | ʀɪᴄʜ ᴜɪ ᴜᴘᴅᴀᴛᴇ</b></u>
 
-<b>{EmojiTag.ROCKET} ɴᴇᴡ ꜰᴇᴀᴛᴜʀᴇs:</b>
-• <b>Hybrid Autoplay & Suggestions:</b> Suggests 5 related tracks via YouTube Music Radio Mix when queue ends, with a 5s countdown timer & <code>/autoplay</code> toggle.
-• <b>Direct Stream URLs:</b> Direct HTTP/HTTPS audio/video and HLS/m3u8 stream links can now be played directly.
-• <b>Custom Emoji System:</b> Added Telegram custom emoji styling across all bot messages and buttons.
+<b>{EmojiTag.SPARKLE_STAR} ᴡʜᴀᴛ's ɴᴇᴡ:</b>
+• Stats, queues and settings now render as clean <b>tables</b>.
+• Long help pages fold into <b>collapsible sections</b>.
+• Inline buttons are <b>colour-styled</b>, and confirmations reply <b>privately</b>.
+• Fixed <b>premium custom emoji</b> showing up as plain emoji.
 
-<b>{EmojiTag.SPARKLE_STAR} ɪᴍᴘʀᴏᴠᴇᴍᴇɴᴛs:</b>
-• <b>Non-Blocking Now-Playing Cards:</b> Instant playback notification with async photo card swap and deterministic caching per track.
-• <b>Queue Visuals:</b> Generates a sleek dark-gradient queue card image with Poppins font.
-• <b>Admin Controls:</b> Autoplay settings & suggestion cards restricted to admins/auth users.
-
-<b>{EmojiTag.WARNING} ʙᴜɢ ꜰɪxᴇs:</b>
-• <b>Skip Permission Bypass:</b> Restricted "Play Now" queue button and <code>/play -f</code> to admins or song owner.
-• <b>Telegram Entity Fixes:</b> HTML-escaped song titles and fixed custom emoji rendering for tens queue positions.
-• <b>Duration Display:</b> Fixed InnerTube duration formatting (e.g. <code>0:213</code>).
-
-<b>{EmojiTag.BOLT} ᴘᴇʀꜰᴏʀᴍᴀɴᴄᴇ:</b>
-• <b>Faster Playback Latency:</b> Prioritized InnerTube stream resolution over yt-dlp (~3.2s → ~800ms).
-• <b>Connection Pooling:</b> Reused persistent HTTP/2 <code>httpx</code> and <code>aiohttp</code> sessions across requests.
-• <b>Background Tasks:</b> Offloaded message deletions to background tasks.
-
-<b>{EmojiTag.TOOLS} ᴏᴛʜᴇʀ ᴄʜᴀɴɢᴇs:</b>
-• Added <code>httpx[http2]</code> to dependencies and removed deprecated <code>mode</code> parameter from <code>/info</code>.
-
-<b>{EmojiTag.INFO} sᴜᴍᴍᴀʀʏ:</b>
-<blockquote>Since commit <code>2ce88f5</code>, the bot gained a smart YouTube Music autoplay system, direct stream URL support, and Telegram custom emojis. Latency was drastically cut via InnerTube priority and HTTP/2 pooling, alongside key bug fixes for Telegram markup and skip permission checks.</blockquote>
+<blockquote>Same commands, cleaner output — a full interface refresh built on Bot API 10.2.</blockquote>
 
 {EmojiTag.REPO} <b>ɢɪᴛʜᴜʙ:</b> <a href="https://github.com/nub-coders/nub-music-bot">nub-coders/nub-music-bot</a>
 {EmojiTag.USER} <b>ʙᴏᴛ:</b> @nub_MusicBot"""

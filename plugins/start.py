@@ -178,7 +178,7 @@ async def user_client_start_handler(client, message):
     try:
        _photu = None
        async for photo in client.get_chat_photos(client.me.id):
-           _photu = photo.file_id
+           _photu = getattr(photo, "big_file_id", getattr(photo, "file_id", None))
 
        # First try to get logo from user_dir
        logo_path_jpg = f"{user_dir}/logo.jpg"
