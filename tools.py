@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 from utils.message import Messages
 from utils.button import Buttons
+from utils.emoji import keycaps
+from utils.rich_ui import (
+    rich_caption, rich_code, rich_edit, rich_esc, rich_note, rich_send, rich_table,
+)
 from thumbnails import get_thumb
 
 
@@ -364,11 +368,11 @@ async def autoleave_vc(chat_id: int) -> bool:
             bot = clients.get("bot")
             if bot:
                 try:
-                    await bot.send_message(
+                    await rich_send(
+                        bot,
                         chat_id,
-                        Messages.AUTO_LEAVE_EMPTY,
+                        rich_note(Messages.AUTO_LEAVE_EMPTY),
                         reply_markup=Buttons.autoleave_markup(),
-                        link_preview_options=None,
                     )
                 except Exception:
                     pass
@@ -391,7 +395,7 @@ async def _swap_in_photo(thumb_task, ui_chat_id, chat_id, text, keyboard, text_m
     if not path:
         return
     try:
-        photo_msg = await clients["bot"].send_photo(ui_chat_id, path, text, reply_markup=keyboard)
+        photo_msg = await clients["bot"].send_photo(ui_chat_id, path, rich_caption(text), reply_markup=keyboard)
     except Exception as e:
         logger.warning(f"[_swap_in_photo] send_photo failed, keeping text: {e}")
         return
@@ -847,7 +851,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         if not stream_source:
             logger.error(f"[join_call] No stream source provided (neither stream_url nor youtube_link) for chat {chat_id}")
             if "bot" in clients and clients["bot"]:
-                await clients["bot"].send_message(chat.id, Messages.ERROR_STREAM, link_preview_options=None)
+                await rich_send(clients["bot"], chat.id, rich_note(Messages.ERROR_STREAM))
             return await remove_active_chat(chat_id)
 
         # Resolve the active assistant and PyTgCalls instance
@@ -947,16 +951,17 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             try:
                 path = thumb.result()
                 if path and os.path.exists(path):
+                    # Captions can't be rich; `text` is inline-tag only already.
                     sent_message = await clients["bot"].send_photo(
-                        ui_chat_id, path, caption=text, reply_markup=keyboard,
+                        ui_chat_id, path, caption=rich_caption(text), reply_markup=keyboard,
                     )
             except Exception as e:
                 logger.warning(f"[join_call] Cached photo send failed, falling back to text: {e}")
                 sent_message = None
 
         if not sent_message and "bot" in clients and clients["bot"]:
-            sent_message = await clients["bot"].send_message(
-                ui_chat_id, text, reply_markup=keyboard, link_preview_options=None
+            sent_message = await rich_send(
+                clients["bot"], ui_chat_id, text, reply_markup=keyboard
             )
 
         if sent_message:
@@ -983,7 +988,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.warning(f"[join_call] No active voice chat in {chat_id}. Cleaning up.")
         await remove_active_chat(chat_id)
         if "bot" in clients and clients["bot"]:
-            await clients["bot"].send_message(ui_chat_id, Messages.NO_ACTIVE_VC, link_preview_options=None)
+            await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.NO_ACTIVE_VC))
     except Exception as e:
         logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
         # play() is the first thing that actually exercises membership, so this is
@@ -995,15 +1000,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         err_str = str(e).lower()
         if "bot" in clients and clients["bot"]:
             if "chat_admin_required" in err_str or "admin" in err_str:
-                await clients["bot"].send_message(
-                    ui_chat_id,
-                    Messages.NEED_INVITE_PERMISSION,
-                    link_preview_options=None,
-                )
+                await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.NEED_INVITE_PERMISSION))
             elif "user_already_participant" in err_str:
                 logger.info(f"[join_call] Assistant was already in call for chat {chat_id}")
             else:
-                await clients["bot"].send_message(ui_chat_id, Messages.ERROR_OCCURRED, link_preview_options=None)
+                await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.ERROR_OCCURRED))
 
 
 async def _trigger_suggestions(client, chat_id: int, last_song: dict):
@@ -1051,11 +1052,15 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             s_title = trim_title(item.get("title", "Unknown"))
             s_artist = item.get("artist", "")
             s_dur = item.get("duration", "")
-            if s_artist:
-                lines.append(f"{idx}️⃣ <b>{s_title}</b> — <i>{s_artist}</i> <code>[{s_dur}]</code>")
-            else:
-                lines.append(f"{idx}️⃣ <b>{s_title}</b> <code>[{s_dur}]</code>")
-        items_text = "\n".join(lines)
+            lines.append((
+                keycaps(idx),
+                f"<b>{rich_esc(s_title)}</b>",
+                f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
+                rich_code(s_dur) if s_dur else "",
+            ))
+        # Native table replaces the old newline-joined bullet list; it fills the
+        # same `{1}` slot of the SUGGESTION_CARD constants.
+        items_text = rich_table(["#", "ᴛɪᴛʟᴇ", "ᴀʀᴛɪsᴛ", "ʟᴇɴɢᴛʜ"], lines)
 
         countdown_sec = 5
         display_seed = trim_title(seed_title)
@@ -1075,11 +1080,11 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             await remove_active_chat(chat_id)
             return
 
-        sent_msg = await bot.send_message(
+        sent_msg = await rich_send(
+            bot,
             chat_id,
             card_text,
             reply_markup=keyboard,
-            link_preview_options=None,
         )
 
         if not autoplay_enabled:
@@ -1102,9 +1107,11 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                     state.add_to_history(chat_id, top_vid)
 
                 try:
-                    await sent_msg.edit_text(
-                        Messages.AUTOPLAYING_TITLE.format(trim_title(top_title)),
+                    await rich_edit(
+                        sent_msg,
+                        rich_note(Messages.AUTOPLAYING_TITLE.format(trim_title(top_title))),
                         reply_markup=None,
+                        client=bot,
                     )
                 except Exception:
                     pass

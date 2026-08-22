@@ -10,25 +10,36 @@ async def set_welcome_handler(client, message):
     user_dir = f"{ggg}/{session_name}"
     try:
         if not sender_id == OWNER_ID:
-           return await message.reply_text(Messages.BOT_OWNER_ONLY, link_preview_options=None)
+           return await rich_reply(message, rich_note(Messages.BOT_OWNER_ONLY), ephemeral=True, client=client)
 
         replied_msg = message.reply_to_message
         if not replied_msg:
+            # Private-chat command: ephemeral delivery is group-only, so this
+            # stays a normal (rich) reply.
             usage_text = (
-                f"<b>{EmojiTag.INFO} ᴘʟᴇᴀsᴇ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ sᴇᴛ ɪᴛ ᴀs ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ.</b>\n\n"
-                "<b>You can set:</b>\n"
-                "• Text message\n"
-                "• Media (photo/video/gif/sticker)\n"
-                "• Media with caption\n\n"
-                "<b>Available placeholders:</b>\n"
-                "• <code>{name}</code> - User's name\n"
-                "• <code>{id}</code> - User's ID\n"
-                "• <code>{botname}</code> - Bot's username\n\n"
-                "<b>Size limits:</b>\n"
-                "• Text: Maximum 4096 characters\n"
-                "• Media: Maximum 5MB"
+                rich_heading(f"{EmojiTag.INFO} sᴇᴛ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ", 1)
+                + rich_note("<b>ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ sᴇᴛ ɪᴛ ᴀs ᴛʜᴇ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ.</b>")
+                + rich_table(
+                    ["ᴘʟᴀᴄᴇʜᴏʟᴅᴇʀ", "ʀᴇᴘʟᴀᴄᴇᴅ ᴡɪᴛʜ"],
+                    [
+                        (rich_code("{name}"), "ᴜsᴇʀ's ɴᴀᴍᴇ"),
+                        (rich_code("{id}"), "ᴜsᴇʀ's ɪᴅ"),
+                        (rich_code("{botname}"), "ʙᴏᴛ's ᴜsᴇʀɴᴀᴍᴇ"),
+                    ],
+                )
+                + rich_details(
+                    f"{EmojiTag.HELP} sᴜᴘᴘᴏʀᴛᴇᴅ ᴛʏᴘᴇs &amp; ʟɪᴍɪᴛs",
+                    rich_table(
+                        ["ᴛʏᴘᴇ", "ʟɪᴍɪᴛ"],
+                        [
+                            ("Text message", rich_code("4096 chars")),
+                            ("Photo / video / gif / sticker", rich_code("5 MB")),
+                            ("Media with caption", rich_code("5 MB")),
+                        ],
+                    ),
+                )
             )
-            return await message.reply_text(usage_text, link_preview_options=None)
+            return await rich_reply(message, usage_text, client=client)
 
         updates = []
 
@@ -36,7 +47,7 @@ async def set_welcome_handler(client, message):
         if replied_msg.text or replied_msg.caption:
             welcome_text = (replied_msg.text or replied_msg.caption).strip()
             if len(welcome_text) > 4096:
-                return await message.reply_text(Messages.WELCOME_TOO_LONG, link_preview_options=None)
+                return await rich_reply(message, rich_note(Messages.WELCOME_TOO_LONG), ephemeral=True, client=client)
 
             entities = sorted(
                 (replied_msg.entities or replied_msg.caption_entities or []),
@@ -95,15 +106,25 @@ async def set_welcome_handler(client, message):
                                   if f"{{{p}}}" not in ALLOWED_PLACEHOLDERS]
 
             if invalid_placeholders:
-                error_msg = "❌ Invalid placeholders found:\n"
-                error_msg += "\n".join(f"• {p}" for p in invalid_placeholders)
-                error_msg += "\n\nAllowed placeholders:\n"
-                error_msg += "\n".join(f"• {p}" for p in sorted(ALLOWED_PLACEHOLDERS))
-                error_msg += "\n\nExample usage:\n"
-                error_msg += "• Welcome {name}!\n"
-                error_msg += "• Your ID: {id}\n"
-                error_msg += "• Welcome to {botname}!"
-                return await message.reply_text(error_msg, link_preview_options=None)
+                error_msg = (
+                    rich_heading(f"{EmojiTag.ERROR} ɪɴᴠᴀʟɪᴅ ᴘʟᴀᴄᴇʜᴏʟᴅᴇʀs", 1)
+                    + rich_table(
+                        ["꩖ᴏᴜɴᴅ", "sᴛᴀᴛᴜs"],
+                        [(rich_code(p), f"{EmojiTag.ERROR} not allowed") for p in invalid_placeholders],
+                    )
+                    + rich_details(
+                        f"{EmojiTag.INFO} ᴀʟʟᴏᴡᴇᴅ ᴘʟᴀᴄᴇʜᴏʟᴅᴇʀs &amp; ᴇxᴀᴍᴘʟᴇs",
+                        rich_table(
+                            ["ᴘʟᴀᴄᴇʜᴏʟᴅᴇʀ", "ᴇxᴀᴍᴘʟᴇ"],
+                            [
+                                (rich_code("{name}"), rich_code("Welcome {name}!")),
+                                (rich_code("{id}"), rich_code("Your ID: {id}")),
+                                (rich_code("{botname}"), rich_code("Welcome to {botname}!")),
+                            ],
+                        ),
+                    )
+                )
+                return await rich_reply(message, error_msg, ephemeral=True, client=client)
 
             set_user_data(client.me.id, "WELCOME", processed_text)
             updates.append("welcome message")
@@ -115,12 +136,12 @@ async def set_welcome_handler(client, message):
                 # Check if media type is allowed
                 if not (replied_msg.photo or replied_msg.video or
                        replied_msg.sticker or replied_msg.animation):
-                    return await message.reply_text(Messages.ONLY_MEDIA_ALLOWED, link_preview_options=None)
+                    return await rich_reply(message, rich_note(Messages.ONLY_MEDIA_ALLOWED), ephemeral=True, client=client)
 
                 # Check file size (5MB = 5 * 1024 * 1024 bytes)
                 file_size = getattr(replied_msg, 'file_size', 0)
                 if file_size > 5242880:  # 5MB in bytes
-                    return await message.reply_text(Messages.MEDIA_SIZE_EXCEED, link_preview_options=None)
+                    return await rich_reply(message, rich_note(Messages.MEDIA_SIZE_EXCEED), ephemeral=True, client=client)
 
                 # First try to save to user_dir
                 logo_path_jpg = f"{user_dir}/logo.jpg"
@@ -146,14 +167,19 @@ async def set_welcome_handler(client, message):
                 logger.error(f"[setwelcome] Media processing failed: {e}")
                 if m_d and os.path.exists(m_d):
                     os.remove(m_d)
-                return await message.reply_text(Messages.ERROR_MEDIA_PROCESS, link_preview_options=None)
+                return await rich_reply(message, rich_note(Messages.ERROR_MEDIA_PROCESS), ephemeral=True, client=client)
 
         if not updates:
-            return await message.reply_text(Messages.NOTHING_TO_UPDATE, link_preview_options=None)
+            return await rich_reply(message, rich_note(Messages.NOTHING_TO_UPDATE), ephemeral=True, client=client)
 
         # Send confirmation and preview
-        success_msg = f"✅ Updated {' and '.join(updates)}!"
-        await client.send_message(message.chat.id, success_msg + "\n\nPreview:", link_preview_options=None)
+        await rich_reply(
+            message,
+            rich_heading(f"{EmojiTag.SUCCESS} ᴜᴘᴅᴀᴛᴇᴅ", 2)
+            + rich_table(["ᴜᴘᴅᴀᴛᴇᴅ"], [(rich_esc(u),) for u in updates])
+            + rich_note(f"{EmojiTag.INFO} <b>ᴘʀᴇᴠɪᴇᴡ ʙᴇʟᴏᴡ</b>"),
+            client=client,
+        )
 
         # Show preview
         try:
@@ -215,17 +241,21 @@ async def set_welcome_handler(client, message):
                     welcome_text,
                 link_preview_options=None)
     except Exception as e:
-        error_msg = f"❌ Error: `{str(e)}`"
         logger.info(f"Error for user {message.from_user.id}: {str(e)}")
-        return await message.reply_text(error_msg, link_preview_options=None)
+        return await rich_reply(
+            message,
+            rich_note(f"{EmojiTag.ERROR} <b>Error:</b> {rich_code(e)}"),
+            ephemeral=True,
+            client=client,
+        )
 
 
 @Client.on_message(filters.command(["resetwelcome", "rwelcome"]))
 async def resetwelcome(client: Client, message: Message):
     sender_id = message.from_user.id
     if not sender_id == OWNER_ID:
-        return await message.reply_text(Messages.BOT_OWNER_ONLY, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.BOT_OWNER_ONLY), ephemeral=True, client=client)
 
     set_user_data(client.me.id, "WELCOME", None)
     set_user_data(client.me.id, "LOGO", None)
-    await message.reply_text(Messages.WELCOME_RESET, link_preview_options=None)
+    await rich_reply(message, rich_note(Messages.WELCOME_RESET), ephemeral=True, client=client)

@@ -4,6 +4,16 @@ import uuid
 from plugins._common import *  # noqa: F401,F403
 
 
+def _transport_card(headline: str, pairs) -> str:
+    """Public state-change announcement: the existing headline + a detail table.
+
+    Mirrors ``_auth_card`` in ``admin_auth.py`` — the ``Messages.*`` constant is
+    passed through verbatim, the table only adds context. Used by the transport
+    commands whose effect the whole chat hears anyway, so these stay public.
+    """
+    return headline + rich_kv_table(pairs)
+
+
 async def _resolve_ctrl_chat_id(client, update, is_channel: bool) -> int:
     """Resolve target chat id for playback controls, mapping group -> linked channel if channel_mode."""
     chat = update.message.chat if isinstance(update, CallbackQuery) else update.chat
@@ -35,27 +45,30 @@ async def seek_handler_func(client, message):
         # Get seek value from command
         command_parts = message.text.split()
         if len(command_parts) != 2:
-            await client.send_message(
-                message.chat.id,
-                Messages.SEEK_NO_ARGS,
-                link_preview_options=None,
+            await rich_reply(
+                message,
+                rich_note(Messages.SEEK_NO_ARGS),
+                ephemeral=True,
+                client=client,
             )
             return
 
         try:
             seek_value = int(command_parts[1])
             if seek_value < 0:
-                await client.send_message(
-                    message.chat.id,
-                    Messages.SEEK_NEGATIVE,
-                    link_preview_options=None,
+                await rich_reply(
+                    message,
+                    rich_note(Messages.SEEK_NEGATIVE),
+                    ephemeral=True,
+                    client=client,
                 )
                 return
         except ValueError:
-            await client.send_message(
-                message.chat.id,
-                Messages.SEEK_INVALID,
-                link_preview_options=None,
+            await rich_reply(
+                message,
+                rich_note(Messages.SEEK_INVALID),
+                ephemeral=True,
+                client=client,
             )
             return
 
@@ -78,10 +91,11 @@ async def seek_handler_func(client, message):
 
             # Check if bot is actually streaming by fetching elapsed time
             if chat_id not in state.played:
-                await client.send_message(
-                    message.chat.id,
-                    Messages.ASSISTANT_NOT_STREAMING,
-                    link_preview_options=None,
+                await rich_reply(
+                    message,
+                    rich_note(Messages.ASSISTANT_NOT_STREAMING),
+                    ephemeral=True,
+                    client=client,
                 )
                 return
 
@@ -91,10 +105,11 @@ async def seek_handler_func(client, message):
             is_forward = message.command[0].lower() in ("seek", "cseek")
             if is_forward:
                 if duration_seconds <= 0:
-                    await client.send_message(
-                        message.chat.id,
-                        Messages.SEEK_BEYOND_REMAINING,
-                        link_preview_options=None,
+                    await rich_reply(
+                        message,
+                        rich_note(Messages.SEEK_BEYOND_REMAINING),
+                        ephemeral=True,
+                        client=client,
                     )
                     return
                 limit = duration_seconds - played_in_seconds
@@ -104,8 +119,11 @@ async def seek_handler_func(client, message):
                 error_msg = Messages.SEEK_BEYOND_PLAYED
 
             if seek_value > limit:
-                await client.send_message(
-                    message.chat.id, error_msg, link_preview_options=None
+                await rich_reply(
+                    message,
+                    rich_note(error_msg),
+                    ephemeral=True,
+                    client=client,
                 )
                 return
 
@@ -133,10 +151,11 @@ async def seek_handler_func(client, message):
 
             active_cp = get_call_client(chat_id) or clients.get("call_py")
             if not active_cp:
-                await client.send_message(
-                    message.chat.id,
-                    Messages.NO_STREAM,
-                    link_preview_options=None,
+                await rich_reply(
+                    message,
+                    rich_note(Messages.NO_STREAM),
+                    ephemeral=True,
+                    client=client,
                 )
                 return
 
@@ -158,23 +177,33 @@ async def seek_handler_func(client, message):
             else:  # seekback
                 state.played[chat_id] += seek_value
 
-            await client.send_message(
-                message.chat.id,
-                Messages.SEEKED.format(to_seek, message.from_user.mention()),
-                link_preview_options=None,
+            # Public: everyone in the chat hears the jump, so everyone sees why.
+            await rich_reply(
+                message,
+                _transport_card(
+                    Messages.SEEKED.format(to_seek, message.from_user.mention()),
+                    [
+                        (f"{EmojiTag.MUSIC_NOTE} ᴛʀᴀᴄᴋ", rich_esc(trim_title(str(current_song.get('title', 'N/A'))))),
+                        (f"{EmojiTag.PLAY} ᴘᴏsɪᴛɪᴏɴ", rich_code(to_seek)),
+                        (f"{EmojiTag.INFO} ᴅᴜʀᴀᴛɪᴏɴ", rich_code(duration_str)),
+                    ],
+                ),
+                client=client,
             )
         else:
-            await client.send_message(
-                message.chat.id,
-                Messages.ASSISTANT_NOT_STREAMING,
-                link_preview_options=None,
+            await rich_reply(
+                message,
+                rich_note(Messages.ASSISTANT_NOT_STREAMING),
+                ephemeral=True,
+                client=client,
             )
     except Exception as e:
         logger.error(f"[seek] Error: {e}")
-        await client.send_message(
-            message.chat.id,
-            Messages.ERROR_OCCURRED,
-            link_preview_options=None,
+        await rich_reply(
+            message,
+            rich_note(Messages.ERROR_OCCURRED),
+            ephemeral=True,
+            client=client,
         )
 
 
@@ -206,7 +235,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             state.playing.pop(chat_id, None)
             await state.delete_now_playing(chat_id)
             try:
-                await callback_query.message.edit_text(Messages.STREAM_ENDED, reply_markup=None)
+                await rich_edit(callback_query, rich_note(Messages.STREAM_ENDED), reply_markup=None)
             except Exception:
                 pass
 
@@ -223,7 +252,7 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             state.playing.pop(chat_id, None)
             await state.delete_now_playing(chat_id)
             try:
-                await callback_query.message.edit_text(Messages.NO_STREAM, reply_markup=None)
+                await rich_edit(callback_query, rich_note(Messages.NO_STREAM), reply_markup=None)
             except Exception:
                 pass
 
@@ -258,17 +287,17 @@ async def end_handler_func(client, message):
    if is_active:
         await remove_active_chat(client, chat_id)
         state.queues.pop(chat_id, None)
-        await client.send_message(
-            message.chat.id,
-            Messages.QUEUE_CLEARED_STOPPED.format(message.from_user.mention()),
-            link_preview_options=None,
+        await rich_reply(
+            message,
+            rich_note(Messages.QUEUE_CLEARED_STOPPED.format(message.from_user.mention())),
+            client=client,
         )
         if active_cp:
             await active_cp.leave_call(chat_id)
         state.playing.pop(chat_id, None)
         await state.delete_now_playing(chat_id)
    else:
-        await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+        await rich_reply(message, rich_note(Messages.NO_STREAM), ephemeral=True, client=client)
         await remove_active_chat(client, chat_id)
         state.queues.pop(chat_id, None)
         if active_cp:
@@ -276,7 +305,7 @@ async def end_handler_func(client, message):
         state.playing.pop(chat_id, None)
         await state.delete_now_playing(chat_id)
   except NotInCallError:
-      await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+      await rich_reply(message, rich_note(Messages.NO_STREAM), ephemeral=True, client=client)
       state.playing.pop(chat_id, None)
       await state.delete_now_playing(chat_id)
 
@@ -333,7 +362,7 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
             await state.delete_now_playing(chat_id)
 
             try:
-                await callback_query.message.edit_text(Messages.QUEUE_EMPTY_STREAM_ENDED, reply_markup=None)
+                await rich_edit(callback_query, rich_note(Messages.QUEUE_EMPTY_STREAM_ENDED), reply_markup=None)
             except Exception:
                 pass
 
@@ -442,27 +471,30 @@ async def loop_handler_func(client, message):
         # Get loop count from command
         command_parts = message.text.split()
         if len(command_parts) != 2:
-            await client.send_message(
-                message.chat.id,
-                Messages.LOOP_NO_ARGS,
-                link_preview_options=None,
+            await rich_reply(
+                message,
+                rich_note(Messages.LOOP_NO_ARGS),
+                ephemeral=True,
+                client=client,
             )
             return
 
         try:
             loop_count = int(command_parts[1])
             if loop_count <= 0 or loop_count > 20:
-                await client.send_message(
-                    message.chat.id,
-                    Messages.LOOP_OUT_OF_BOUNDS,
-                    link_preview_options=None,
+                await rich_reply(
+                    message,
+                    rich_note(Messages.LOOP_OUT_OF_BOUNDS),
+                    ephemeral=True,
+                    client=client,
                 )
                 return
         except ValueError:
-            await client.send_message(
-                message.chat.id,
-                Messages.LOOP_INVALID,
-                link_preview_options=None,
+            await rich_reply(
+                message,
+                rich_note(Messages.LOOP_INVALID),
+                ephemeral=True,
+                client=client,
             )
             return
 
@@ -483,24 +515,35 @@ async def loop_handler_func(client, message):
                     entry.pop("queue_msg", None)
                     state.queues[chat_id].insert(0, entry)
 
-            await client.send_message(
-                message.chat.id,
-                Messages.SONG_LOOPED.format(loop_count, message.from_user.mention()),
-                link_preview_options=None,
+            # Public: a queued repeat changes what the whole chat will hear next.
+            await rich_reply(
+                message,
+                _transport_card(
+                    Messages.SONG_LOOPED.format(loop_count, message.from_user.mention()),
+                    [
+                        (f"{EmojiTag.MUSIC_NOTE} ᴛʀᴀᴄᴋ", rich_esc(trim_title(str(current_song.get('title', 'N/A'))))),
+                        (f"{EmojiTag.LOOP} ʀᴇᴘᴇᴀᴛs", rich_code(loop_count)),
+                        (f"{EmojiTag.QUEUE_ICON} ǫᴜᴇᴜᴇ ʟᴇɴɢᴛʜ", rich_code(len(state.queues.get(chat_id, [])))),
+                    ],
+                ),
+                client=client,
             )
         else:
-            await client.send_message(
-                message.chat.id,
-                Messages.ASSISTANT_NOT_STREAMING,
-                link_preview_options=None,
+            await rich_reply(
+                message,
+                rich_note(Messages.ASSISTANT_NOT_STREAMING),
+                ephemeral=True,
+                client=client,
             )
 
     except Exception as e:
         logger.error(f"[controls] Error: {e}")
-        await client.send_message(
-            message.chat.id,
-            Messages.ERROR_OCCURRED,
-        link_preview_options=None)
+        await rich_reply(
+            message,
+            rich_note(Messages.ERROR_OCCURRED),
+            ephemeral=True,
+            client=client,
+        )
 
 
 @Client.on_message(filters.command(["skip", "cskip"]))
@@ -519,7 +562,17 @@ async def skip_handler_func(client, message):
    active_cp = get_call_client(chat_id) or clients.get("call_py")
    if chat_id in state.queues and len(state.queues[chat_id]) > 0:
        next = state.queues[chat_id].pop(0)
-       await client.send_message(message.chat.id, Messages.SKIPPING.format(message.from_user.mention()), link_preview_options=None)
+       await rich_reply(
+           message,
+           _transport_card(
+               Messages.SKIPPING.format(message.from_user.mention()),
+               [
+                   (f"{EmojiTag.NEXT} ᴜᴘ ɴᴇxᴛ", rich_esc(trim_title(str(next.get('title', 'N/A'))))),
+                   (f"{EmojiTag.QUEUE_ICON} ʀᴇᴍᴀɪɴɪɴɢ", rich_code(len(state.queues.get(chat_id, [])))),
+               ],
+           ),
+           client=client,
+       )
        state.playing[chat_id] = next
        try:
           if active_cp:
@@ -547,9 +600,13 @@ async def skip_handler_func(client, message):
         state.queues.pop(chat_id, None)
         state.playing.pop(chat_id, None)
         await state.delete_now_playing(chat_id)
-        await client.send_message(message.chat.id, Messages.SKIPPED_EMPTY.format(message.from_user.mention()), link_preview_options=None)
+        await rich_reply(
+            message,
+            rich_note(Messages.SKIPPED_EMPTY.format(message.from_user.mention())),
+            client=client,
+        )
   except NotInCallError:
-      await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+      await rich_reply(message, rich_note(Messages.NO_STREAM), ephemeral=True, client=client)
       state.playing.pop(chat_id, None)
       await state.delete_now_playing(chat_id)
 
@@ -613,11 +670,11 @@ async def resume_handler_func(client, message):
    if await is_active_chat(client, chat_id):
        if active_cp:
            await active_cp.resume(chat_id)
-       await client.send_message(message.chat.id, Messages.RESUMED.format(message.from_user.mention()), link_preview_options=None)
+       await rich_reply(message, rich_note(Messages.RESUMED.format(message.from_user.mention())), client=client)
    else:
-       await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+       await rich_reply(message, rich_note(Messages.NO_STREAM), ephemeral=True, client=client)
   except NotInCallError:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+     await rich_reply(message, rich_note(Messages.NO_STREAM), ephemeral=True, client=client)
 
 
 @Client.on_message(filters.command(["pause", "cpause"]))
@@ -633,12 +690,11 @@ async def pause_handler_func(client, message):
    if await is_active_chat(client, chat_id):
        if active_cp:
            await active_cp.pause(chat_id)
-       await client.send_message(message.chat.id, Messages.PAUSED.format(message.from_user.mention()),
-link_preview_options=None)
+       await rich_reply(message, rich_note(Messages.PAUSED.format(message.from_user.mention())), client=client)
    else:
-       await client.send_message(message.chat.id,  Messages.NO_STREAM, link_preview_options=None)
+       await rich_reply(message, rich_note(Messages.NO_STREAM), ephemeral=True, client=client)
   except NotInCallError:
-     await client.send_message(message.chat.id, Messages.NO_STREAM, link_preview_options=None)
+     await rich_reply(message, rich_note(Messages.NO_STREAM), ephemeral=True, client=client)
 
 
 # ── Suggestion & Autoplay Callbacks / Commands ───────────────────────────────
@@ -664,8 +720,9 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
     await callback_query.answer(Messages.STARTING_PLAYBACK, show_alert=False)
 
     try:
-        await callback_query.message.edit_text(
-            Messages.PLAYING_SUGGESTION.format(vid),
+        await rich_edit(
+            callback_query,
+            rich_note(Messages.PLAYING_SUGGESTION.format(vid)),
             reply_markup=None,
         )
     except Exception:
@@ -693,7 +750,8 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
         )
     except Exception as e:
         logger.error(f"[Suggest] Failed to play suggested track {vid}: {e}")
-        await callback_query.message.reply(Messages.ERROR_OCCURRED, link_preview_options=None)
+        # Ephemeral to the presser; degrades to a public reply exactly like before.
+        await rich_answer(callback_query, rich_note(Messages.ERROR_OCCURRED), client=client)
 
 
 @Client.on_callback_query(filters.regex(r"^sgstop$"))
@@ -721,8 +779,9 @@ async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery)
     await state.delete_now_playing(chat_id)
 
     try:
-        await callback_query.message.edit_text(
-            Messages.STREAM_ENDED,
+        await rich_edit(
+            callback_query,
+            rich_note(Messages.STREAM_ENDED),
             reply_markup=None,
         )
     except Exception:
@@ -763,6 +822,33 @@ async def suggestion_toggle_handler(client: Client, callback_query: CallbackQuer
         pass
 
 
+def _autoplay_panel(status_str: str) -> str:
+    """Autoplay settings card: status table + collapsible option reference.
+
+    ``status_str`` is the same pre-rendered ``<b>ᴇɴᴀʙʟᴇᴅ</b>``/``<b>ᴅɪsᴀʙʟᴇᴅ</b>``
+    value the ``Messages.AUTOPLAY_*`` constants already interpolate.
+    """
+    return (
+        rich_heading(f"{EmojiTag.SETTINGS} ᴀᴜᴛᴏᴘʟᴀʏ", 1)
+        + rich_kv_table([
+            (f"{EmojiTag.INFO} sᴛᴀᴛᴜs", status_str),
+            (f"{EmojiTag.SHIELD} ᴄᴀɴ sᴡɪᴛᴄʜ", "<i>ᴀᴅᴍɪɴs &amp; ᴀᴜᴛʜ ᴜsᴇʀs</i>"),
+        ])
+        + rich_details(
+            f"{EmojiTag.INFO} ᴏᴘᴛɪᴏɴs",
+            rich_table(
+                ["ᴄᴏᴍᴍᴀɴᴅ", "ᴇ꩖꩖ᴇᴄᴛ"],
+                [
+                    (rich_code("/autoplay"), "ᴛᴏɢɢʟᴇ ᴏɴ ⇄ ᴏ꩖꩖"),
+                    (rich_code("/autoplay on"), "ᴇɴᴀʙʟᴇ sᴜɢɢᴇsᴛᴇᴅ ᴛʀᴀᴄᴋs"),
+                    (rich_code("/autoplay off"), "sᴛᴏᴘ ᴀ꩖ᴛᴇʀ ᴛʜᴇ ǫᴜᴇᴜᴇ ᴇɴᴅs"),
+                    (rich_code("/autoplay status"), "sʜᴏᴡ ᴛʜɪs ᴄᴀʀᴅ ᴏɴʟʏ"),
+                ],
+            ),
+        )
+    )
+
+
 @Client.on_message(filters.command(["autoplay", "suggest"]))
 async def autoplay_command_handler(client: Client, message):
     """View or toggle autoplay status. Members can view; only admins and auth users can switch."""
@@ -780,34 +866,41 @@ async def autoplay_command_handler(client: Client, message):
     if len(parts) > 1:
         arg = parts[1].lower()
         if arg in ["status", "check", "info"]:
-            return await message.reply(
-                Messages.AUTOPLAY_STATUS.format(status_str),
-                link_preview_options=None,
+            return await rich_reply(
+                message,
+                _autoplay_panel(status_str),
+                client=client,
             )
 
         if not is_admin:
-            return await message.reply(
-                f"{Messages.ADMIN_RESTRICTED_CMD}\n\n{Messages.AUTOPLAY_STATUS.format(status_str)}",
-                link_preview_options=None,
+            return await rich_reply(
+                message,
+                rich_note(Messages.ADMIN_RESTRICTED_CMD) + _autoplay_panel(status_str),
+                ephemeral=True,
+                client=client,
             )
 
         if arg in ["on", "enable", "true", "1"]:
             state.set_autoplay(chat_id, True)
-            await message.reply(Messages.AUTOPLAY_ENABLED, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.AUTOPLAY_ENABLED), ephemeral=True, client=client)
         elif arg in ["off", "disable", "false", "0"]:
             state.set_autoplay(chat_id, False)
             state.cancel_suggest(chat_id)
-            await message.reply(Messages.AUTOPLAY_DISABLED, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.AUTOPLAY_DISABLED), ephemeral=True, client=client)
         else:
-            await message.reply(
-                Messages.AUTOPLAY_USAGE.format(status_str),
-                link_preview_options=None,
+            await rich_reply(
+                message,
+                rich_note(Messages.AUTOPLAY_USAGE.format(status_str)) + _autoplay_panel(status_str),
+                ephemeral=True,
+                client=client,
             )
     else:
         if not is_admin:
-            return await message.reply(
-                Messages.AUTOPLAY_ADMIN_ONLY_SWITCH.format(status_str),
-                link_preview_options=None,
+            return await rich_reply(
+                message,
+                rich_note(Messages.AUTOPLAY_ADMIN_ONLY_SWITCH.format(status_str)),
+                ephemeral=True,
+                client=client,
             )
 
         new_state = not current
@@ -815,7 +908,7 @@ async def autoplay_command_handler(client: Client, message):
         if not new_state:
             state.cancel_suggest(chat_id)
         if new_state:
-            await message.reply(Messages.AUTOPLAY_ENABLED, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.AUTOPLAY_ENABLED), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.AUTOPLAY_DISABLED, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.AUTOPLAY_DISABLED), ephemeral=True, client=client)
 

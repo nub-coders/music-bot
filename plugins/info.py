@@ -12,7 +12,7 @@ from random import choice
 
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.enums import ChatType
+from pyrogram.enums import ChatType, ButtonStyle
 
 from config import OWNER_ID, ggg, StartTime
 from tools import (
@@ -21,12 +21,50 @@ from tools import (
     get_assistant, set_assistant, change_assistant,
     get_call_client, get_assistant_count,
 )
-from utils.emoji import EmojiTag
+from utils.emoji import Emoji, EmojiTag
 from utils.message import Messages
 from utils.lang import get_str, get_lang, LANGUAGES, lang_list_text
+from utils.rich_ui import (
+    RichDraft, rich_code, rich_details, rich_edit, rich_esc, rich_heading,
+    rich_kv_table, rich_note, rich_reply, rich_table,
+)
 from database import user_sessions, collection
 
 logger = logging.getLogger(__name__)
+
+
+def _assistant_buttons(active_num):
+    """Assistant picker keyboard. Callback data is unchanged (``change_ast_<idx>``);
+    the selected entry is highlighted with SUCCESS, the rest stay neutral."""
+    buttons = []
+    row = []
+    for idx in sorted(assistants.keys()):
+        mark = "✓ " if idx == active_num else ""
+        row.append(InlineKeyboardButton(
+            f"{mark}Assistant {idx}",
+            callback_data=f"change_ast_{idx}",
+            style=ButtonStyle.SUCCESS if idx == active_num else ButtonStyle.DEFAULT,
+            icon_custom_emoji_id=Emoji.TICK if idx == active_num else Emoji.HEADPHONES,
+        ))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    return buttons
+
+
+def _assistant_panel(active_num, active_name) -> str:
+    """Shared assistant-settings card for the command and its callback."""
+    return (
+        rich_heading(f"{EmojiTag.SETTINGS} ɢʀᴏᴜᴘ ᴀssɪsᴛᴀɴᴛ sᴇᴛᴛɪɴɢs", 1)
+        + rich_kv_table([
+            (f"{EmojiTag.HEADPHONES} ᴀssɪsᴛᴀɴᴛ", rich_code(f"Assistant {active_num}")),
+            (f"{EmojiTag.USER} ɴᴀᴍᴇ", rich_esc(active_name)),
+            (f"{EmojiTag.STATS} ᴀᴠᴀɪʟᴀʙʟᴇ", rich_code(len(assistants))),
+        ])
+        + rich_note(f"{EmojiTag.INFO} <i>Select an assistant below to assign to this group.</i>")
+    )
 
 
 # ── /ping ──────────────────────────────────────────────────────────────────────
@@ -57,19 +95,19 @@ async def pingme(client, message):
         f"Sonic boom! {EmojiTag.ROCKET}",
     ]
 
-    owner_line = f"│ {EmojiTag.CROWN} <b>Owner:</b> {owner.mention()}\n" if owner else ""
+    owner_line = None if owner is None else owner.mention()
     response = (
-        f"╭──────────────────\n"
-        f"│   <b>PONG!</b> {EmojiTag.PING}\n"
-        f"├──────────────────\n"
-        f"│ {EmojiTag.BOLT} <b>Speed:</b> <code>{ms:.2f}ms</code>\n"
-        f"│ {EmojiTag.STATS} <b>Status:</b> {status}\n"
-        f"│ {EmojiTag.LOADING} <b>Uptime:</b> <code>{uptime}</code>\n"
-        f"{owner_line}"
-        f"│ {EmojiTag.HEADPHONES} <b>Assistants:</b> <code>{len(assistants)} Online</code>\n"
-        f"╰──────────────────"
+        rich_heading(f"{EmojiTag.PING} ᴘᴏɴɢ!", 1)
+        + rich_kv_table([
+            (f"{EmojiTag.BOLT} sᴘᴇᴇᴅ", rich_code(f"{ms:.2f}ms")),
+            (f"{EmojiTag.STATS} sᴛᴀᴛᴜs", status),
+            (f"{EmojiTag.LOADING} ᴜᴘᴛɪᴍᴇ", rich_code(uptime)),
+            (f"{EmojiTag.CROWN} ᴏᴡɴᴇʀ", owner_line),
+            (f"{EmojiTag.HEADPHONES} ᴀssɪsᴛᴀɴᴛs", rich_code(f"{len(assistants)} Online")),
+        ])
+        + rich_note(f"<b>{choice(quotes)}</b>")
     )
-    await msg.edit(response + f"\n<b>{choice(quotes)}</b>")
+    await rich_edit(msg, response, client=client)
 
 
 # ── /ac (active calls) ─────────────────────────────────────────────────────────
@@ -82,7 +120,7 @@ async def active_chats_info(client, message):
         or (uid and uid in SUDO)
     )
     if not is_auth:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     all_active = set()
     for ast_idx, cp in calls.items():
@@ -101,21 +139,28 @@ async def active_chats_info(client, message):
             try:
                 chat = await client.get_chat(cid)
                 ast_num = state.get_chat_assistant(cid) or 1
-                return f"• {chat.title} <i>(Ast {ast_num})</i>"
+                return (rich_esc(chat.title), rich_code(f"Ast {ast_num}"))
             except Exception:
-                return f"• [ID: {cid}]"
+                return (f"<i>[ID: {rich_code(cid)}]</i>", rich_code("?"))
 
-        titles = await asyncio.gather(*[_fetch_title(cid) for cid in all_active])
-        titles_str = "\n".join(titles)
+        rows = await asyncio.gather(*[_fetch_title(cid) for cid in all_active])
+        table = rich_table(["ᴄʜᴀᴛ", "ᴀssɪsᴛᴀɴᴛ"], rows)
+        # Long lists get folded away so the chat isn't flooded.
+        body = table if len(rows) <= 10 else rich_details(
+            f"{EmojiTag.HEADPHONES} sʜᴏᴡ ᴀʟʟ {len(rows)} ᴄʜᴀᴛs", table
+        )
         reply_text = (
-            f"<b>{EmojiTag.HEADPHONES} ᴀᴄᴛɪᴠᴇ ɢʀᴏᴜᴘ ᴄᴀʟʟs ({len(all_active)}):</b>\n"
-            f"<blockquote expandable>{titles_str}</blockquote>\n"
-            f"<b>‣ ᴛᴏᴛᴀʟ ᴀssɪsᴛᴀɴᴛs:</b> <code>{len(assistants)}</code>"
+            rich_heading(f"{EmojiTag.HEADPHONES} ᴀᴄᴛɪᴠᴇ ɢʀᴏᴜᴘ ᴄᴀʟʟs ({len(all_active)})", 1)
+            + body
+            + rich_note(f"{EmojiTag.INFO} <b>ᴛᴏᴛᴀʟ ᴀssɪsᴛᴀɴᴛs:</b> {rich_code(len(assistants))}")
         )
     else:
-        reply_text = f"<b>{EmojiTag.HEADPHONES} ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs:</b>\n<blockquote>{EmojiTag.INFO} No active group calls</blockquote>"
+        reply_text = (
+            rich_heading(f"{EmojiTag.HEADPHONES} ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs", 1)
+            + rich_note(f"{EmojiTag.INFO} No active group calls")
+        )
 
-    await message.reply_text(reply_text, link_preview_options=None)
+    await rich_reply(message, reply_text, client=client)
 
 
 # ── /assistants / /userbot ────────────────────────────────────────────────────
@@ -128,50 +173,54 @@ async def assistants_info_handler(client, message):
         or (uid and uid in SUDO)
     )
     if not is_auth:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     if not assistants:
-        return await message.reply("<b>No active assistant accounts connected.</b>", link_preview_options=None)
+        return await rich_reply(
+            message,
+            rich_note("<b>No active assistant accounts connected.</b>"),
+            ephemeral=True,
+            client=client,
+        )
 
-    lines = [f"<b>{EmojiTag.CROWN} ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴀssɪsᴛᴀɴᴛs ({len(assistants)}):</b>\n"]
+    rows = []
     for idx, ast in assistants.items():
         info = assistant_info.get(idx, {})
         name = info.get("name") or getattr(ast.me, "first_name", f"Assistant {idx}")
         username = f"@{info.get('username')}" if info.get("username") else f"ID: {info.get('id', 'N/A')}"
         active_count = len(state.assistant_active.get(idx, set()))
-        lines.append(f"<b>{idx}.</b> <b>{name}</b> ({username})\n   └ 🎙 <b>Active Streams:</b> <code>{active_count}</code>")
+        rows.append((
+            f"<b>{idx}</b>",
+            rich_esc(name),
+            rich_code(username),
+            rich_code(active_count),
+        ))
 
-    await message.reply("\n\n".join(lines), link_preview_options=None)
+    await rich_reply(
+        message,
+        rich_heading(f"{EmojiTag.CROWN} ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴀssɪsᴛᴀɴᴛs ({len(assistants)})", 1)
+        + rich_table(["#", "ɴᴀᴍᴇ", "ʜᴀɴᴅʟᴇ", f"{EmojiTag.MIC} sᴛʀᴇᴀᴍS"], rows),
+        client=client,
+    )
 
 
 # ── /changeassistant / /assistant ─────────────────────────────────────────────
 @Client.on_message(filters.command(["changeassistant", "changeast", "assistant"]))
 async def change_assistant_handler(client, message):
     if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        return await message.reply(Messages.GROUP_ONLY, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.GROUP_ONLY), ephemeral=True, client=client)
 
     chat_id = message.chat.id
     current_num, userbot, call_py = await get_assistant(chat_id)
     cur_info = assistant_info.get(current_num, {})
     cur_name = cur_info.get("name") or (getattr(userbot.me, "first_name", f"Assistant {current_num}") if userbot else f"Assistant {current_num}")
 
-    buttons = []
-    row = []
-    for idx in sorted(assistants.keys()):
-        mark = "✓ " if idx == current_num else ""
-        row.append(InlineKeyboardButton(f"{mark}Assistant {idx}", callback_data=f"change_ast_{idx}"))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-
-    text = (
-        f"<b>{EmojiTag.SETTINGS} ɢʀᴏᴜᴘ ᴀssɪsᴛᴀɴᴛ sᴇᴛᴛɪɴɢs</b>\n\n"
-        f"<b>ᴄᴜʀʀᴇɴᴛ ᴀssɪsᴛᴀɴᴛ:</b> <code>Assistant {current_num}</code> ({cur_name})\n"
-        f"<i>Select an assistant below to assign to this group:</i>"
+    await rich_reply(
+        message,
+        _assistant_panel(current_num, cur_name),
+        reply_markup=InlineKeyboardMarkup(_assistant_buttons(current_num)),
+        client=client,
     )
-    await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons), link_preview_options=None)
 
 
 @Client.on_callback_query(filters.regex(r"^change_ast_(\d+)$"))
@@ -187,24 +236,12 @@ async def callback_change_assistant(client, callback_query):
     info = assistant_info.get(ast_idx, {})
     name = info.get("name") or getattr(target_ast.me, "first_name", f"Assistant {ast_idx}")
 
-    buttons = []
-    row = []
-    for idx in sorted(assistants.keys()):
-        mark = "✓ " if idx == ast_idx else ""
-        row.append(InlineKeyboardButton(f"{mark}Assistant {idx}", callback_data=f"change_ast_{idx}"))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-
-    text = (
-        f"<b>{EmojiTag.SETTINGS} ɢʀᴏᴜᴘ ᴀssɪsᴛᴀɴᴛ sᴇᴛᴛɪɴɢs</b>\n\n"
-        f"<b>ᴄᴜʀʀᴇɴᴛ ᴀssɪsᴛᴀɴᴛ:</b> <code>Assistant {ast_idx}</code> ({name})\n"
-        f"<i>Select an assistant below to assign to this group:</i>"
-    )
     try:
-        await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+        await rich_edit(
+            callback_query,
+            _assistant_panel(ast_idx, name),
+            reply_markup=InlineKeyboardMarkup(_assistant_buttons(ast_idx)),
+        )
     except Exception:
         pass
     await callback_query.answer(f"Switched group assistant to Assistant {ast_idx}!", show_alert=False)
@@ -215,28 +252,59 @@ async def callback_change_assistant(client, callback_query):
 async def leave_all_handler(client, message):
     uid = message.from_user.id if message.from_user else None
     if str(OWNER_ID) != str(uid) and (not uid or uid not in SUDO):
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
-    progress_msg = await message.reply("<b>Cleaning idle chats across all assistants...</b>", link_preview_options=None)
     total_left = 0
+    failed = 0
 
-    for idx, ast in assistants.items():
-        try:
-            async for dialog in ast.get_dialogs():
-                chat = dialog.chat
-                chat_type = str(getattr(chat, "type", "")).lower()
-                if "group" in chat_type or "supergroup" in chat_type:
-                    if chat.id not in state.active:
-                        try:
-                            await ast.leave_chat(chat.id)
-                            total_left += 1
-                            await asyncio.sleep(1.0)
-                        except Exception:
-                            pass
-        except Exception as e:
-            logger.warning(f"[leaveall] Assistant {idx} error: {e}")
+    # Streaming draft: live progress while scanning, then one persisted report.
+    async with RichDraft(client, message.chat.id) as draft:
+        await draft.update(
+            rich_heading(f"{EmojiTag.LOADING} ʟᴇᴀᴠɪɴɢ ɪᴅʟᴇ ᴄʜᴀᴛs", 1)
+            + rich_note("<b>Cleaning idle chats across all assistants...</b>")
+        )
+        per_assistant = []
 
-    await progress_msg.edit_text(f"<b>Done! Left {total_left} inactive chats across all assistants.</b>")
+        for idx, ast in assistants.items():
+            left_here = 0
+            try:
+                async for dialog in ast.get_dialogs():
+                    chat = dialog.chat
+                    chat_type = str(getattr(chat, "type", "")).lower()
+                    if "group" in chat_type or "supergroup" in chat_type:
+                        if chat.id not in state.active:
+                            try:
+                                await ast.leave_chat(chat.id)
+                                total_left += 1
+                                left_here += 1
+                                await asyncio.sleep(1.0)
+                            except Exception:
+                                failed += 1
+            except Exception as e:
+                logger.warning(f"[leaveall] Assistant {idx} error: {e}")
+
+            per_assistant.append((rich_code(f"Assistant {idx}"), rich_code(left_here)))
+            # One frame per assistant -- no extra round-trips inside the inner loop.
+            await draft.update(
+                rich_heading(f"{EmojiTag.LOADING} ʟᴇᴀᴠɪɴɢ ɪᴅʟᴇ ᴄʜᴀᴛs", 1)
+                + rich_kv_table([
+                    (f"{EmojiTag.HEADPHONES} sᴄᴀɴɴᴇᴅ", rich_code(f"{len(per_assistant)}/{len(assistants)}")),
+                    (f"{EmojiTag.SUCCESS} ʟᴇ꩖ᴛ", rich_code(total_left)),
+                ])
+            )
+
+        await draft.finish(
+            rich_heading(f"{EmojiTag.SUCCESS} ʟᴇᴀᴠᴇᴀʟʟ ᴄᴏᴍᴘʟᴇᴛᴇ", 1)
+            + rich_kv_table([
+                (f"{EmojiTag.SUCCESS} ᴄʜᴀᴛs ʟᴇ꩖ᴛ", rich_code(total_left)),
+                (f"{EmojiTag.ERROR} ꩖ᴀɪʟᴇᴅ", rich_code(failed) if failed else None),
+                (f"{EmojiTag.HEADPHONES} ᴀssɪsᴛᴀɴᴛs", rich_code(len(assistants))),
+            ])
+            + rich_details(
+                f"{EmojiTag.STATS} ᴘᴇʀ-ᴀssɪsᴛᴀɴᴛ ʙʀᴇᴀᴋᴅᴏᴡɴ",
+                rich_table(["ᴀssɪsᴛᴀɴᴛ", "ʟᴇ꩖ᴛ"], per_assistant),
+            )
+        )
 
 
 # ── /np / /nowplaying ──────────────────────────────────────────────────────────
@@ -247,7 +315,7 @@ async def now_playing(client, message):
 
     if not song:
         txt = await get_str(chat_id, "NO_STREAM")
-        return await message.reply(txt, link_preview_options=None)
+        return await rich_reply(message, rich_note(txt), ephemeral=True, client=client)
 
     title = song.get("title", "Unknown")
     duration = song.get("duration", "N/A")
@@ -262,8 +330,8 @@ async def now_playing(client, message):
         elapsed_s = int(time.time() - start_ts)
         elapsed = f"{elapsed_s // 60:02d}:{elapsed_s % 60:02d}"
 
-    # Progress bar
-    progress_text = ""
+    # Progress bar (kept as a monospace bar -- it reads better than a table cell)
+    progress_text = None
     if elapsed and duration and duration != "N/A":
         try:
             dur_parts = duration.split(":")
@@ -272,26 +340,29 @@ async def now_playing(client, message):
             pct = min(elapsed_s_val / max(total_s, 1), 1.0)
             filled = int(pct * 10)
             bar = "▓" * filled + "░" * (10 - filled)
-            progress_text = f"\n<code>{elapsed} {bar} {duration}</code>"
+            progress_text = f"<code>{elapsed} {bar} {duration}</code>"
         except Exception:
             pass
 
     mention = by.mention() if by and hasattr(by, "mention") else str(by or "Unknown")
-    mode_label = "🎵 Audio" if mode == "audio" else "🎬 Video"
-    title_link = f'<a href="{yt_link}">{title}</a>' if yt_link else f"<b>{title}</b>"
+    mode_label = f"{EmojiTag.MUSIC_NOTE} Audio" if mode == "audio" else f"{EmojiTag.PLAY} Video"
+    title_link = f'<a href="{yt_link}">{rich_esc(title)}</a>' if yt_link else f"<b>{rich_esc(title)}</b>"
 
     queued_count = len(state.queues.get(chat_id, []))
-    queue_info = f"\n<b>ǫᴜᴇᴜᴇ:</b> {queued_count} track(s) up next" if queued_count else ""
 
+    # Public card -- everyone in the chat is listening to this.
     text = (
-        f"<u><b>{EmojiTag.NOW_PLAYING} | ɴᴏᴡ ᴘʟᴀʏɪɴɢ</b></u>\n\n"
-        f"<b>ᴛʀᴀᴄᴋ:</b> {title_link}\n"
-        f"<b>ᴍᴏᴅᴇ:</b> {mode_label}\n"
-        f"<b>ʀᴇQᴜᴇsᴛᴇᴅ ʙʏ:</b> {mention}"
-        f"{progress_text}"
-        f"{queue_info}"
+        rich_heading(f"{EmojiTag.NOW_PLAYING} ɴᴏᴡ ᴘʟᴀʏɪɴɢ", 1)
+        + rich_kv_table([
+            (f"{EmojiTag.MUSIC_NOTE} ᴛʀᴀᴄᴋ", title_link),
+            (f"{EmojiTag.PLAY} ᴍᴏᴅᴇ", mode_label),
+            (f"{EmojiTag.INFO} ᴅᴜʀᴀᴛɪᴏɴ", rich_code(duration)),
+            (f"{EmojiTag.USER} ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ", mention),
+            (f"{EmojiTag.LOADING} ᴘʀᴏɢʀᴇss", progress_text),
+            (f"{EmojiTag.QUEUE_ICON} ǫᴜᴇᴜᴇ", f"{queued_count} track(s) up next" if queued_count else None),
+        ])
     )
-    await message.reply(text, link_preview_options=None)
+    await rich_reply(message, text, client=client)
 
 
 # ── /lang ──────────────────────────────────────────────────────────────────────
@@ -300,11 +371,24 @@ async def lang_info_handler(client, message):
     chat_id = message.chat.id
     code = await get_lang(chat_id)
     meta = LANGUAGES.get(code, {"name": code, "flag": "🏳️"})
+    rows = [
+        (
+            f"{m['flag']} {rich_code(c)}",
+            rich_esc(m["name"]),
+            f"{EmojiTag.SUCCESS}" if c == code else "",
+        )
+        for c, m in sorted(LANGUAGES.items())
+    ]
     text = (
-        f"<u><b>{EmojiTag.GLOBE} | ʟᴀɴɢᴜᴀɢᴇ sᴇᴛᴛɪɴɢs</b></u>\n\n"
-        f"<b>ᴄᴜʀʀᴇɴᴛ:</b> {meta['flag']} <code>{code}</code> — {meta['name']}\n\n"
-        f"<b>ᴀᴠᴀɪʟᴀʙʟᴇ ʟᴀɴɢᴜᴀɢᴇs:</b>\n{lang_list_text()}\n\n"
-        f"<i>ᴜsᴇ <code>/setlang &lt;code&gt;</code> ᴛᴏ ᴄʜᴀɴɢᴇ (ᴀᴅᴍɪɴ ᴏɴʟʏ)</i>"
+        rich_heading(f"{EmojiTag.GLOBE} ʟᴀɴɢᴜᴀɢᴇ sᴇᴛᴛɪɴɢs", 1)
+        + rich_kv_table([
+            (f"{EmojiTag.SUCCESS} ᴄᴜʀʀᴇɴᴛ", f"{meta['flag']} {rich_code(code)} — {rich_esc(meta['name'])}"),
+        ])
+        + rich_details(
+            f"{EmojiTag.GLOBE} ᴀᴠᴀɪʟᴀʙʟᴇ ʟᴀɴɢᴜᴀɢᴇs ({len(LANGUAGES)})",
+            rich_table(["ᴄᴏᴅᴇ", "ʟᴀɴɢᴜᴀɢᴇ", ""], rows),
+        )
+        + rich_note(f"{EmojiTag.INFO} <i>ᴜsᴇ</i> {rich_code('/setlang <code>')} <i>ᴛᴏ ᴄʜᴀɴɢᴇ (ᴀᴅᴍɪɴ ᴏɴʟʏ)</i>")
     )
-    await message.reply(text, link_preview_options=None)
+    await rich_reply(message, text, client=client)
 

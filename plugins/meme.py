@@ -3,15 +3,38 @@
 from plugins._common import *  # noqa: F401,F403
 
 
+def _sticker_added_card(packname: str) -> str:
+    """Success card for a kanged sticker (replaces the old markdown blob)."""
+    return (
+        rich_heading(f"{EmojiTag.SUCCESS} sᴛɪᴄᴋᴇʀ ᴀᴅᴅᴇᴅ", 1)
+        + rich_kv_table([
+            (f"{EmojiTag.KANG} ᴘᴀᴄᴋ", rich_code(packname)),
+            (
+                f"{EmojiTag.LINK} ɪɴsᴛᴀʟʟ",
+                f'<a href="https://t.me/addstickers/{packname}"><b>ᴄʟɪᴄᴋ ʜᴇʀᴇ</b></a>',
+            ),
+        ])
+        + rich_note(f"{EmojiTag.INFO} <i>ᴀᴅᴅ ᴛʜᴇ ᴘᴀᴄᴋ ᴛᴏ sᴛᴀʀᴛ ᴜsɪɴɢ ʏᴏᴜʀ sᴛɪᴄᴋᴇʀs.</i>")
+    )
+
+
+_STICKER_FAILED = (
+    f"{EmojiTag.ERROR} <b>꩖ᴀɪʟᴇᴅ ᴛᴏ ᴀᴅᴅ sᴛɪᴄᴋᴇʀ.</b> "
+    "ᴜsᴇ @Stickers ᴛᴏ ᴀᴅᴅ ɪᴛ ᴍᴀɴᴜᴀʟʟʏ."
+)
+
+
 @Client.on_message(filters.command("kang"))
 async def kang(client, message):
     client = clients['session']
     user = message.from_user
+    # NOTE: `client` above is the *user session*, not the bot. These replies must
+    # keep coming from the bot, so let rich_reply resolve message._client itself.
     if not user:
-       return await message.reply_text(Messages.USE_COMMAND_AS_USER, link_preview_options=None)
+       return await rich_reply(message, rich_note(Messages.USE_COMMAND_AS_USER), ephemeral=True)
     replied = message.reply_to_message
     if not replied or not replied.media:
-        return await message.reply_text(Messages.REPLY_TO_MEDIA, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.REPLY_TO_MEDIA), ephemeral=True)
 
     Nub = await message.reply_text(Messages.STICKER_LONG, link_preview_options=None)
     media_ = None
@@ -42,7 +65,7 @@ async def kang(client, message):
         ff_vid = True
     elif replied.sticker:
         if not replied.sticker.file_name:
-            await Nub.edit(Messages.STICKER_NO_NAME)
+            await rich_edit(Nub, rich_note(Messages.STICKER_NO_NAME))
             return
         emoji_ = replied.sticker.emoji
         is_anim = replied.sticker.is_animated
@@ -54,7 +77,7 @@ async def kang(client, message):
             resize = True
             ff_vid = True
     else:
-        await Nub.edit(Messages.UNSUPPORTED_FILE)
+        await rich_edit(Nub, rich_note(Messages.UNSUPPORTED_FILE))
         return
     media_ = await client.download_media(replied, file_name=f"{ggg}/user_{client.me.id}/")
     if media_:
@@ -167,8 +190,9 @@ async def kang(client, message):
                 if is_video:
                     packname += f"_video{pack}"
                     packnick += f" (Video){pack}"
-                await Nub.edit(
-                    f"`Create a New Sticker Pack {pack} Because the Sticker Pack is Full`"
+                await rich_edit(
+                    Nub,
+                    rich_note(f"{EmojiTag.INFO} Creating a new sticker pack {rich_code(pack)} — the previous pack is full."),
                 )
                 continue
             break
@@ -180,7 +204,7 @@ async def kang(client, message):
                 await client.send_message("stickers", "/addsticker", link_preview_options=None)
             except Exception as e:
                 logger.error(f"[kang] Sticker pack step failed: {e}")
-                return await Nub.edit("**ERROR:** Failed to create the sticker. Please try again.")
+                return await rich_edit(Nub, rich_note(f"{EmojiTag.ERROR} <b>ERROR:</b> Failed to create the sticker. Please try again."))
             await asyncio.sleep(2)
             await client.send_message("stickers", packname, link_preview_options=None)
             await asyncio.sleep(2)
@@ -220,24 +244,20 @@ async def kang(client, message):
                     await asyncio.sleep(2)
                     await client.send_message("Stickers", packname, link_preview_options=None)
                     await asyncio.sleep(2)
-                    await Nub.edit(
-                        f"**Sticker Added Successfully!**\n 🔥 **[CLICK HERE](https://t.me/addstickers/{packname})** 🔥\n**To Use Stickers**"
-                    )
+                    await rich_edit(Nub, _sticker_added_card(packname))
             await client.send_document("stickers", media_)
             await asyncio.sleep(2)
             if (
                 await get_response(message, client)
                 == "Sorry, the file type is invalid."
             ):
-                await Nub.edit(
-                    "**Failed to Add Sticker, Use @Stickers Bot to Add Your Sticker.**"
-                )
+                await rich_edit(Nub, rich_note(_STICKER_FAILED))
                 return
             await client.send_message("Stickers", emoji_, link_preview_options=None)
             await asyncio.sleep(2)
             await client.send_message("Stickers", "/done", link_preview_options=None)
         else:
-            await Nub.edit(Messages.CREATING_STICKER_PACK)
+            await rich_edit(Nub, rich_note(Messages.CREATING_STICKER_PACK))
             try:
                 await client.send_message("Stickers", cmd, link_preview_options=None)
             except YouBlockedUser:
@@ -252,9 +272,7 @@ async def kang(client, message):
                 await get_response(message, client)
                 == "Sorry, the file type is invalid."
             ):
-                await Nub.edit(
-                    "**Failed to Add Sticker, Use @Stickers Bot to Add Your Sticker.**"
-                )
+                await rich_edit(Nub, rich_note(_STICKER_FAILED))
                 return
             await client.send_message("Stickers", emoji_, link_preview_options=None)
             await asyncio.sleep(2)
@@ -267,9 +285,7 @@ async def kang(client, message):
             await asyncio.sleep(2)
             await client.send_message("Stickers", packname, link_preview_options=None)
             await asyncio.sleep(2)
-        await Nub.edit(
-            f"**Sticker Added Successfully!**\n 🔥 **[CLICK HERE](https://t.me/addstickers/{packname})** 🔥\n**To Use Stickers**"
-        )
+        await rich_edit(Nub, _sticker_added_card(packname))
         if os.path.exists(str(media_)):
             os.remove(media_)
 
@@ -281,30 +297,42 @@ async def get_response(message, client):
 @Client.on_message(filters.command("mmf"))
 async def memify(client, message):
     if not message.reply_to_message or not message.reply_to_message.media:
-        return await message.reply_text(Messages.REPLY_TO_PHOTO_OR_STICKER, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.REPLY_TO_PHOTO_OR_STICKER), ephemeral=True, client=client)
     text = get_arg(message).strip()
     if not text:
-        return await message.reply_text(Messages.MMF_USAGE, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.MMF_USAGE), ephemeral=True, client=client)
     reply_message = message.reply_to_message
-    Nub = await message.reply_text(Messages.PROCESSING, link_preview_options=None)
+    # Streaming draft for the render: the real output is a sticker, so the draft
+    # is discarded rather than persisted (it expires on its own).
+    draft = RichDraft(client, message.chat.id, message_thread_id=getattr(message, "message_thread_id", None))
+    await draft.update(rich_note(Messages.PROCESSING))
     file = await client.download_media(reply_message)
     if not file:
-        return await Nub.edit(Messages.MMF_DOWNLOAD_FAILED)
+        draft.discard()
+        return await rich_reply(message, rich_note(Messages.MMF_DOWNLOAD_FAILED), ephemeral=True, client=client)
     meme = None
     try:
+        await draft.update(
+            rich_heading(f"{EmojiTag.KANG} ʀᴇɴᴅᴇʀɪɴɢ ᴍᴇᴍᴇ", 2)
+            + rich_kv_table([(f"{EmojiTag.LOADING} sᴛᴇᴘ", "ᴅʀᴀᴡɪɴɢ ᴛᴇxᴛ ᴏᴠᴇʀʟᴀʏ")])
+        )
         meme = await add_text_img(file, text)
-        await asyncio.gather(
-            Nub.delete(),
-            client.send_sticker(
-                message.chat.id,
-                sticker=meme,
-                reply_to_message_id=reply_message.id,
-            ),
+        draft.discard()
+        await client.send_sticker(
+            message.chat.id,
+            sticker=meme,
+            reply_to_message_id=reply_message.id,
         )
     except Exception as e:
         logger.error(f"[memify] Error: {e}")
+        draft.discard()
         try:
-            await Nub.edit(f"❌ Failed to create meme: {e}")
+            await rich_reply(
+                message,
+                rich_note(f"{EmojiTag.ERROR} <b>Failed to create meme:</b> {rich_code(e)}"),
+                ephemeral=True,
+                client=client,
+            )
         except Exception:
             pass
     finally:

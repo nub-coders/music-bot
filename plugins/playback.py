@@ -95,7 +95,6 @@ async def progress_bar(current, total, client, msg, type_of, filename, start_tim
 
     try:
             progress_percent = current * 100 / total
-            progress_message = f"{type_of} {filename}: {progress_percent:.2f}%\n"
 
             # Progress bar calculation
             progress_bar_length = 20
@@ -109,18 +108,25 @@ async def progress_bar(current, total, client, msg, type_of, filename, start_tim
             # Time remaining calculation
             time_left = (total - current) / (speed * 1024 * 1024) if speed > 0 else 0
 
-            # Format message
-            progress_message += (
-                f"Speed: {speed:.2f} MB/s\n"
-                f"Time left: {time_left:.2f}s\n"
-                f"Size: {current/1024/1024:.2f}MB / {total/1024/1024:.2f}MB\n"
-                f"[{progress_bar_text}]"
+            # Format message -- rich download card (was a flat plain-text blob)
+            progress_message = (
+                rich_heading(f"{EmojiTag.LOADING} {rich_esc(type_of)} ᴅᴏᴡɴʟᴏᴀᴅ", 2)
+                + rich_kv_table([
+                    (f"{EmojiTag.INFO} ꩖ɪʟᴇ", rich_esc(filename)),
+                    (f"{EmojiTag.STATS} ᴘʀᴏɢʀᴇss", f"<code>{progress_bar_text}</code> {progress_percent:.2f}%"),
+                    (f"{EmojiTag.BOLT} sᴘᴇᴇᴅ", rich_code(f"{speed:.2f} MB/s")),
+                    (f"{EmojiTag.LOADING} ᴛɪᴍᴇ ʟᴇ꩖ᴛ", rich_code(f"{time_left:.2f}s")),
+                    (
+                        f"{EmojiTag.QUEUE_ICON} sɪᴢᴇ",
+                        rich_code(f"{current / 1024 / 1024:.2f}MB / {total / 1024 / 1024:.2f}MB"),
+                    ),
+                ])
             )
 
-            # Edit message with exponential backoff
+            # Edit message with exponential backoff (throttle unchanged)
             try:
               if random.choices([True, False], weights=[1, 20])[0]:
-                await msg.edit(progress_message)
+                await rich_edit(msg, progress_message, client=client)
             except Exception as e:
                 print(f"Progress update error: {e}")
 
@@ -171,7 +177,7 @@ async def play_handler_func(client, message):
     # Throttle rapid /play spam per user (owner/sudo exempt).
     if message.from_user.id != OWNER_ID and message.from_user.id not in SUDO:
         if not allow_play(message.from_user.id):
-            await message.reply(Messages.RATE_LIMITED, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.RATE_LIMITED), ephemeral=True, client=client)
             return
 
     command = message.command[0].lower()
@@ -181,7 +187,7 @@ async def play_handler_func(client, message):
 
     # Check if the command is sent in a group
     if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-        await message.reply(Messages.GROUP_ONLY, link_preview_options=None)
+        await rich_reply(message, rich_note(Messages.GROUP_ONLY), ephemeral=True, client=client)
         return
 
     # Check for query or replied media upfront before sending processing message or locking chat
@@ -190,7 +196,13 @@ async def play_handler_func(client, message):
     raw_query = input_parts[1].strip() if len(input_parts) > 1 else ""
 
     if not has_media and not raw_query:
-        await message.reply(f"{Messages.NO_QUERY_GIVEN}\n`/{command} query`", link_preview_options=None)
+        await rich_reply(
+            message,
+            rich_note(Messages.NO_QUERY_GIVEN)
+            + rich_kv_table([(f"{EmojiTag.INFO} ᴜsᴀɢᴇ", rich_code(f"/{command} query"))]),
+            ephemeral=True,
+            client=client,
+        )
         return
 
     # Get the bot username and retrieve the session client ID from connector
@@ -204,13 +216,13 @@ async def play_handler_func(client, message):
         try:
             linked_chat = (await client.get_chat(message.chat.id)).linked_chat
         except (ChatAdminRequired, ChatWriteForbidden):
-            await message.reply(Messages.NEED_INVITE_PERMISSION, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.NEED_INVITE_PERMISSION), ephemeral=True, client=client)
             return
         except Exception as e:
             logger.warning(f"[play] Error getting chat for channel mode: {e}")
             linked_chat = None
         if not linked_chat:
-            await message.reply(Messages.NO_LINKED_CHANNEL, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.NO_LINKED_CHANNEL), ephemeral=True, client=client)
             return
         target_chat_id = linked_chat.id
 
@@ -236,7 +248,7 @@ async def play_handler_func(client, message):
         if current_song and message.from_user.id != current_owner_id and not await is_authorized(
             client, message.chat.id, message.from_user.id
         ):
-            await massage.edit(Messages.ADMIN_RESTRICTED_CMD)
+            await rich_edit(massage, rich_note(Messages.ADMIN_RESTRICTED_CMD), client=client)
             return
 
     youtube_link = None
@@ -304,10 +316,10 @@ async def play_handler_func(client, message):
             if media_type and doc.thumbs:
                 thumbnail = await client.download_media(doc.thumbs[0].file_id,f"{user_dir}/")
         else:
-            await massage.edit(Messages.UNSUPPORTED_MEDIA)
+            await rich_edit(massage, rich_note(Messages.UNSUPPORTED_MEDIA), client=client)
             return await remove_active_chat(client, target_chat_id)
         if not media_type:
-            await massage.edit(Messages.UNSUPPORTED_MEDIA)
+            await rich_edit(massage, rich_note(Messages.UNSUPPORTED_MEDIA), client=client)
             return await remove_active_chat(client, target_chat_id)
         # For media messages
         youtube_link = await download_media_with_progress(
@@ -447,7 +459,7 @@ async def play_handler_func(client, message):
                         logger.info(f"[play] Assistant {ast_num} already in private group {message.chat.id}")
                     except Exception:
                         if not is_admin_or_owner:
-                            await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                            await rich_edit(massage, rich_note(Messages.NEED_INVITE_PERMISSION), client=client)
                             return await remove_active_chat(client, target_chat_id)
                         expire_at = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
                         link_obj = await client.create_chat_invite_link(message.chat.id, member_limit=1, expire_date=expire_at)
@@ -472,17 +484,17 @@ async def play_handler_func(client, message):
                 ast_mention = ast_session.me.mention() if hasattr(ast_session.me, 'mention') else f"@{ast_session.me.username or ast_session.me.id}"
                 if channel_mode:
                     chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
-                    await massage.edit(Messages.ASSISTANT_BANNED_CHANNEL.format(chan_title, ast_mention, ast_session.me.id))
+                    await rich_edit(massage, rich_note(Messages.ASSISTANT_BANNED_CHANNEL.format(chan_title, ast_mention, ast_session.me.id)), client=client)
                 else:
-                    await massage.edit(Messages.ASSISTANT_BANNED.format(ast_mention, ast_session.me.id))
+                    await rich_edit(massage, rich_note(Messages.ASSISTANT_BANNED.format(ast_mention, ast_session.me.id)), client=client)
                 return await remove_active_chat(client, target_chat_id)
         except (ChatAdminRequired, ChatWriteForbidden):
             state.forget_member(ast_num, target_chat_id)
             if channel_mode:
                 chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
-                await massage.edit(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title))
+                await rich_edit(massage, rich_note(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title)), client=client)
             else:
-                await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                await rich_edit(massage, rich_note(Messages.NEED_INVITE_PERMISSION), client=client)
             return await remove_active_chat(client, target_chat_id)
         except Exception as e:
             state.forget_member(ast_num, target_chat_id)
@@ -490,9 +502,9 @@ async def play_handler_func(client, message):
             if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
                 if channel_mode:
                     chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
-                    await massage.edit(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title))
+                    await rich_edit(massage, rich_note(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title)), client=client)
                 else:
-                    await massage.edit(Messages.NEED_INVITE_PERMISSION)
+                    await rich_edit(massage, rich_note(Messages.NEED_INVITE_PERMISSION), client=client)
                 return await remove_active_chat(client, target_chat_id)
             if attempt < max_retries:
                 logger.warning(f"[play] Assistant {ast_num} join error ({e}), trying next assistant...")
@@ -501,9 +513,9 @@ async def play_handler_func(client, message):
             logger.error(f"[play] Failed to join target {target_chat_id}: {e}")
             if channel_mode:
                 chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
-                await massage.edit(Messages.FAILED_JOIN_CHANNEL.format(chan_title))
+                await rich_edit(massage, rich_note(Messages.FAILED_JOIN_CHANNEL.format(chan_title)), client=client)
             else:
-                await massage.edit(Messages.FAILED_JOIN_GROUP)
+                await rich_edit(massage, rich_note(Messages.FAILED_JOIN_GROUP), client=client)
             return await remove_active_chat(client, target_chat_id)
 
     if not target_chat:
@@ -545,9 +557,10 @@ async def play_handler_func(client, message):
             yt_task=None,
         )
     if _playlist_rest:
-        await message.reply(
-            Messages.PLAYLIST_QUEUED.format(len(_playlist_rest) + 1),
-            link_preview_options=None,
+        await rich_reply(
+            message,
+            rich_note(Messages.PLAYLIST_QUEUED.format(len(_playlist_rest) + 1)),
+            client=client,
         )
     if is_active and not force_play:
                 if _yt_task and duration is None:
@@ -570,7 +583,12 @@ async def play_handler_func(client, message):
                     title_text = f'<a href="{youtube_link}"><b>{_safe_title}</b></a>'
                 else:
                     title_text = f'<b>{_safe_title}</b>'
-                queue_msg = await client.send_message(message.chat.id, Messages.QUEUE.format(mode, title_text, duration, position_tag(position)), reply_markup=keyboard, link_preview_options=None)
+                queue_msg = await rich_send(
+                    client,
+                    message.chat.id,
+                    Messages.QUEUE.format(mode, title_text, duration, position_tag(position)),
+                    reply_markup=keyboard,
+                )
                 if put_entry:
                     put_entry.queue_msg = queue_msg
                 _bg(massage.delete())

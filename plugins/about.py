@@ -3,46 +3,65 @@
 from plugins._common import *  # noqa: F401,F403
 
 
+def _copy_markup(html_text: str) -> InlineKeyboardMarkup:
+    """Copy button for an info card.
+
+    ``copy_text`` must be literal text, so the rich HTML is flattened with
+    ``rich_to_plain`` — otherwise the user copies markup.
+    """
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "Copy Info",
+            copy_text=rich_to_plain(html_text),
+            style=ButtonStyle.PRIMARY,
+            icon_custom_emoji_id=Emoji.CHAT,
+        )
+    ]])
+
+
 async def _build_and_send_user_info(client, message, user, chat, photo_path, create_copy_markup):
     """Build user-info response and send with optional profile photo."""
-    response = (
-        "👤 **User Info**\n"
-        f"🆔 **ID**: `{user.id}`\n"
-        f"📛 **Name**: {user.first_name}"
-    )
-    response += f" {user.last_name}\n" if user.last_name else "\n"
-    if user.username:
-        response += f"🌐 **Username**: @{user.username}\n"
-    if user.is_restricted:
-        response += "⚠️ **Account Restricted**: Yes\n"
-        if user.restriction_reason:
-            response += f"📝 **Restriction Reason**: {user.restriction_reason}\n"
-    if user.is_scam:
-        response += "🚫 **Scam Account**: Yes\n"
-    if user.is_fake:
-        response += "🎭 **Impersonator**: Yes\n"
+    rows = [
+        (f"{EmojiTag.KEY} ɪᴅ", rich_code(user.id)),
+        (
+            f"{EmojiTag.USER} ɴᴀᴍᴇ",
+            rich_esc(f"{user.first_name}{f' {user.last_name}' if user.last_name else ''}"),
+        ),
+        (f"{EmojiTag.GLOBE} ᴜsᴇʀɴᴀᴍᴇ", f"@{rich_esc(user.username)}" if user.username else None),
+        (f"{EmojiTag.WARNING} ʀᴇsᴛʀɪᴄᴛᴇᴅ", "<b>Yes</b>" if user.is_restricted else None),
+        (
+            f"{EmojiTag.INFO} ʀᴇsᴛʀɪᴄᴛɪᴏɴ ʀᴇᴀsᴏɴ",
+            rich_esc(user.restriction_reason) if (user.is_restricted and user.restriction_reason) else None,
+        ),
+        (f"{EmojiTag.BLOCKED} sᴄᴀᴍ ᴀᴄᴄᴏᴜɴᴛ", "<b>Yes</b>" if user.is_scam else None),
+        (f"{EmojiTag.WARNING} ɪᴍᴘᴇʀsᴏɴᴀᴛᴏʀ", "<b>Yes</b>" if user.is_fake else None),
+    ]
+
     if chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
         try:
             member = await client.get_chat_member(chat.id, user.id)
             status_map = {
-                enums.ChatMemberStatus.OWNER: "👑 Owner",
-                enums.ChatMemberStatus.ADMINISTRATOR: "🔧 Admin",
-                enums.ChatMemberStatus.MEMBER: "👤 Member"
+                enums.ChatMemberStatus.OWNER: f"{EmojiTag.CROWN} Owner",
+                enums.ChatMemberStatus.ADMINISTRATOR: f"{EmojiTag.SETTINGS} Admin",
+                enums.ChatMemberStatus.MEMBER: f"{EmojiTag.USER} Member",
             }
-            response += f"🎚 **Status**: {status_map.get(member.status, 'Unknown')}\n"
-            if member.joined_date:
-                response += f"📅 **Joined**: {member.joined_date.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-            else:
-                response += "📅 **Joined**: Unknown\n"
+            rows.append((f"{EmojiTag.SHIELD} sᴛᴀᴛᴜs", status_map.get(member.status, "Unknown")))
+            rows.append((
+                f"{EmojiTag.PIN} ᴊᴏɪɴᴇᴅ",
+                rich_code(member.joined_date.strftime('%Y-%m-%d %H:%M:%S UTC')) if member.joined_date else "Unknown",
+            ))
         except Exception:
-            response += "🎚 **Status**: ❌ Not in group\n"
+            rows.append((f"{EmojiTag.SHIELD} sᴛᴀᴛᴜs", f"{EmojiTag.ERROR} Not in group"))
+
+    response = rich_heading(f"{EmojiTag.USER} ᴜsᴇʀ ɪɴꜰᴏ", 1) + rich_kv_table(rows)
     markup = create_copy_markup(response)
     if user.photo:
         try:
             await client.download_media(user.photo.big_file_id, photo_path)
-            await message.reply_photo(photo_path, caption=response, reply_markup=markup)
+            # Captions cannot be rich -> flattened, keeping the inline tags only.
+            await message.reply_photo(photo_path, caption=rich_caption(response), reply_markup=markup)
         except Exception:
-            await message.reply(response, reply_markup=markup, link_preview_options=None)
+            await rich_reply(message, response, reply_markup=markup, client=client)
         finally:
             try:
                 if os.path.exists(photo_path):
@@ -50,7 +69,7 @@ async def _build_and_send_user_info(client, message, user, chat, photo_path, cre
             except Exception:
                 pass
     else:
-        await message.reply(response, reply_markup=markup, link_preview_options=None)
+        await rich_reply(message, response, reply_markup=markup, client=client)
 
 
 @Client.on_message(filters.command("about"))
@@ -68,15 +87,13 @@ async def info_command(client: Client, message: Message):
     photo_path = f"{user_dir}/about_{message.id}.jpg"
 
     def create_copy_markup(text: str) -> InlineKeyboardMarkup:
-        return InlineKeyboardMarkup([[
-            InlineKeyboardButton("Copy Info", copy_text=text, style=ButtonStyle.PRIMARY)
-        ]])
+        return _copy_markup(text)
 
     # Handle second argument if provided
     target_user = None
     sender_id = message.from_user.id
     if not sender_id == OWNER_ID:
-        return await message.reply_text(Messages.BOT_OWNER_ONLY, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.BOT_OWNER_ONLY), ephemeral=True, client=client)
 
     if len(message.command) >= 2:
         user_input = message.command[1]
@@ -89,7 +106,7 @@ async def info_command(client: Client, message: Message):
                 username = user_input.strip('@')
                 target_user = await client.get_users(username)
         except Exception:
-            await message.reply(Messages.ERROR_USER_NOT_FOUND, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.ERROR_USER_NOT_FOUND), ephemeral=True, client=client)
             return
 
     if target_user:
@@ -102,26 +119,28 @@ async def info_command(client: Client, message: Message):
         if replied.sender_chat:
             sender_chat = replied.sender_chat
             if sender_chat.id == chat.id:
-                response = (
-                    "👤 **Anonymous Group Admin**\n"
-                    f"🏷 **Title**: {sender_chat.title}\n"
-                    f"🆔 **Chat ID**: `{sender_chat.id}`"
-                )
+                response = rich_heading(f"{EmojiTag.USER} ᴀɴᴏɴʏᴍᴏᴜs ɢʀᴏᴜᴘ ᴀᴅᴍɪɴ", 1) + rich_kv_table([
+                    (f"{EmojiTag.PIN} ᴛɪᴛʟᴇ", rich_esc(sender_chat.title)),
+                    (f"{EmojiTag.KEY} ᴄʜᴀᴛ ɪᴅ", rich_code(sender_chat.id)),
+                ])
             else:
-                response = (
-                    "📢 **Channel Info**\n"
-                    f"🏷 **Title**: {sender_chat.title}\n"
-                    f"🆔 **ID**: `{sender_chat.id}`\n"
-                )
-                if sender_chat.username:
-                    response += f"🌐 **Username**: @{sender_chat.username}\n"
+                response = rich_heading(f"{EmojiTag.BROADCAST} ᴄʜᴀɴɴᴇʟ ɪɴꜰᴏ", 1) + rich_kv_table([
+                    (f"{EmojiTag.PIN} ᴛɪᴛʟᴇ", rich_esc(sender_chat.title)),
+                    (f"{EmojiTag.KEY} ɪᴅ", rich_code(sender_chat.id)),
+                    (f"{EmojiTag.GLOBE} ᴜsᴇʀɴᴀᴍᴇ", f"@{rich_esc(sender_chat.username)}" if sender_chat.username else None),
+                ])
                 if sender_chat.description:
-                    response += f"📄 **Description**: {sender_chat.description[:300]}..."
+                    response += rich_details(
+                        f"{EmojiTag.INFO} ᴅᴇsᴄʀɪᴘᴛɪᴏɴ",
+                        rich_note(f"{rich_esc(sender_chat.description[:300])}..."),
+                    )
 
-            await message.reply(
+            await rich_reply(
+                message,
                 response,
                 reply_markup=create_copy_markup(response),
-            link_preview_options=None)
+                client=client,
+            )
 
         else:
             user = await client.get_users(replied.from_user.id)
@@ -138,23 +157,20 @@ async def info_command(client: Client, message: Message):
             ):
                 admin_count += 1
 
-            response = (
-                "👥 **Group Info**\n"
-                f"🏷 **Title**: {full_chat.title}\n"
-                f"🆔 **ID**: `{full_chat.id}`\n"
-            )
+            response = rich_heading(f"{EmojiTag.USERS} ɢʀᴏᴜᴘ ɪɴꜰᴏ", 1) + rich_kv_table([
+                (f"{EmojiTag.PIN} ᴛɪᴛʟᴇ", rich_esc(full_chat.title)),
+                (f"{EmojiTag.KEY} ɪᴅ", rich_code(full_chat.id)),
+                (f"{EmojiTag.GLOBE} ᴜsᴇʀɴᴀᴍᴇ", f"@{rich_esc(full_chat.username)}" if full_chat.username else None),
+                (f"{EmojiTag.USERS} ᴍᴇᴍʙᴇʀs", rich_code(full_chat.members_count)),
+                (f"{EmojiTag.SETTINGS} ᴀᴅᴍɪɴs", rich_code(admin_count)),
+            ])
 
-            if full_chat.username:
-                response += f"🌐 **Username**: @{full_chat.username}\n"
-            response += (
-                f"👥 **Members**: {full_chat.members_count}\n"
-                f"🔧 **Admins**: {admin_count}\n"
-            )
-
-            await message.reply(
+            await rich_reply(
+                message,
                 response,
                 reply_markup=create_copy_markup(response),
-            link_preview_options=None)
+                client=client,
+            )
 
         else:
             user = await client.get_users(chat.id)
@@ -166,12 +182,17 @@ async def close_message(client, query):
     try:
         # Delete the original message
         await query.message.delete()
-        # Send confirmation with mention and remove it after 5 seconds
-        closed_msg = await client.send_message(
-            query.message.chat.id,
-            f"🗑 Message closed by {query.from_user.mention}",
-        link_preview_options=None)
-        await asyncio.sleep(5)
-        await closed_msg.delete()
+        # Ephemeral confirmation to the presser instead of a public message that
+        # had to be swept up 5s later (falls back to the old public send + delete
+        # in private chats, where ephemeral delivery is unsupported).
+        closed_msg = await rich_answer(
+            query,
+            rich_note(f"{EmojiTag.CLOSE} Message closed by {query.from_user.mention}"),
+            client=client,
+        )
+        if closed_msg is not None:
+            await asyncio.sleep(5)
+            # Handles both the ephemeral and the public-fallback case.
+            await ephemeral_delete(closed_msg, client=client)
     except Exception as e:
         print(f"Error closing message: {e}")

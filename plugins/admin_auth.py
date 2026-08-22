@@ -3,6 +3,16 @@
 from plugins._common import *  # noqa: F401,F403
 
 
+def _auth_card(headline: str, user_id: int, status: str) -> str:
+    """Ephemeral confirmation card: the catalogued headline plus a compact
+    user/id/status table. Shared by /auth /unauth /block /unblock so the four
+    handlers stay visually consistent without duplicating markup."""
+    return headline + rich_kv_table([
+        (f"{EmojiTag.USER} ᴜsᴇʀ ɪᴅ", rich_code(user_id)),
+        (f"{EmojiTag.SHIELD} sᴛᴀᴛᴜs", f"<b>{status}</b>"),
+    ])
+
+
 @Client.on_message(filters.command("auth") & filters.group)
 @admin_only()
 async def auth_user(client, message):
@@ -22,7 +32,7 @@ async def auth_user(client, message):
 
             # Check if replied user is admin (use cache)
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.OWNER_AUTH_ALL, link_preview_options=None)
+                return await rich_reply(message, rich_note(Messages.OWNER_AUTH_ALL), ephemeral=True, client=client)
 
             # Check if user can be authorized
             if (replied_user_id != message.chat.id and
@@ -38,13 +48,13 @@ async def auth_user(client, message):
                         {"$set": {'auth_users': AUTH}},
                         upsert=True
                     ))
-                    await message.reply(Messages.USER_AUTH.format(replied_user_id), link_preview_options=None)
+                    await rich_reply(message, _auth_card(Messages.USER_AUTH.format(replied_user_id), replied_user_id, "ᴀᴜᴛʜᴏʀɪᴢᴇᴅ"), ephemeral=True, client=client)
                 else:
-                    await message.reply(Messages.USER_ALREADY_AUTH.format(replied_user_id), link_preview_options=None)
+                    await rich_reply(message, rich_note(Messages.USER_ALREADY_AUTH.format(replied_user_id)), ephemeral=True, client=client)
             else:
-                await message.reply(Messages.CANT_AUTH_SELF, link_preview_options=None)
+                await rich_reply(message, rich_note(Messages.CANT_AUTH_SELF), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.NOT_FROM_USER), ephemeral=True, client=client)
     else:
         # If not a reply, check if a user ID is provided in the command
         command_parts = message.text.split()
@@ -60,13 +70,13 @@ async def auth_user(client, message):
                         {"$set": {'auth_users': AUTH}},
                         upsert=True
                     ))
-                    await message.reply(Messages.USER_AUTH.format(user_id_to_auth), link_preview_options=None)
+                    await rich_reply(message, _auth_card(Messages.USER_AUTH.format(user_id_to_auth), user_id_to_auth, "ᴀᴜᴛʜᴏʀɪᴢᴇᴅ"), ephemeral=True, client=client)
                 else:
-                    await message.reply(Messages.USER_ALREADY_AUTH.format(user_id_to_auth), link_preview_options=None)
+                    await rich_reply(message, rich_note(Messages.USER_ALREADY_AUTH.format(user_id_to_auth)), ephemeral=True, client=client)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
+                await rich_reply(message, rich_note(Messages.INVALID_USER_ID), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.REPLY_OR_PROVIDE_ID), ephemeral=True, client=client)
 
 
 @Client.on_message(filters.command("unauth") & filters.group)
@@ -86,7 +96,7 @@ async def unauth_user(client, message):
 
             # Check if replied user is admin (use cache)
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.CANT_REMOVE_AUTH_OWNER, link_preview_options=None)
+                return await rich_reply(message, rich_note(Messages.CANT_REMOVE_AUTH_OWNER), ephemeral=True, client=client)
 
             # Check if user can be unauthorized using global AUTH
             if replied_user_id in AUTH[str(chat_id)]:
@@ -97,11 +107,11 @@ async def unauth_user(client, message):
                     {"$set": {'auth_users': AUTH}},
                     upsert=True
                 ))
-                await message.reply(Messages.USER_REMOVED_AUTH.format(replied_user_id), link_preview_options=None)
+                await rich_reply(message, _auth_card(Messages.USER_REMOVED_AUTH.format(replied_user_id), replied_user_id, "ᴜᴏᴀᴜᴛʜᴏʀɪᴢᴇᴅ"), ephemeral=True, client=client)
             else:
-                await message.reply(Messages.USER_NOT_AUTH.format(replied_user_id), link_preview_options=None)
+                await rich_reply(message, rich_note(Messages.USER_NOT_AUTH.format(replied_user_id)), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.NOT_FROM_USER), ephemeral=True, client=client)
     else:
         # If not a reply, check if a user ID is provided in the command
         command_parts = message.text.split()
@@ -117,13 +127,13 @@ async def unauth_user(client, message):
                         {"$set": {'auth_users': AUTH}},
                         upsert=True
                     ))
-                    await message.reply(Messages.USER_REMOVED_AUTH.format(user_id_to_unauth), link_preview_options=None)
+                    await rich_reply(message, _auth_card(Messages.USER_REMOVED_AUTH.format(user_id_to_unauth), user_id_to_unauth, "ᴜᴏᴀᴜᴛʜᴏʀɪᴢᴇᴅ"), ephemeral=True, client=client)
                 else:
-                    await message.reply(Messages.USER_NOT_AUTH.format(user_id_to_unauth), link_preview_options=None)
+                    await rich_reply(message, rich_note(Messages.USER_NOT_AUTH.format(user_id_to_unauth)), ephemeral=True, client=client)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
+                await rich_reply(message, rich_note(Messages.INVALID_USER_ID), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.REPLY_OR_PROVIDE_ID), ephemeral=True, client=client)
 
 
 @Client.on_message(filters.command("block"))
@@ -141,7 +151,7 @@ async def block_user(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     # Check if the message is a reply
     if message.reply_to_message:
@@ -150,7 +160,7 @@ async def block_user(client, message):
         if replied_message.from_user:
             replied_user_id = replied_message.from_user.id
             if replied_user_id in get_admin_ids(admin_file):
-                return await message.reply(Messages.OWNER_BLOCK_RESTRICT, link_preview_options=None)
+                return await rich_reply(message, rich_note(Messages.OWNER_BLOCK_RESTRICT), ephemeral=True, client=client)
             # Check if the replied user is the same as the current chat (group) id
             if replied_user_id != message.chat.id and not replied_message.from_user.is_self and not OWNER_ID == replied_user_id:
                 if replied_user_id not in BLOCK:
@@ -159,14 +169,14 @@ async def block_user(client, message):
                     db_task(collection.update_one({"bot_id": client.me.id},
                                         {"$push": {'busers': replied_user_id}},
                                         upsert=True))
-                    await message.reply(Messages.USER_BLOCKED.format(replied_user_id), link_preview_options=None)
+                    await rich_reply(message, _auth_card(Messages.USER_BLOCKED.format(replied_user_id), replied_user_id, "ʙʟᴏᴄᴋᴇᴅ"), ephemeral=True, client=client)
                 else:
-                   return await message.reply(Messages.USER_ALREADY_BLOCKED.format(replied_user_id), link_preview_options=None)
+                   return await rich_reply(message, rich_note(Messages.USER_ALREADY_BLOCKED.format(replied_user_id)), ephemeral=True, client=client)
 
             else:
-                await message.reply(Messages.CANT_BLOCK_SELF, link_preview_options=None)
+                await rich_reply(message, rich_note(Messages.CANT_BLOCK_SELF), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.NOT_FROM_USER, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.NOT_FROM_USER), ephemeral=True, client=client)
     else:
         # If not a reply, check if a user ID is provided in the command
         command_parts = message.text.split()
@@ -181,13 +191,13 @@ async def block_user(client, message):
                                         {"$push": {'busers': user_id_to_block}},
                                         upsert=True
                                     ))
-                    await message.reply(Messages.USER_BLOCKED.format(user_id_to_block), link_preview_options=None)
+                    await rich_reply(message, _auth_card(Messages.USER_BLOCKED.format(user_id_to_block), user_id_to_block, "ʙʟᴏᴄᴋᴇᴅ"), ephemeral=True, client=client)
                 else:
-                   return await message.reply(Messages.USER_ALREADY_BLOCKED.format(user_id_to_block), link_preview_options=None)
+                   return await rich_reply(message, rich_note(Messages.USER_ALREADY_BLOCKED.format(user_id_to_block)), ephemeral=True, client=client)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
+                await rich_reply(message, rich_note(Messages.INVALID_USER_ID), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.REPLY_OR_PROVIDE_ID), ephemeral=True, client=client)
 
 
 @Client.on_message(filters.command("unblock"))
@@ -204,7 +214,7 @@ async def unblock_user(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     if message.reply_to_message:
         replied_message = message.reply_to_message
@@ -217,9 +227,9 @@ async def unblock_user(client, message):
             db_task(collection.update_one({"bot_id": client.me.id},
                                 {"$pull": {'busers': replied_user_id}},
                                 upsert=True))
-            await message.reply(Messages.REMOVED_FROM_BLOCKLIST.format(replied_user_id), link_preview_options=None)
+            await rich_reply(message, _auth_card(Messages.REMOVED_FROM_BLOCKLIST.format(replied_user_id), replied_user_id, "ᴜɴʙʟᴏᴄᴋᴇᴅ"), ephemeral=True, client=client)
         else:
-            return await message.reply(Messages.NOT_IN_BLOCKLIST.format(replied_user_id), link_preview_options=None)
+            return await rich_reply(message, rich_note(Messages.NOT_IN_BLOCKLIST.format(replied_user_id)), ephemeral=True, client=client)
 
     else:
         # If not a reply, check if a user ID is provided in the command
@@ -235,13 +245,13 @@ async def unblock_user(client, message):
                     db_task(collection.update_one({"bot_id": client.me.id},
                                         {"$pull": {'busers': target_user_id}},
                                         upsert=True))
-                    await message.reply(Messages.REMOVED_FROM_BLOCKLIST.format(target_user_id), link_preview_options=None)
+                    await rich_reply(message, _auth_card(Messages.REMOVED_FROM_BLOCKLIST.format(target_user_id), target_user_id, "ᴜɴʙʟᴏᴄᴋᴇᴅ"), ephemeral=True, client=client)
                 else:
-                    return await message.reply(Messages.NOT_IN_BLOCKLIST.format(target_user_id), link_preview_options=None)
+                    return await rich_reply(message, rich_note(Messages.NOT_IN_BLOCKLIST.format(target_user_id)), ephemeral=True, client=client)
             except ValueError:
-                await message.reply(Messages.INVALID_USER_ID, link_preview_options=None)
+                await rich_reply(message, rich_note(Messages.INVALID_USER_ID), ephemeral=True, client=client)
         else:
-            await message.reply(Messages.REPLY_OR_PROVIDE_ID, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.REPLY_OR_PROVIDE_ID), ephemeral=True, client=client)
 
 
 @Client.on_message(filters.command("blocklist"))
@@ -264,7 +274,7 @@ async def blocklist_handler(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     # Check for admin or owner
 
@@ -272,11 +282,22 @@ async def blocklist_handler(client, message):
     # Fetch blocklist from the database
     user_data = await collection.find_one({"bot_id": client.me.id})
     if not user_data:
-        return await message.reply(Messages.NO_BLOCKLIST, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.NO_BLOCKLIST), ephemeral=True, client=client)
 
     blocked_users = user_data.get('busers', [])
     if not blocked_users:
-        return await message.reply(Messages.NO_USERS_BLOCKED, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.NO_USERS_BLOCKED), ephemeral=True, client=client)
 
-    blocklist_text = f"<b>{EmojiTag.BLOCKED} ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs:</b>\n" + "\n".join([f"• <code>{user_id}</code>" for user_id in blocked_users])
-    await message.reply_text(blocklist_text, link_preview_options=None)
+    table = rich_table(
+        ["#", "ᴜsᴇʀ ɪᴅ"],
+        [(rich_code(i), rich_code(blocked_id)) for i, blocked_id in enumerate(blocked_users, 1)],
+    )
+    body = table if len(blocked_users) <= 10 else rich_details(
+        f"sʜᴏᴡ ᴀʟʟ {len(blocked_users)} ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs", table
+    )
+    blocklist_text = (
+        rich_heading(f"{EmojiTag.BLOCKED} ʙʟᴏᴄᴋᴇᴅ ᴜsᴇʀs", 1)
+        + body
+        + rich_note(f"{EmojiTag.INFO} ᴜsᴇ {rich_code('/unblock <user id>')} ᴛᴏ ʀᴇᴏᴡ ᴀᴄᴄᴇss.")
+    )
+    await rich_reply(message, blocklist_text, client=client)

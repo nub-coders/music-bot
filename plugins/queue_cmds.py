@@ -48,7 +48,7 @@ async def queue_command(client, message):
     queue_list = state.queues.get(chat_id, [])
     items = queue_list[:20]
     if not items:
-        return await message.reply(Messages.QUEUE_EMPTY, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.QUEUE_EMPTY), ephemeral=True, client=client)
 
     # Build styled queue items (read-only, does not mutate live QueueEntry objects)
     header_text = "CURRENT QUEUE (MAX 20)"
@@ -75,14 +75,18 @@ async def queue_command(client, message):
     # Render image in worker thread to avoid blocking event loop
     buf = await asyncio.to_thread(_render_queue_image_sync, display_items, header_text)
 
-    styled_caption = (
-        f"<u><b>{EmojiTag.MUSIC_NOTE} | ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ</b></u>\n"
-        "<blockquote expandable>\n"
-        + "\n".join(
-            f"<b>{idx}.</b> {title}  <code>[{duration}]</code>"
-            for idx, title, duration in display_items
+    # Caption-bound UI: the queue ships as a rendered PNG and captions have no
+    # `rich_message` parameter, so the table is flattened with rich_caption()
+    # rather than duplicating a second layout for this one view.
+    styled_caption = rich_caption(
+        rich_heading(f"{EmojiTag.MUSIC_NOTE} ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ", 1)
+        + rich_table(
+            ["#", "ᴛʀᴀᴄᴋ", "ʟᴇɴɢᴛʜ"],
+            [
+                (f"<b>{idx}</b>", rich_esc(title), rich_code(duration))
+                for idx, title, duration in display_items
+            ],
         )
-        + "\n</blockquote>"
     )
     await message.reply_photo(photo=buf, caption=styled_caption)
 
@@ -103,10 +107,11 @@ async def shuffle_queue(client, message):
     async with state.lock(chat_id):
         q = state.queues.get(chat_id)
         if not q or len(q) < 2:
-            return await message.reply(Messages.NOTHING_TO_SHUFFLE, link_preview_options=None)
+            return await rich_reply(message, rich_note(Messages.NOTHING_TO_SHUFFLE), ephemeral=True, client=client)
         random.shuffle(q)
         n = len(q)
-    await message.reply(Messages.QUEUE_SHUFFLED.format(n), link_preview_options=None)
+    # Public: shuffling changes playback order for the whole chat.
+    await rich_reply(message, rich_note(Messages.QUEUE_SHUFFLED.format(n)), client=client)
 
 
 @Client.on_message(filters.command("tagall") & filters.group)
@@ -148,13 +153,13 @@ async def mentionall(client, message):
 @admin_only()
 async def cancel_spam(client, message):
     if message.chat.id not in spam_chats:
-        return await message.reply(Messages.NO_TAGALL, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.NO_TAGALL), ephemeral=True, client=client)
     else:
         try:
             spam_chats.remove(message.chat.id)
         except Exception:
             pass
-        return await message.reply(Messages.DISMISS_MENTION, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.DISMISS_MENTION), ephemeral=True, client=client)
 
 
 @Client.on_message(filters.command("del") & filters.group)
@@ -171,6 +176,6 @@ async def delete_message_handler(client, message):
               pass
         except Exception as e:
             logger.error(f"[del] Failed to delete message: {e}")
-            await message.reply(Messages.ERROR_DEL_MSG, link_preview_options=None)
+            await rich_reply(message, rich_note(Messages.ERROR_DEL_MSG), ephemeral=True, client=client)
     else:
-        await message.reply(Messages.REPLY_TO_DEL, link_preview_options=None)
+        await rich_reply(message, rich_note(Messages.REPLY_TO_DEL), ephemeral=True, client=client)

@@ -38,7 +38,9 @@ from pyrogram.types import (
     CallbackQuery,
     Message,
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    InputRichMessage,
+    ReplyParameters
 )
 from pytgcalls.exceptions import NotInCallError
 from pytgcalls.types import AudioQuality, MediaStream, VideoQuality
@@ -50,7 +52,8 @@ from utils.message import Messages
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
 from utils.emoji import Emoji, EmojiTag, keycaps
-from utils.premium_emoji import position_tag
+from utils.premium_emoji import position_tag, strip_custom_emoji_text
+from utils.rich_ui import *  # noqa: F403  (rich_send/rich_reply/rich_edit/rich_table/... )
 from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task, remove_chat_assistant as db_remove_chat_assistant
 from thumbnails import get_thumb
 from PIL import Image
@@ -67,7 +70,7 @@ def clean_alert(text: str) -> str:
     """Strip custom premium emoji tags and HTML for plain-text callback_query.answer toasts/alerts."""
     if not text:
         return ""
-    clean = re.sub(r'<emoji id="[^"]*">(.*?)</emoji>', r'\1', str(text))
+    clean = strip_custom_emoji_text(str(text))
     clean = re.sub(r'<[^>]+>', '', clean)
     return clean.strip()
 
@@ -158,7 +161,15 @@ def admin_only():
                     if isinstance(update, CallbackQuery):
                         await update.answer(Messages.ADMIN_UNKNOWN_USER, show_alert=True)
                     else:
-                        await update.reply(Messages.ADMIN_UNKNOWN_USER, reply_to_message_id=reply_id, link_preview_options=None)
+                        try:
+                            await rich_reply(
+                                update,
+                                rich_note(Messages.ADMIN_UNKNOWN_USER),
+                                ephemeral=True,
+                                client=client,
+                            )
+                        except Exception as notify_error:
+                            logger.debug(f"[admin_only] ADMIN_UNKNOWN_USER notice failed for message {reply_id}: {notify_error}")
                     return
 
                 # --- Song-owner skip: whoever queued the current track may skip
@@ -186,7 +197,16 @@ def admin_only():
                     if isinstance(update, CallbackQuery):
                         await update.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
                     else:
-                        await update.reply(Messages.ADMIN_RESTRICTED_CMD, reply_to_message_id=reply_id, link_preview_options=None)
+                        try:
+                            await rich_reply(
+                                update,
+                                rich_heading(f"{EmojiTag.LOCK} Permission Denied", 3)
+                                + rich_note(Messages.ADMIN_RESTRICTED_CMD),
+                                ephemeral=True,
+                                client=client,
+                            )
+                        except Exception as notify_error:
+                            logger.debug(f"[admin_only] ADMIN_RESTRICTED_CMD notice failed for message {reply_id}: {notify_error}")
                     return
 
                 logger.info(f"User {user_id} authorized for {func.__name__}")
@@ -197,7 +217,16 @@ def admin_only():
                 if isinstance(update, CallbackQuery):
                     await update.answer(Messages.AUTH_FAILED, show_alert=True)
                 else:
-                    await update.reply(Messages.AUTH_FAILED, link_preview_options=None)
+                    try:
+                        await rich_reply(
+                            update,
+                            rich_note(Messages.AUTH_FAILED),
+                            ephemeral=True,
+                            quote=False,
+                            client=client,
+                        )
+                    except Exception as notify_error:
+                        logger.debug(f"[admin_only] AUTH_FAILED notice failed: {notify_error}")
                 return
         return wrapper
     return decorator
@@ -268,94 +297,112 @@ async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
     return chat_type
 async def status(client, message):
     """Handles the /status command with song statistics"""
-    Nub = await message.reply_text(Messages.COLLECTING_STATS, link_preview_options=None)
-    start = datetime.datetime.now()
-    u = g = sg = c = a_chat = play_count = 0
-    user_data = await collection.find_one({"bot_id": client.me.id})
+    async with RichDraft(
+        client,
+        message.chat.id,
+        message_thread_id=getattr(message, "message_thread_id", None),
+    ) as draft:
+        await draft.update(rich_note(Messages.COLLECTING_STATS))
+        start = datetime.datetime.now()
+        u = g = sg = c = a_chat = play_count = 0
+        user_data = await collection.find_one({"bot_id": client.me.id})
 
-    if user_data:
-        # Clean old song entries and get count
-        time_threshold = datetime.datetime.now() - datetime.timedelta(hours=24)
-        db_task(collection.update_one(
-            {"bot_id": client.me.id},
-            {"$pull": {"dates": {"$lt": time_threshold}}}
-        ))
-        play_count = len([d for d in user_data.get('dates', []) if d >= time_threshold])
+        if user_data:
+            # Clean old song entries and get count
+            time_threshold = datetime.datetime.now() - datetime.timedelta(hours=24)
+            db_task(collection.update_one(
+                {"bot_id": client.me.id},
+                {"$pull": {"dates": {"$lt": time_threshold}}}
+            ))
+            play_count = len([d for d in user_data.get('dates', []) if d >= time_threshold])
 
-        users = user_data.get('users', [])
-        total_users = len(users)
+            users = user_data.get('users', [])
+            total_users = len(users)
 
-        if total_users > 500:
-            await Nub.edit_text(
-                f"<b>{EmojiTag.STATS} Comprehensive Bot Statistics</b>\n"
-                f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                f"{EmojiTag.BOLT} <b>Processed in:</b> <code>0s</code>\n\n"
-                f"✦ {EmojiTag.USER} <b>Stored Users:</b> <code>{total_users}</code>\n"
-                f"✦ {EmojiTag.INFO} <b>Detailed stats:</b> <code>Skipped to avoid timeout</code>\n"
-                f"✦ {EmojiTag.MUSIC_NOTE} <b>Songs Played (24h):</b> <code>{play_count}</code>\n\n"
-                f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
+            if total_users > 500:
+                await draft.finish(
+                    rich_heading(f"{EmojiTag.STATS} Bot Statistics", 1)
+                    + rich_table(
+                        ["Metric", "Count"],
+                        [
+                            (f"{EmojiTag.USER} Stored Users", rich_code(total_users)),
+                            (f"{EmojiTag.MUSIC_NOTE} Songs Played (24h)", rich_code(play_count)),
+                            (f"{EmojiTag.INFO} Detailed stats", rich_code("Skipped to avoid timeout")),
+                        ],
+                    )
+                    + rich_note(
+                        f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code('0s')}\n"
+                        f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
+                        f"users to enumerate without timing out.\n"
+                        f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
+                    )
+                )
+                return
+
+            chat_type_cache = dict(user_data.get('chat_type_cache', {}))
+
+            # Process chats in batches for better performance
+            for i, chat_id in enumerate(users):
+                try:
+                    chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
+
+                    if chat_type == enums.ChatType.PRIVATE:
+                        u += 1
+                    elif chat_type == enums.ChatType.GROUP:
+                        g += 1
+                    elif chat_type == enums.ChatType.SUPERGROUP:
+                        sg += 1
+                        try:
+                            user_status = await client.get_chat_member(chat_id, client.me.id)
+                            if user_status.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
+                                a_chat += 1
+                        except Exception as e:
+                            logger.info(f"Admin check error: {e}")
+                    elif chat_type == enums.ChatType.CHANNEL:
+                        c += 1
+
+                    # Update progress every 10 chats
+                    if i % 10 == 0 or i == total_users - 1:
+                        await draft.update(
+                            rich_heading(f"{EmojiTag.LOADING} Collecting Stats", 2)
+                            + rich_kv_table([
+                                (f"{EmojiTag.USER} Private", rich_code(u)),
+                                (f"{EmojiTag.USERS} Groups", rich_code(g)),
+                                (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
+                                (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
+                                (f"{EmojiTag.SHIELD} Admin Positions", rich_code(a_chat)),
+                                (f"{EmojiTag.MUSIC_NOTE} Songs Played (24h)", rich_code(play_count)),
+                            ])
+                            + rich_note(
+                                f"{EmojiTag.LOADING} <b>Progress:</b> "
+                                f"{rich_code(f'{min(i + 1, total_users)}/{total_users}')}"
+                            )
+                        )
+
+                except Exception as e:
+                    logger.info(f"Error processing chat {chat_id}: {e}")
+
+            end = datetime.datetime.now()
+            ms = (end - start).seconds
+
+            await draft.finish(
+                rich_heading(f"{EmojiTag.STATS} Bot Statistics", 1)
+                + rich_table(
+                    ["Metric", "Count"],
+                    [
+                        (f"{EmojiTag.USER} Private Chats", rich_code(u)),
+                        (f"{EmojiTag.USERS} Groups", rich_code(g)),
+                        (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
+                        (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
+                        (f"{EmojiTag.SHIELD} Admin Privileges", rich_code(a_chat)),
+                        (f"{EmojiTag.MUSIC_NOTE} Songs Played (24h)", rich_code(play_count)),
+                    ],
+                )
+                + rich_note(
+                    f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code(f'{ms}s')}\n"
+                    f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
+                )
             )
-            return
 
-        chat_type_cache = dict(user_data.get('chat_type_cache', {}))
-
-        # Process chats in batches for better performance
-        for i, chat_id in enumerate(users):
-            try:
-                chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
-
-                if chat_type == enums.ChatType.PRIVATE:
-                    u += 1
-                elif chat_type == enums.ChatType.GROUP:
-                    g += 1
-                elif chat_type == enums.ChatType.SUPERGROUP:
-                    sg += 1
-                    try:
-                        user_status = await client.get_chat_member(chat_id, client.me.id)
-                        if user_status.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
-                            a_chat += 1
-                    except Exception as e:
-                        logger.info(f"Admin check error: {e}")
-                elif chat_type == enums.ChatType.CHANNEL:
-                    c += 1
-
-                # Update progress every 10 chats
-                if i % 10 == 0 or i == total_users - 1:
-                    progress_msg = f"""
-<b>{EmojiTag.LOADING} Collecting Stats ({min(i+1, total_users)}/{total_users})</b>
-<b>━━━━━━━━━━━━━━━━━━━━━━━</b>
-✦ {EmojiTag.USER} <b>Private:</b> <code>{u}</code>
-✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>
-✦ {EmojiTag.USERS} <b>Super Groups:</b> <code>{sg}</code>
-✦ {EmojiTag.BROADCAST} <b>Channels:</b> <code>{c}</code>
-✦ {EmojiTag.SHIELD} <b>Admin Positions:</b> <code>{a_chat}</code>
-✦ {EmojiTag.MUSIC_NOTE} <b>Songs Played (24h):</b> <code>{play_count}</code>
-"""
-                    await Nub.edit_text(progress_msg)
-
-            except Exception as e:
-                logger.info(f"Error processing chat {chat_id}: {e}")
-
-        end = datetime.datetime.now()
-        ms = (end - start).seconds
-
-        final_stats = f"""
-<b>{EmojiTag.STATS} Comprehensive Bot Statistics</b>
-<b>━━━━━━━━━━━━━━━━━━━━━━━</b>
-{EmojiTag.BOLT} <b>Processed in:</b> <code>{ms}s</code>
-
-✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>
-✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>
-✦ {EmojiTag.USERS} <b>Super Groups:</b> <code>{sg}</code>
-✦ {EmojiTag.BROADCAST} <b>Channels:</b> <code>{c}</code>
-✦ {EmojiTag.SHIELD} <b>Admin Privileges:</b> <code>{a_chat}</code>
-✦ {EmojiTag.MUSIC_NOTE} <b>Songs Played (24h):</b> <code>{play_count}</code>
-
-<b>━━━━━━━━━━━━━━━━━━━━━━━</b>
-<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>
-"""
-        await Nub.edit_text(final_stats)
-
-    else:
-        await Nub.edit_text(Messages.NO_OPERATIONAL_DATA)
+        else:
+            await draft.finish(rich_note(Messages.NO_OPERATIONAL_DATA))

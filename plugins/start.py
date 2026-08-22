@@ -3,21 +3,31 @@
 from plugins._common import *  # noqa: F401,F403
 
 
+def _cmd_page(title: str, rows) -> str:
+    """One help page: heading + a native command table.
+
+    Built as rich HTML from a single source. The help menu lives in the caption
+    of the start card (photo/video), and captions have no ``rich_message``
+    parameter, so the delivery sites flatten this with ``rich_caption()``.
+    """
+    return rich_heading(title, 1) + rich_table(
+        ["ᴄᴏᴍᴍᴀɴᴅ", "ᴅᴇsᴄʀɪᴘᴛɪᴏɴ"], rows
+    )
+
+
 async def send_log_message(client, log_group_id, message, is_private):
     try:
         if is_private:
             user = message.from_user
-            log_text = (
-                "📥 **New User Started Bot**\n\n"
-                f"**User Details:**\n"
-                f"• Name: {user.first_name}\n"
-                f"• Username: @{user.username if user.username else 'None'}\n"
-                f"• User ID: `{user.id}`\n"
-                f"• Is Premium: {'Yes' if user.is_premium else 'No'}\n"
-                f"• DC ID: {user.dc_id if user.dc_id else 'Unknown'}\n"
-                f"• Language: {user.language_code if user.language_code else 'Unknown'}\n"
-                f"• Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            log_text = rich_heading(f"{EmojiTag.ADD} ɴᴇᴡ ᴜsᴇʀ sᴛᴀʀᴛᴇᴅ ʙᴏᴛ", 1) + rich_kv_table([
+                (f"{EmojiTag.USER} ɴᴀᴍᴇ", rich_esc(user.first_name)),
+                (f"{EmojiTag.GLOBE} ᴜsᴇʀɴᴀᴍᴇ", f"@{rich_esc(user.username)}" if user.username else "<i>None</i>"),
+                (f"{EmojiTag.KEY} ᴜsᴇʀ ɪᴅ", rich_code(user.id)),
+                (f"{EmojiTag.STAR} ᴘʀᴇᴍɪᴜᴍ", "Yes" if user.is_premium else "No"),
+                (f"{EmojiTag.INFO} ᴅᴄ ɪᴅ", rich_code(user.dc_id) if user.dc_id else "Unknown"),
+                (f"{EmojiTag.CHAT} ʟᴀɴɢᴜᴀɢᴇ", rich_code(user.language_code) if user.language_code else "Unknown"),
+                (f"{EmojiTag.LOADING} ᴛɪᴍᴇ", rich_code(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))),
+            ])
         else:
             chat = message.chat
             try:
@@ -31,23 +41,20 @@ async def send_log_message(client, log_group_id, message, is_private):
                 invite_link = _link_obj.invite_link
             except Exception:
                 invite_link = "No invite permission"
-            log_text = (
-                "📥 **Bot Added to New Group**\n\n"
-                f"**Group Details:**\n"
-                f"• Name: {chat.title}\n"
-                f"• Chat ID: `{chat.id}`\n"
-                f"• Type: {chat.type}\n"
-                f"• Members: {members_count}\n"
-                f"• Username: @{chat.username if chat.username else invite_link}\n"
-                f"• Added By: {message.from_user.mention if message.from_user else 'Unknown'}\n"
-                f"• Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            log_text = rich_heading(f"{EmojiTag.ADD} ʙᴏᴛ ᴀᴅᴅᴇᴅ ᴛᴏ ɴᴇᴡ ɢʀᴏᴜᴘ", 1) + rich_kv_table([
+                (f"{EmojiTag.PIN} ɴᴀᴍᴇ", rich_esc(chat.title)),
+                (f"{EmojiTag.KEY} ᴄʜᴀᴛ ɪᴅ", rich_code(chat.id)),
+                (f"{EmojiTag.INFO} ᴛʏᴘᴇ", rich_code(chat.type)),
+                (f"{EmojiTag.USERS} ᴍᴇᴍʙᴇʀs", rich_code(members_count)),
+                (
+                    f"{EmojiTag.GLOBE} ᴜsᴇʀɴᴀᴍᴇ",
+                    f"@{rich_esc(chat.username)}" if chat.username else rich_esc(invite_link),
+                ),
+                (f"{EmojiTag.USER} ᴀᴅᴅᴇᴅ ʙʏ", message.from_user.mention if message.from_user else "Unknown"),
+                (f"{EmojiTag.LOADING} ᴛɪᴍᴇ", rich_code(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))),
+            ])
         await asyncio.sleep(2)
-        await client.send_message(
-            chat_id=int(log_group_id),
-            text=log_text,
-            link_preview_options=None
-        )
+        await rich_send(client, int(log_group_id), log_text)
     except Exception as e:
         logger.info(f"Error sending log message: {str(e)}")
 
@@ -83,10 +90,11 @@ async def user_client_start_handler(client, message):
         is_sudo = uid in sudoers or is_owner
 
         markup = Buttons.help_markup(is_admin=is_admin, is_owner=is_owner, is_sudo=is_sudo)
-        return await message.reply(
+        return await rich_reply(
+            message,
             Messages.HELP_CATEGORY_SELECT,
             reply_markup=markup,
-            link_preview_options=None
+            client=client,
         )
 
     # Process video ID if provided in start command
@@ -106,12 +114,13 @@ async def user_client_start_handler(client, message):
                 # Create formatted message
                 logger.info(video_info['thumbnail'])
                 await loading.delete()
-                caption = (
-                    f"{EmojiTag.MUSIC_NOTE} <b>ᴛɪᴛʟᴇ:</b> {video_info['title']}\n\n"
-                    f"<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{video_info['duration']}</code>\n"
-                    f"<b>‣ ᴠɪᴇᴡs:</b> <code>{views}</code>\n"
-                    f"<b>‣ ᴄʜᴀɴɴᴇʟ:</b> <code>{video_info['channel_name']}</code>\n"
-                )
+                # Caption-bound (photo card) -> built rich, flattened for caption.
+                _card = rich_heading(f"{EmojiTag.MUSIC_NOTE} {rich_esc(video_info['title'])}", 1) + rich_kv_table([
+                    (f"{EmojiTag.LOADING} ᴅᴜʀᴀᴛɪᴏɴ", rich_code(video_info['duration'])),
+                    (f"{EmojiTag.STATS} ᴠɪᴇᴡs", rich_code(views)),
+                    (f"{EmojiTag.USER} ᴄʜᴀɴɴᴇʟ", rich_code(video_info['channel_name'])),
+                ])
+                caption = rich_caption(_card)
 
                 # Create inline keyboard with YouTube button
                 keyboard = Buttons.force_play_markup(video_info['video_url'])
@@ -126,22 +135,21 @@ async def user_client_start_handler(client, message):
                     )
                 except Exception as e:
                     logger.error(f"[start] Failed to send photo: {e}")
-                    return await message.reply_text(
-                        caption,
-                        reply_markup=keyboard,
-                        reply_to_message_id=message.id,
-                    link_preview_options=None)
+                    # Text fallback can be fully rich (no caption constraint).
+                    return await rich_reply(message, _card, reply_markup=keyboard, client=client)
             else:
-                return await message.reply_text(
-                    f"❌ Error: {video_info}",
-                    reply_to_message_id=message.id,
-                link_preview_options=None)
+                return await rich_reply(
+                    message,
+                    rich_note(f"{EmojiTag.ERROR} <b>Error:</b> {rich_esc(video_info)}"),
+                    client=client,
+                )
 
         except Exception as e:
-            return await message.reply_text(
-                f"❌ Error processing video ID: {str(e)}",
-                reply_to_message_id=message.id,
-            link_preview_options=None)
+            return await rich_reply(
+                message,
+                rich_note(f"{EmojiTag.ERROR} <b>Error processing video ID:</b> {rich_code(e)}"),
+                client=client,
+            )
 
     # ── Send PM alive card ──────────────────────────────────────────────────
     session_name = f'user_{client.me.id}'
@@ -282,94 +290,97 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     owner = await client.get_users(OWNER_ID) if OWNER_ID else None
     ow_id = owner.id if (owner and owner.username) else None
 
-    # ---------- Command pages (text blocks) ----------
-    playback_commands = (
-        f"<u><b>{EmojiTag.MUSIC_NOTE} | ᴘʟᴀʏʙᴀᴄᴋ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.PLAY} /play  /vplay        — ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ\n"
-        f"{EmojiTag.QUEUE_ICON} /queue               — sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)\n"
-        f"{EmojiTag.ROCKET} /playforce /vplayforce — ꜰᴏʀᴄᴇ ᴘʟᴀʏ (sᴋɪᴘ ᴄᴜʀʀᴇɴᴛ)\n"
-        f"{EmojiTag.GLOBE} /cplay /cvplay       — ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ\n"
-        f"{EmojiTag.PAUSE} /pause               — ᴘᴀᴜsᴇ sᴛʀᴇᴀᴍ\n"
-        f"{EmojiTag.RESUME} /resume              — ʀᴇsᴜᴍᴇ sᴛʀᴇᴀᴍ\n"
-        f"{EmojiTag.SKIP} /skip  /cskip        — ɴᴇxᴛ ᴛʀᴀᴄᴋ\n"
-        f"{EmojiTag.STOP} /end  /cend          — sᴛᴏᴘ & ᴄʟᴇᴀʀ ǫᴜᴇᴜᴇ\n"
-        f"{EmojiTag.NEXT} /seek &lt;sec&gt;    — ᴊᴜᴍᴘ ꜰᴏʀᴡᴀʀᴅ\n"
-        f"{EmojiTag.BACK} /seekback &lt;sec&gt; — ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ\n"
-        f"{EmojiTag.LOOP} /loop &lt;1-20&gt;   — ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ\n"
-        f"{EmojiTag.SETTINGS} /autoplay [on|off] — ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs\n"
-        "</blockquote>"
+    # ---------- Command pages (rich blocks, flattened at the caption call) ----------
+    playback_commands = _cmd_page(
+        f"{EmojiTag.MUSIC_NOTE} ᴘʟᴀʏʙᴀᴄᴋ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.PLAY} <code>/play</code> <code>/vplay</code>", "ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ"),
+            (f"{EmojiTag.QUEUE_ICON} <code>/queue</code>", "sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)"),
+            (f"{EmojiTag.ROCKET} <code>/playforce</code> <code>/vplayforce</code>", "꩖ᴏʀᴄᴇ ᴘʟᴀʏ (sᴋɪᴘ ᴄᴜʀʀᴇɴᴛ)"),
+            (f"{EmojiTag.GLOBE} <code>/cplay</code> <code>/cvplay</code>", "ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ"),
+            (f"{EmojiTag.PAUSE} <code>/pause</code>", "ᴘᴀᴜsᴇ sᴛʀᴇᴀᴍ"),
+            (f"{EmojiTag.RESUME} <code>/resume</code>", "ʀᴇsᴜᴍᴇ sᴛʀᴇᴀᴍ"),
+            (f"{EmojiTag.SKIP} <code>/skip</code> <code>/cskip</code>", "ɴᴇxᴛ ᴛʀᴀᴄᴋ"),
+            (f"{EmojiTag.STOP} <code>/end</code> <code>/cend</code>", "sᴛᴏᴘ &amp; ᴄʟᴇᴀʀ ǫᴜᴇᴜᴇ"),
+            (f"{EmojiTag.NEXT} <code>/seek &lt;sec&gt;</code>", "ᴊᴜᴍᴘ ꩖ᴏʀᴡᴀʀᴅ"),
+            (f"{EmojiTag.BACK} <code>/seekback &lt;sec&gt;</code>", "ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ"),
+            (f"{EmojiTag.LOOP} <code>/loop &lt;1-20&gt;</code>", "ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ"),
+            (f"{EmojiTag.SETTINGS} <code>/autoplay [on|off]</code>", "ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs"),
+        ],
     )
 
-    auth_commands = (
-        f"<u><b>{EmojiTag.LOCK} | ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.LOCK} /auth &lt;reply|id&gt;   — ᴀʟʟᴏᴡ ᴜsᴇʀ ᴛᴏ ᴜsᴇ ᴘʟᴀʏᴇʀ\n"
-        f"{EmojiTag.UNLOCK} /unauth &lt;reply|id&gt; — ʀᴇᴍᴏᴠᴇ ᴛʜᴀᴛ ᴘᴇʀᴍɪssɪᴏɴ\n"
-        f"{EmojiTag.USER} /authlist              — ʟɪsᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs\n"
-        "</blockquote>"
+    auth_commands = _cmd_page(
+        f"{EmojiTag.LOCK} ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.LOCK} <code>/auth &lt;reply|id&gt;</code>", "ᴀʟʟᴏᴡ ᴜsᴇʀ ᴛᴏ ᴜsᴇ ᴘʟᴀʏᴇʀ"),
+            (f"{EmojiTag.UNLOCK} <code>/unauth &lt;reply|id&gt;</code>", "ʀᴇᴍᴏᴠᴇ ᴛʜᴀᴛ ᴘᴇʀᴍɪssɪᴏɴ"),
+            (f"{EmojiTag.USER} <code>/authlist</code>", "ʟɪsᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs"),
+        ],
     )
 
-    blocklist_commands = (
-        f"<u><b>{EmojiTag.BLOCKED} | ʙʟᴏᴄᴋʟɪsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.BLOCKED} /block &lt;reply|id&gt;   — ʙʟᴏᴄᴋ ᴜsᴇʀ ꜰʀᴏᴍ ʙᴏᴛ\n"
-        f"{EmojiTag.SUCCESS} /unblock &lt;reply|id&gt; — ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ\n"
-        f"{EmojiTag.USERS} /blocklist              — ᴠɪᴇᴡ ʙʟᴏᴄᴋᴇᴅ ʟɪsᴛ\n"
-        "</blockquote>"
+    blocklist_commands = _cmd_page(
+        f"{EmojiTag.BLOCKED} ʙʟᴏᴄᴋʟɪsᴛ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.BLOCKED} <code>/block &lt;reply|id&gt;</code>", "ʙʟᴏᴄᴋ ᴜsᴇʀ ꩖ʀᴏᴍ ʙᴏᴛ"),
+            (f"{EmojiTag.SUCCESS} <code>/unblock &lt;reply|id&gt;</code>", "ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ"),
+            (f"{EmojiTag.USERS} <code>/blocklist</code>", "ᴠɪᴇᴡ ʙʟᴏᴄᴋᴇᴅ ʟɪsᴛ"),
+        ],
     )
 
-    sudo_commands = (
-        f"<u><b>{EmojiTag.KEY} | sᴜᴅᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.KEY} /addsudo &lt;reply|id&gt; — ᴀᴅᴅ sᴜᴅᴏ ᴜsᴇʀ\n"
-        f"{EmojiTag.CLOSE} /rmsudo &lt;reply|id&gt;  — ʀᴇᴍᴏᴠᴇ sᴜᴅᴏ ᴜsᴇʀ\n"
-        f"{EmojiTag.CROWN} /sudolist               — ʟɪsᴛ sᴜᴅᴏ ᴜsᴇʀs\n"
-        "</blockquote>"
+    sudo_commands = _cmd_page(
+        f"{EmojiTag.KEY} sᴜᴅᴏ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.KEY} <code>/addsudo &lt;reply|id&gt;</code>", "ᴀᴅᴅ sᴜᴅᴏ ᴜsᴇʀ"),
+            (f"{EmojiTag.CLOSE} <code>/rmsudo &lt;reply|id&gt;</code>", "ʀᴇᴍᴏᴠᴇ sᴜᴅᴏ ᴜsᴇʀ"),
+            (f"{EmojiTag.CROWN} <code>/sudolist</code>", "ʟɪsᴛ sᴜᴅᴏ ᴜsᴇʀs"),
+        ],
     )
 
-    broadcast_commands = (
-        f"<u><b>{EmojiTag.BROADCAST} | ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.BROADCAST} /broadcast — ᴏᴘᴇɴ ʙʀᴏᴀᴅᴄᴀsᴛ ᴘᴀɴᴇʟ ᴡɪᴛʜ ᴄᴏᴘʏ / ꜰᴏʀᴡᴀʀᴅ & ᴛᴀʀɢᴇᴛ ᴛᴏɢɢʟᴇs\n"
-        "</blockquote>"
+    broadcast_commands = _cmd_page(
+        f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (
+                f"{EmojiTag.BROADCAST} <code>/broadcast</code>",
+                "ᴏᴘᴇɴ ʙʀᴏᴀᴅᴄᴀsᴛ ᴘᴀɴᴇʟ ᴡɪᴛʜ ᴄᴏᴘʏ / ꩖ᴏʀᴡᴀʀᴅ &amp; ᴛᴀʀɢᴇᴛ ᴛᴏɢɢʟᴇs",
+            ),
+        ],
     )
 
-    tools_commands = (
-        f"<u><b>{EmojiTag.TOOLS} | ᴛᴏᴏʟs ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.CLOSE} /del    — ᴅᴇʟᴇᴛᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ\n"
-        f"{EmojiTag.USERS} /tagall — ᴍᴇɴᴛɪᴏɴ ᴀʟʟ ᴍᴇᴍʙᴇʀs\n"
-        f"{EmojiTag.ERROR} /cancel — ᴀʙᴏʀᴛ ʀᴜɴɴɪɴɢ ᴛᴀɢᴀʟʟ\n"
-        f"{EmojiTag.SHIELD} /powers — sʜᴏᴡ ʙᴏᴛ ᴘᴇʀᴍɪssɪᴏɴs\n"
-        "</blockquote>"
+    tools_commands = _cmd_page(
+        f"{EmojiTag.TOOLS} ᴛᴏᴏʟs ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.CLOSE} <code>/del</code>", "ᴅᴇʟᴇᴛᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ"),
+            (f"{EmojiTag.USERS} <code>/tagall</code>", "ᴍᴇɴᴛɪᴏɴ ᴀʟʟ ᴍᴇᴍʙᴇʀs"),
+            (f"{EmojiTag.ERROR} <code>/cancel</code>", "ᴀʙᴏʀᴛ ʀᴜɴɴɪɴɢ ᴛᴀɢᴀʟʟ"),
+            (f"{EmojiTag.SHIELD} <code>/powers</code>", "sʜᴏᴡ ʙᴏᴛ ᴘᴇʀᴍɪssɪᴏɴs"),
+        ],
     )
 
-    kang_commands = (
-        f"<u><b>{EmojiTag.KANG} | sᴛɪᴄᴋᴇʀ & ᴍᴇᴍᴇ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.KANG} /kang         — ᴄʟᴏɴᴇ sᴛɪᴄᴋᴇʀ/ᴘʜᴏᴛᴏ ᴛᴏ ʏᴏᴜʀ ᴘᴀᴄᴋ\n"
-        f"{EmojiTag.TOOLS} /mmf &lt;text&gt; — ᴡʀɪᴛᴇ ᴛᴇxᴛ ᴏɴ ɪᴍᴀɢᴇ/sᴛɪᴄᴋᴇʀ\n"
-        "</blockquote>"
+    kang_commands = _cmd_page(
+        f"{EmojiTag.KANG} sᴛɪᴄᴋᴇʀ &amp; ᴍᴇᴍᴇ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.KANG} <code>/kang</code>", "ᴄʟᴏɴᴇ sᴛɪᴄᴋᴇʀ/ᴘʜᴏᴛᴏ ᴛᴏ ʏᴏᴜʀ ᴘᴀᴄᴋ"),
+            (f"{EmojiTag.TOOLS} <code>/mmf &lt;text&gt;</code>", "ᴡʀɪᴛᴇ ᴛᴇxᴛ ᴏɴ ɪᴍᴀɢᴇ/sᴛɪᴄᴋᴇʀ"),
+        ],
     )
 
-    status_commands = (
-        f"<u><b>{EmojiTag.STATS} | sᴛᴀᴛᴜs & ɪɴꜰᴏ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.PING} /ping  — ʟᴀᴛᴇɴᴄʏ & ᴜᴘᴛɪᴍᴇ\n"
-        f"{EmojiTag.STATS} /stats — ʙᴏᴛ ᴜsᴀɢᴇ sᴛᴀᴛs\n"
-        f"{EmojiTag.CHAT} /ac    — ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs\n"
-        f"{EmojiTag.INFO} /about — ᴜsᴇʀ / ɢʀᴏᴜᴘ / ᴄʜᴀɴɴᴇʟ ɪɴꜰᴏ\n"
-        "</blockquote>"
+    status_commands = _cmd_page(
+        f"{EmojiTag.STATS} sᴛᴀᴛᴜs &amp; ɪɴ꩖ᴏ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.PING} <code>/ping</code>", "ʟᴀᴛᴇɴᴄʏ &amp; ᴜᴘᴛɪᴍᴇ"),
+            (f"{EmojiTag.STATS} <code>/stats</code>", "ʙᴏᴛ ᴜsᴀɢᴇ sᴛᴀᴛs"),
+            (f"{EmojiTag.CHAT} <code>/ac</code>", "ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs"),
+            (f"{EmojiTag.INFO} <code>/about</code>", "ᴜsᴇʀ / ɢʀᴏᴜᴘ / ᴄʜᴀɴɴᴇʟ ɪɴ꩖ᴏ"),
+        ],
     )
 
-    owner_commands = (
-        f"<u><b>{EmojiTag.SETTINGS} | ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅs</b></u>\n"
-        "<blockquote expandable>\n"
-        f"{EmojiTag.REFRESH} /reboot       — ʀᴇsᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ\n"
-        f"{EmojiTag.PIN} /setwelcome   — sᴇᴛ ᴄᴜsᴛᴏᴍ /start ᴍᴇssᴀɢᴇ\n"
-        f"{EmojiTag.CLOSE} /resetwelcome — ʀᴇsᴇᴛ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ & ʟᴏɢᴏ\n"
-        "</blockquote>"
+    owner_commands = _cmd_page(
+        f"{EmojiTag.SETTINGS} ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅs",
+        [
+            (f"{EmojiTag.REFRESH} <code>/reboot</code>", "ʀᴇsᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
+            (f"{EmojiTag.PIN} <code>/setwelcome</code>", "sᴇᴛ ᴄᴜsᴛᴏᴍ <code>/start</code> ᴍᴇssᴀɢᴇ"),
+            (f"{EmojiTag.CLOSE} <code>/resetwelcome</code>", "ʀᴇsᴇᴛ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ &amp; ʟᴏɢᴏ"),
+        ],
     )
 
     category_pages = {
@@ -401,8 +412,9 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
             return await callback_query.answer(clean_alert(Messages.ADMIN_RESTRICTED_ACTION), show_alert=True)
 
         await callback_query.answer()
+        # Caption-bound: the help menu lives on the start card's photo/video.
         await callback_query.message.edit_caption(
-            caption=category_pages[data],
+            caption=rich_caption(category_pages[data]),
             reply_markup=Buttons.BACK,
         )
     elif data in ("home", "back"):
@@ -436,10 +448,11 @@ async def help_command_handler(client: Client, message: Message):
         is_sudo = user_id in sudoers or is_owner
 
         markup = Buttons.help_markup(is_admin=is_admin, is_owner=is_owner, is_sudo=is_sudo)
-        await message.reply(
+        await rich_reply(
+            message,
             Messages.HELP_CATEGORY_SELECT,
             reply_markup=markup,
-            link_preview_options=None
+            client=client,
         )
     else:
         # Group chat: send inline button pointing to bot PM
@@ -447,9 +460,10 @@ async def help_command_handler(client: Client, message: Message):
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("📖 ᴏᴘᴇɴ ʜᴇʟᴘ ᴍᴇɴᴜ", url=f"https://t.me/{bot_username}?start=help", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.HELP)]
         ])
-        await message.reply(
-            f"{EmojiTag.INFO} <b>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴛᴏ ᴏᴘᴇɴ ᴛʜᴇ ʜᴇʟᴘ ᴍᴇɴᴜ ɪɴ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ:</b>",
+        await rich_reply(
+            message,
+            rich_note(f"{EmojiTag.INFO} <b>ᴄʟɪᴄᴋ ᴛʜᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴛᴏ ᴏᴘᴇɴ ᴛʜᴇ ʜᴇʟᴘ ᴍᴇɴᴜ ɪɴ ᴘʀɪᴠᴀᴛᴇ ᴄʜᴀᴛ:</b>"),
             reply_markup=keyboard,
-            link_preview_options=None
+            client=client,
         )
 

@@ -2,10 +2,10 @@
 utils/premium_emoji.py — decide ONCE whether this bot may send premium/custom
 emoji, then build every message and button accordingly.
 
-Custom emoji (InlineKeyboardButton.icon_custom_emoji_id, and <emoji id="...">
-HTML tags in message text/captions) requires the bot owner to have an active
-Telegram Premium subscription. Rather than discovering that per send, the bot
-asks once at startup:
+Custom emoji (InlineKeyboardButton.icon_custom_emoji_id, and
+<tg-emoji emoji-id="..."> HTML tags in message text/captions) requires the bot
+owner to have an active Telegram Premium subscription. Rather than discovering
+that per send, the bot asks once at startup:
 
     setup_premium_emoji(bot, LOGGER_ID, OWNER_ID)
 
@@ -21,14 +21,14 @@ emoji is born, so no send site has to know about it:
                                     (Markdown.parse delegates to it)
 
     PREMIUM_EMOJI = True   buttons drop their unicode text emoji for the custom
-                           icon; message glyphs upgrade to <emoji> tags
-    PREMIUM_EMOJI = False  buttons never carry an icon id; <emoji> tags collapse
-                           back to the plain glyph
+                           icon; message glyphs upgrade to <tg-emoji> tags
+    PREMIUM_EMOJI = False  buttons never carry an icon id; <tg-emoji> tags
+                           collapse back to the plain glyph
 
 On a NO verdict the constants are also rewritten in place, so anything that
 reads them without going through a parser is already correct:
 
-    EmojiTag.*   '<emoji id="123">🎵</emoji>'  ->  '🎵'
+    EmojiTag.*   '<tg-emoji emoji-id="123">🎵</tg-emoji>'  ->  '🎵'
     Messages.*   the 112 templates already f-string-built at import
     Emoji.*      the custom-emoji document ids  ->  None
     Buttons.*    the markups already built at import
@@ -63,7 +63,14 @@ _patched = False
 # just that lets the 403 variant escape uncaught. Always except on the tuple.
 PREMIUM_REQUIRED_ERRORS = (PremiumAccountRequired, PremiumAccountRequiredForbidden)
 
-_EMOJI_TAG_RE = re.compile(r'<emoji id="\d+">(.*?)</emoji>')
+# Telegram's Rich Message compiler only understands <tg-emoji emoji-id="...">,
+# so that is the only spelling this module emits (see utils/emoji.py). The
+# stripper still accepts the legacy <emoji id="..."> form, because user-authored
+# text stored in the database may predate the switch.
+_EMOJI_TAG_RE = re.compile(
+    r'<(?:tg-)?emoji\s+(?:emoji-)?id="[^"]*"\s*>(.*?)</(?:tg-)?emoji>',
+    re.I | re.S,
+)
 _LEADING_EMOJI_RE = re.compile(r'^([\u2139]|[^\w\s\d])[\ufe0f\ufe0e]*\s+')
 
 _UNICODE_TO_EMOJI_ID = {
@@ -170,21 +177,32 @@ _UPGRADE_RE = re.compile("|".join(
 ))
 
 # Spans the upgrade must leave alone: already-tagged emoji (would nest twice)
-# and code/pre (Telegram rejects a custom-emoji entity inside them).
+# and code/pre (Telegram rejects a custom-emoji entity inside them). Both emoji
+# tag spellings are skipped so legacy stored text is never double-wrapped.
 _NO_UPGRADE_RE = re.compile(
-    r'(<emoji\b[^>]*>.*?</emoji>|<code\b[^>]*>.*?</code>|<pre\b[^>]*>.*?</pre>)',
+    r'(<(?:tg-)?emoji\b[^>]*>.*?</(?:tg-)?emoji>|<code\b[^>]*>.*?</code>|<pre\b[^>]*>.*?</pre>)',
     re.S,
 )
 
 
+def _emoji_tag(emoji_id, glyph):
+    """The one place a custom-emoji HTML tag is built at runtime.
+
+    ``<tg-emoji emoji-id=...>`` is mandatory: Telegram's server-side Rich Message
+    compiler strips the legacy ``<emoji id=...>`` spelling and renders the bare
+    glyph instead.
+    """
+    return f'<tg-emoji emoji-id="{emoji_id}">{glyph}</tg-emoji>'
+
+
 def _upgrade_unicode_emoji(text):
-    """'🎵' -> '<emoji id="...">🎵</emoji>' for every glyph we hold an id for."""
+    """'🎵' -> '<tg-emoji emoji-id="...">🎵</tg-emoji>' for every glyph we hold an id for."""
     if not isinstance(text, str) or not text:
         return text
     parts = _NO_UPGRADE_RE.split(text)
     for i in range(0, len(parts), 2):  # odd indices are the skipped spans
         parts[i] = _UPGRADE_RE.sub(
-            lambda m: f'<emoji id="{_MESSAGE_EMOJI_IDS[m.group(0)]}">{m.group(0)}</emoji>',
+            lambda m: _emoji_tag(_MESSAGE_EMOJI_IDS[m.group(0)], m.group(0)),
             parts[i],
         )
     return "".join(parts)
@@ -310,7 +328,8 @@ def _install_patches():
 
 
 def strip_custom_emoji_text(text):
-    """Collapses <emoji id="...">X</emoji> down to just X. Returns a new string."""
+    """Collapses ``<tg-emoji emoji-id="...">X</tg-emoji>`` (or the legacy
+    ``<emoji id="...">`` form) down to just X. Returns a new string."""
     if not isinstance(text, str):
         return text
     return _EMOJI_TAG_RE.sub(r"\1", text)
@@ -320,7 +339,7 @@ def position_tag(n: int) -> str:
     """Return keycaps emoji or custom emoji tag for position n.
 
     HTML.parse automatically upgrades single keycap emoji (e.g. '5️⃣') to custom emoji
-    tags (<emoji id="...">5️⃣</emoji>) when PREMIUM_EMOJI is active. However, for
+    tags (<tg-emoji emoji-id="...">5️⃣</tg-emoji>) when PREMIUM_EMOJI is active. However, for
     positions present in Emoji.TENS (e.g. 10, 20, ..., 90), there is no '0' digit
     in Emoji.DIGITS. We directly return the TENS custom emoji tag wrapping a single
     keycap character fallback (e.g. '1️⃣') to prevent Telegram's ENTITY_TEXT_INVALID error.
@@ -329,12 +348,12 @@ def position_tag(n: int) -> str:
         s = str(n)
         if s in Emoji.TENS and Emoji.TENS[s]:
             first_digit = s[0]
-            return f'<emoji id="{Emoji.TENS[s]}">{first_digit}️⃣</emoji>'
+            return _emoji_tag(Emoji.TENS[s], f"{first_digit}️⃣")
         if len(s) > 2 and s.endswith("0"):
             prefix = s[:-1]
             if prefix in Emoji.TENS and Emoji.TENS[prefix]:
                 first_digit = prefix[0]
-                return f'<emoji id="{Emoji.TENS[prefix]}">{first_digit}️⃣</emoji>0️⃣'
+                return _emoji_tag(Emoji.TENS[prefix], f"{first_digit}️⃣") + "0️⃣"
     return keycaps(n)
 
 
@@ -478,17 +497,21 @@ if __name__ == "__main__":  # python -m utils.premium_emoji
     assert (b.text, b.icon_custom_emoji_id) == ("​", Emoji.RESUME), repr(b.text)
     b = InlineKeyboardButton("‣ ᴘʟᴀʏ ɴᴏᴡ", callback_data="x", icon_custom_emoji_id=Emoji.PLAY)
     assert (b.text, b.icon_custom_emoji_id) == ("ᴘʟᴀʏ ɴᴏᴡ", Emoji.PLAY), repr(b.text)
-    assert _upgrade_unicode_emoji("hi 🎵") == f'hi <emoji id="{NOTE}">🎵</emoji>'
+    assert _upgrade_unicode_emoji("hi 🎵") == f'hi <tg-emoji emoji-id="{NOTE}">🎵</tg-emoji>'
     assert _upgrade_unicode_emoji(EmojiTag.MUSIC_NOTE) == EmojiTag.MUSIC_NOTE  # no double wrap
+    assert _upgrade_unicode_emoji(f'<emoji id="{NOTE}">🎵</emoji>') == (
+        f'<emoji id="{NOTE}">🎵</emoji>'                                      # legacy, still skipped
+    )
     assert _upgrade_unicode_emoji("<code>🎵</code>") == "<code>🎵</code>"      # entity would nest
     assert _upgrade_unicode_emoji("▷ II ‣") == "▷ II ‣"                        # not real emoji
     assert _upgrade_unicode_emoji(keycaps(12)) == (
-        f'<emoji id="{Emoji.DIGITS["1"]}">1️⃣</emoji><emoji id="{Emoji.DIGITS["2"]}">2️⃣</emoji>'
+        f'<tg-emoji emoji-id="{Emoji.DIGITS["1"]}">1️⃣</tg-emoji>'
+        f'<tg-emoji emoji-id="{Emoji.DIGITS["2"]}">2️⃣</tg-emoji>'
     )
-    # Two-digit positions (10, 20 ...) must NOT be wrapped in a single <emoji>
+    # Two-digit positions (10, 20 ...) must NOT be wrapped in a single <tg-emoji>
     # tag — that would span two keycap characters and cause ENTITY_TEXT_INVALID.
     assert _upgrade_unicode_emoji(keycaps(10)) == (
-        f'<emoji id="{Emoji.DIGITS["1"]}">1️⃣</emoji>0️⃣'
+        f'<tg-emoji emoji-id="{Emoji.DIGITS["1"]}">1️⃣</tg-emoji>0️⃣'
     )
     out = parse("hi 🎵")
     assert out["message"] == "hi 🎵"
@@ -500,8 +523,10 @@ if __name__ == "__main__":  # python -m utils.premium_emoji
     assert (b.text, b.icon_custom_emoji_id) == ("🎵 ᴘʟᴀʏʙᴀᴄᴋ", None), b.text
     b = InlineKeyboardButton("▷", callback_data="x", icon_custom_emoji_id=Emoji.RESUME)
     assert (b.text, b.icon_custom_emoji_id) == ("▷", None), repr(b.text)
-    assert Emoji.MUSIC_NOTE is None and "<emoji" not in EmojiTag.MUSIC_NOTE
-    out = parse(f'<emoji id="{NOTE}">🎵</emoji> hi')
+    assert Emoji.MUSIC_NOTE is None and "emoji" not in EmojiTag.MUSIC_NOTE
+    out = parse(f'<tg-emoji emoji-id="{NOTE}">🎵</tg-emoji> hi')
+    assert out["message"] == "🎵 hi" and not out["entities"], out
+    out = parse(f'<emoji id="{NOTE}">🎵</emoji> hi')  # legacy spelling still stripped
     assert out["message"] == "🎵 hi" and not out["entities"], out
     assert Buttons.BACK.inline_keyboard[0][0].icon_custom_emoji_id is None
 

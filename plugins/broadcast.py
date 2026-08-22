@@ -29,129 +29,119 @@ async def broadcast_callback_handler(client, callback_query):
 
     # Bot Broadcast
     if bot_data and bot:
-        X = await callback_query.message.reply(Messages.START_BOT_BROADCAST, link_preview_options=None)
+        chat_id_for_progress = callback_query.message.chat.id
         users = bot_data.get('users', [])
         u, g, a_chat = 0, 0, 0
         last_edit_time = time.time()
 
-        for chat_id in users:
-            try:
-                cid = int(chat_id)
-                is_private = cid > 0
-                is_group = cid < 0
+        async with RichDraft(client, chat_id_for_progress) as draft:
+            await draft.update(rich_note(Messages.START_BOT_BROADCAST))
 
-                if is_private and not private:
-                    continue
-                if is_group and not group:
-                    continue
-
-                sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
-                if is_private:
-                    u += 1
-                else:
-                    g += 1
-                    if pin:
-                        try:
-                            await sent_message.pin()
-                            a_chat += 1
-                        except Exception:
-                            pass
-
-                # Debounce progress edits to avoid rate-limiting
-                if (u + g) % 20 == 0 or time.time() - last_edit_time > 3:
-                    try:
-                        await X.edit(
-                            f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ꜰʀᴏᴍ ʙᴏᴛ...</b>\n\n"
-                            f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>\n"
-                            f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>\n"
-                            f"✦ {EmojiTag.SHIELD} <b>Pinned:</b> <code>{a_chat}</code>"
-                        )
-                        last_edit_time = time.time()
-                    except Exception:
-                        pass
-
-            except FloodWait as e:
-                await asyncio.sleep(e.value)
+            for chat_id in users:
                 try:
+                    cid = int(chat_id)
+                    is_private = cid > 0
+                    is_group = cid < 0
+
+                    if is_private and not private:
+                        continue
+                    if is_group and not group:
+                        continue
+
                     sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
-                    if cid > 0:
+                    if is_private:
                         u += 1
                     else:
                         g += 1
+                        if pin:
+                            try:
+                                await sent_message.pin()
+                                a_chat += 1
+                            except Exception:
+                                pass
+
+                    # Debounce progress edits to avoid rate-limiting
+                    if (u + g) % 20 == 0 or time.time() - last_edit_time > 3:
+                        try:
+                            await draft.update(
+                                rich_heading(f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ꜰʀᴏᴍ ʙᴏᴛ", 2)
+                                + rich_kv_table([
+                                    (f"{EmojiTag.USER} Private Chats", rich_code(u)),
+                                    (f"{EmojiTag.USERS} Groups", rich_code(g)),
+                                    (f"{EmojiTag.SHIELD} Pinned", rich_code(a_chat)),
+                                ])
+                            )
+                            last_edit_time = time.time()
+                        except Exception:
+                            pass
+
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    try:
+                        sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
+                        if cid > 0:
+                            u += 1
+                        else:
+                            g += 1
+                    except Exception as e:
+                        logger.info(f"Error broadcasting to {chat_id}: {e}")
                 except Exception as e:
                     logger.info(f"Error broadcasting to {chat_id}: {e}")
-            except Exception as e:
-                logger.info(f"Error broadcasting to {chat_id}: {e}")
 
-        await X.edit(
-            f"<b>{EmojiTag.SUCCESS} ʙᴏᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
-            f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>\n"
-            f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>\n"
-            f"✦ {EmojiTag.SHIELD} <b>Pinned in Groups:</b> <code>{a_chat}</code>"
-        )
+            await draft.finish(
+                rich_heading(f"{EmojiTag.SUCCESS} ʙᴏᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ", 1)
+                + rich_table(
+                    ["Result", "Count"],
+                    [
+                        (f"{EmojiTag.USER} Private Chats", rich_code(u)),
+                        (f"{EmojiTag.USERS} Groups", rich_code(g)),
+                        (f"{EmojiTag.SHIELD} Pinned in Groups", rich_code(a_chat)),
+                        (f"{EmojiTag.STATS} Total Delivered", rich_code(u + g)),
+                    ],
+                )
+            )
 
     bot_username = client.me.username
 
     # Assistant Broadcast
     if userbot and session:
-        XX = await callback_query.message.reply(Messages.START_ASSISTANT_BROADCAST, link_preview_options=None)
+        chat_id_for_progress = callback_query.message.chat.id
         uu, ug = 0, 0
         last_edit_time = time.time()
-        try:
-            # Ensure communication with the bot
+        async with RichDraft(client, chat_id_for_progress) as draft:
+            await draft.update(rich_note(Messages.START_ASSISTANT_BROADCAST))
             try:
-                await session.get_chat(client.me.id)
-            except PeerIdInvalid:
-                await session.send_message(bot_username, "/start", link_preview_options=None)
-            except UserBlocked:
-                await session.unblock_user(bot_username)
-            await asyncio.sleep(1)
-
-            # Copy the message to session and fetch history
-            copied_message = await message_to_broadcast.forward(session.me.id) if forward else await message_to_broadcast.copy(session.me.id)
-            await asyncio.sleep(2)
-
-            msg = await compare_message(copied_message, client, session)
-            if not msg:
-                msg = copied_message
-
-            # Broadcast to dialogs
-            async for dialog in session.get_dialogs():
-                chat_id = dialog.chat.id
-                if str(chat_id) == str(-1001806816712):
-                    continue
-
-                is_private = int(chat_id) > 0 or dialog.chat.type == enums.ChatType.PRIVATE
-                is_group = int(chat_id) < 0 or dialog.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
-
-                if is_private and not uprivate:
-                    continue
-                if is_group and not ugroup:
-                    continue
-
+                # Ensure communication with the bot
                 try:
-                    if forward:
-                        await msg.forward(chat_id)
-                    else:
-                        await msg.copy(chat_id)
-                    if is_private:
-                        uu += 1
-                    else:
-                        ug += 1
+                    await session.get_chat(client.me.id)
+                except PeerIdInvalid:
+                    await session.send_message(bot_username, "/start", link_preview_options=None)
+                except UserBlocked:
+                    await session.unblock_user(bot_username)
+                await asyncio.sleep(1)
 
-                    # Debounce progress edits
-                    if (uu + ug) % 20 == 0 or time.time() - last_edit_time > 3:
-                        try:
-                            await XX.edit(
-                                f"<b>{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴠɪᴀ ᴀssɪsᴛᴀɴᴛ...</b>\n\n"
-                                f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{uu}</code>\n"
-                                f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{ug}</code>"
-                            )
-                            last_edit_time = time.time()
-                        except Exception:
-                            pass
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
+                # Copy the message to session and fetch history
+                copied_message = await message_to_broadcast.forward(session.me.id) if forward else await message_to_broadcast.copy(session.me.id)
+                await asyncio.sleep(2)
+
+                msg = await compare_message(copied_message, client, session)
+                if not msg:
+                    msg = copied_message
+
+                # Broadcast to dialogs
+                async for dialog in session.get_dialogs():
+                    chat_id = dialog.chat.id
+                    if str(chat_id) == str(-1001806816712):
+                        continue
+
+                    is_private = int(chat_id) > 0 or dialog.chat.type == enums.ChatType.PRIVATE
+                    is_group = int(chat_id) < 0 or dialog.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP)
+
+                    if is_private and not uprivate:
+                        continue
+                    if is_group and not ugroup:
+                        continue
+
                     try:
                         if forward:
                             await msg.forward(chat_id)
@@ -161,21 +151,52 @@ async def broadcast_callback_handler(client, callback_query):
                             uu += 1
                         else:
                             ug += 1
+
+                        # Debounce progress edits
+                        if (uu + ug) % 20 == 0 or time.time() - last_edit_time > 3:
+                            try:
+                                await draft.update(
+                                    rich_heading(f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴠɪᴀ ᴀssɪsᴛᴀɴᴛ", 2)
+                                    + rich_kv_table([
+                                        (f"{EmojiTag.USER} Private Chats", rich_code(uu)),
+                                        (f"{EmojiTag.USERS} Groups", rich_code(ug)),
+                                    ])
+                                )
+                                last_edit_time = time.time()
+                            except Exception:
+                                pass
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value)
+                        try:
+                            if forward:
+                                await msg.forward(chat_id)
+                            else:
+                                await msg.copy(chat_id)
+                            if is_private:
+                                uu += 1
+                            else:
+                                ug += 1
+                        except Exception as e:
+                            logger.info(f"Error broadcasting to {chat_id}: {e}")
                     except Exception as e:
                         logger.info(f"Error broadcasting to {chat_id}: {e}")
-                except Exception as e:
-                    logger.info(f"Error broadcasting to {chat_id}: {e}")
 
-        except Exception as e:
-            logger.info(f"Error with session broadcast: {e}")
-            await XX.reply(Messages.ERROR_OCCURRED, link_preview_options=None)
+            except Exception as e:
+                logger.info(f"Error with session broadcast: {e}")
+                await rich_send(client, chat_id_for_progress, rich_note(Messages.ERROR_OCCURRED))
 
-        # Finalize assistant broadcast summary
-        await XX.edit(
-            f"<b>{EmojiTag.SUCCESS} ᴀssɪsᴛᴀɴᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
-            f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{uu}</code>\n"
-            f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{ug}</code>"
-        )
+            # Finalize assistant broadcast summary
+            await draft.finish(
+                rich_heading(f"{EmojiTag.SUCCESS} ᴀssɪsᴛᴀɴᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ", 1)
+                + rich_table(
+                    ["Result", "Count"],
+                    [
+                        (f"{EmojiTag.USER} Private Chats", rich_code(uu)),
+                        (f"{EmojiTag.USERS} Groups", rich_code(ug)),
+                        (f"{EmojiTag.STATS} Total Delivered", rich_code(uu + ug)),
+                    ],
+                )
+            )
 
 
 async def get_status(client, user_data=None):
@@ -212,20 +233,46 @@ async def get_status(client, user_data=None):
     ubot_private_str = f"{EmojiTag.TICK} Yes" if uprivate else f"{EmojiTag.UNTICK} No"
 
     mess = (
-        f"<u><b>{EmojiTag.BROADCAST} | ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs</b></u>\n"
-        f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-        f"✦ {EmojiTag.USER} <b>Private Chats:</b> <code>{u}</code>\n"
-        f"✦ {EmojiTag.USERS} <b>Groups:</b> <code>{g}</code>\n"
-        f"✦ {EmojiTag.STATS} <b>Total Targets:</b> <code>{total}</code>\n"
-        f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-        f"<b>{EmojiTag.SETTINGS} ᴄʜᴏsᴇɴ ᴏᴘᴛɪᴏɴs:</b>\n"
-        f"• <b>Sender Name:</b> {sender_name_status}\n"
-        f"• <b>From Bot:</b> {bot_status}\n"
-        f"  └ <b>Groups:</b> {bot_group_str} | <b>Private:</b> {bot_private_str} | <b>Pin:</b> {bot_pin_str}\n"
-        f"• <b>From Assistant:</b> {userbot_status}\n"
-        f"  └ <b>Groups:</b> {ubot_group_str} | <b>Private:</b> {ubot_private_str}\n"
-        f"<b>━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-        f"<blockquote><b>ᴄʜᴏᴏsᴇ ʏᴏᴜʀ ʙʀᴏᴀᴅᴄᴀsᴛ ᴏᴘᴛɪᴏɴs ʙᴇʟᴏᴡ ⬇️</b></blockquote>"
+        rich_heading(f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs", 1)
+        + rich_heading(f"{EmojiTag.STATS} ᴛᴀʀɢᴇᴛs", 2)
+        + rich_table(
+            ["Target", "Count"],
+            [
+                (f"{EmojiTag.USER} Private Chats", rich_code(u)),
+                (f"{EmojiTag.USERS} Groups", rich_code(g)),
+                (f"{EmojiTag.STATS} Total Targets", rich_code(total)),
+            ],
+        )
+        + rich_heading(f"{EmojiTag.SETTINGS} ᴄʜᴏsᴇɴ ᴏᴘᴛɪᴏɴs", 2)
+        # Sub-options that used to hang off a "└" line are now their own rows,
+        # scoped by the Source column.
+        + rich_table(
+            ["Source", "Setting", "State"],
+            [
+                ("—", "Sender Name", sender_name_status),
+                (f"{EmojiTag.CHAT} Bot", "Enabled", bot_status),
+                (f"{EmojiTag.CHAT} Bot", "Groups", bot_group_str),
+                (f"{EmojiTag.CHAT} Bot", "Private", bot_private_str),
+                (f"{EmojiTag.CHAT} Bot", "Pin", bot_pin_str),
+                (f"{EmojiTag.USER} Assistant", "Enabled", userbot_status),
+                (f"{EmojiTag.USER} Assistant", "Groups", ubot_group_str),
+                (f"{EmojiTag.USER} Assistant", "Private", ubot_private_str),
+            ],
+        )
+        + rich_details(
+            "What do these settings do?",
+            rich_table(
+                ["Setting", "Effect"],
+                [
+                    ("Sender Name", "Forward the message so the original author stays visible, instead of sending a clean copy."),
+                    ("From Bot", "Deliver from the bot account to every chat it knows."),
+                    ("From Assistant", "Deliver from the assistant account to its own dialogs."),
+                    ("Groups / Private", "Restrict delivery to that chat kind for the chosen source."),
+                    ("Pin", "Pin the broadcast in groups after sending (bot only)."),
+                ],
+            ),
+        )
+        + rich_note("<b>ᴄʜᴏᴏsᴇ ʏᴏᴜʀ ʙʀᴏᴀᴅᴄᴀsᴛ ᴏᴘᴛɪᴏɴs ʙᴇʟᴏᴡ ⬇️</b>")
     )
     broadcasts[bot_id] = mess
     return mess
@@ -313,7 +360,7 @@ async def status_command_handler(client, message):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     await status(client, message)
 
@@ -338,7 +385,7 @@ async def broadcast_command_handler(client, message, user_data=None):
     )
 
     if not is_authorized:
-        return await message.reply(Messages.OWNER_SUDO_CMD, link_preview_options=None)
+        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     sender_id = client.me.id
     if user_data is None:
@@ -353,7 +400,7 @@ async def broadcast_command_handler(client, message, user_data=None):
 
     if not isinstance(message, CallbackQuery):
         if not message.reply_to_message:
-            return await message.reply(Messages.REPLY_TO_BROADCAST, link_preview_options=None)
+            return await rich_reply(message, rich_note(Messages.REPLY_TO_BROADCAST), client=client)
 
         is_fbroadcast = bool(message.command and message.command[0].lower().startswith("f"))
         if is_fbroadcast and not user_data.get('forward'):
@@ -441,7 +488,7 @@ async def broadcast_command_handler(client, message, user_data=None):
             )
         ],
         for_userbot if userbot else [],
-        [InlineKeyboardButton("🚀 sᴛᴀʀᴛ ʙʀᴏᴀᴅᴄᴀsᴛ", callback_data="broadcast", style=ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton("🚀 sᴛᴀʀᴛ ʙʀᴏᴀᴅᴄᴀsᴛ", callback_data="broadcast", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.ROCKET)],
     ]
 
     # Filter out empty button rows
@@ -450,13 +497,15 @@ async def broadcast_command_handler(client, message, user_data=None):
     mess_text = await get_status(client, user_data=user_data)
 
     if isinstance(message, CallbackQuery):
-        await message.edit_message_text(
+        await rich_edit(
+            message,
             mess_text,
             reply_markup=InlineKeyboardMarkup(buttons)
         )
     else:
-        await message.reply(
+        await rich_reply(
+            message,
             mess_text,
             reply_markup=InlineKeyboardMarkup(buttons),
-            link_preview_options=None
+            client=client
         )
