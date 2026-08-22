@@ -323,7 +323,7 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
 
     background = background.convert("RGB")
     background_path = f"cache/{random_id}_{videoid}_premium.png"
-    background.save(background_path, optimize=False)
+    background.save(background_path, format="PNG", optimize=False)
 
     for temp_file in temp_files_to_delete:
         try:

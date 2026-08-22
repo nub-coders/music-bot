@@ -1132,40 +1132,47 @@ async def end(client, update):
         ))
     try:
         chat_id = update.chat_id
-        async with state.lock(chat_id):
-            state.cancel_suggest(chat_id)
+        state.cancel_suggest(chat_id)
 
-            if chat_id in state.queues and state.queues[chat_id]:
-                next_song = state.queues[chat_id].pop(0)
+        # Hold the chat lock only for the queue read-modify-write. join_call and
+        # remove_active_chat both re-acquire this same non-reentrant lock
+        # (state.activate / state.deactivate), so awaiting them while holding it
+        # deadlocks the stream_end handler and, because the lock is never
+        # released, every later command for this chat.
+        async with state.lock(chat_id):
+            next_song = state.queues[chat_id].pop(0) if state.queues.get(chat_id) else None
+            if next_song:
                 state.playing[chat_id] = next_song
                 state.last_played[chat_id] = next_song
-                ast_num = state.get_chat_assistant(chat_id) or 1
-                await join_call(
-                    next_song['message'],
-                    next_song['title'],
-                    next_song['yt_link'],
-                    next_song['chat'],
-                    next_song['by'],
-                    next_song['duration'],
-                    next_song['mode'],
-                    next_song['thumb'],
-                    next_song.get('stream_url'),
-                    yt_task=next_song.get('_yt_task'),
-                    queue_msg=next_song.get('queue_msg'),
-                    assistant_num=ast_num,
-                )
-            else:
-                logger.info(f"Song queue for chat {chat_id} is empty.")
-                last_song = state.playing.pop(chat_id, None) or state.last_played.get(chat_id)
-                if last_song:
-                    state.last_played[chat_id] = last_song
 
-                if last_song:
-                    asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
-                else:
-                    await state.delete_now_playing(chat_id)
-                    await client.leave_call(chat_id)
-                    await remove_active_chat(chat_id)
+        if next_song:
+            ast_num = state.get_chat_assistant(chat_id) or 1
+            await join_call(
+                next_song['message'],
+                next_song['title'],
+                next_song['yt_link'],
+                next_song['chat'],
+                next_song['by'],
+                next_song['duration'],
+                next_song['mode'],
+                next_song['thumb'],
+                next_song.get('stream_url'),
+                yt_task=next_song.get('_yt_task'),
+                queue_msg=next_song.get('queue_msg'),
+                assistant_num=ast_num,
+            )
+        else:
+            logger.info(f"Song queue for chat {chat_id} is empty.")
+            last_song = state.playing.pop(chat_id, None) or state.last_played.get(chat_id)
+            if last_song:
+                state.last_played[chat_id] = last_song
+
+            if last_song:
+                asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+            else:
+                await state.delete_now_playing(chat_id)
+                await client.leave_call(chat_id)
+                await remove_active_chat(chat_id)
     except Exception as e:
         logger.warning(f"Error in end function: {e}")
 

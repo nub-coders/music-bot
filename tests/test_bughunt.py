@@ -246,3 +246,156 @@ async def test_run_cmd_missing_executable():
     assert code == 127
     assert "not found" in stderr.lower()
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# REGRESSIONS introduced by the bug-fix commits (81a8a38, bec7f05)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def test_end_does_not_hold_chat_lock_across_join_call():
+    """tools.end() must release the chat lock BEFORE awaiting join_call() or
+    remove_active_chat(), avoiding deadlock on track transitions."""
+    import ast
+    tree = ast.parse(open("tools.py").read())
+    end_fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "end"
+    )
+    withs = [
+        w for w in ast.walk(end_fn)
+        if isinstance(w, ast.AsyncWith)
+        and "state.lock(" in ast.unparse(w.items[0].context_expr)
+    ]
+    assert withs, "expected `async with state.lock(chat_id)` in end()"
+    body = ast.unparse(withs[0])
+    assert "join_call(" not in body
+    assert "remove_active_chat(" not in body
+
+
+def test_lock_is_not_reentrant_end_deadlocks():
+    """Empirical proof of the above."""
+    async def scenario():
+        store = SessionStore()
+        cid = -1001
+        async with store.lock(cid):
+            await store.activate(cid, assistant_num=1)
+
+    loop = asyncio.new_event_loop()
+    try:
+        with pytest.raises(asyncio.TimeoutError):
+            loop.run_until_complete(asyncio.wait_for(scenario(), timeout=1.0))
+    finally:
+        loop.close()
+
+
+def test_deactivate_reaps_lock_with_pending_waiters():
+    """state.deactivate() pops self._locks[cid] when `not locked()`. After
+    Lock.release() wakes a waiter, `locked()` is briefly False while the waiter
+    is still queued -> the lock object is discarded, the next caller builds a
+    fresh one, and two coroutines hold a 'lock' for the same chat at once."""
+    async def scenario():
+        store = SessionStore()
+        cid = -100999
+        old = store.lock(cid)
+        await old.acquire()
+        waiter = asyncio.create_task(store.lock(cid).acquire())
+        await asyncio.sleep(0)
+        assert waiter in asyncio.all_tasks()
+        old.release()
+        # The exact window deactivate() checks:
+        assert not old.locked()
+        assert old._waiters, "waiter still queued while locked() is False"
+        store._locks.pop(cid, None)  # what deactivate() does
+        new = store.lock(cid)
+        assert new is not old
+        await waiter                # old waiter now owns `old`
+        await new.acquire()         # new caller owns `new`
+        return old.locked() and new.locked()
+
+    loop = asyncio.new_event_loop()
+    try:
+        assert loop.run_until_complete(scenario()) is True, "mutual exclusion lost"
+    finally:
+        loop.close()
+
+
+def test_deactivate_destroys_queue_that_callers_still_need():
+    """state.deactivate() now pops queues/playing. remove_active_chat() calls it,
+    so any error path that cleans up also silently discards a queue the user
+    just built."""
+    async def scenario():
+        store = SessionStore()
+        cid = -1002
+        store.queues[cid] = [{"title": "a"}, {"title": "b"}, {"title": "c"}]
+        await store.activate(cid, assistant_num=1)
+        await store.deactivate(cid)
+        return store.queues.get(cid)
+
+    loop = asyncio.new_event_loop()
+    try:
+        assert loop.run_until_complete(scenario()) is None
+    finally:
+        loop.close()
+
+
+def test_skip_and_dend_lose_assistant_binding():
+    """Only tools.end() forwards assistant_num to join_call. /skip, the skip
+    button, /playnow and dend() omit it, so join_call re-resolves via
+    get_assistant() -- which is fine -- but they also never pass the assistant
+    that is actually mid-call, so a chat can be re-joined by a different
+    assistant than the one streaming."""
+    import ast
+    missing = []
+    for path in ("plugins/controls.py", "plugins/playback.py"):
+        tree = ast.parse(open(path).read())
+        for c in ast.walk(tree):
+            if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "join_call":
+                if "assistant_num" not in [k.arg for k in c.keywords]:
+                    missing.append(f"{path}:{c.lineno}")
+    assert missing, "expected call sites without assistant_num"
+    assert len(missing) >= 4, missing
+
+
+def test_autoleave_skips_unknown_chats_without_mass_leave():
+    """state.played absence should mean unknown/skip rather than falling back to
+    StartTime and mass-leaving all chats when uptime passes ASSISTANT_LEAVE_TIME."""
+    src = open("main.py").read()
+    assert "state.played.get(cid, StartTime)" not in src
+    assert "last_played_ts = state.played.get(cid)" in src
+
+
+def test_cache_janitor_never_targets_the_repo_root():
+    """REGRESSION GUARD (was Critical): _cache_cleanup_loop must never target `ggg`
+    (the repo root) to prevent deleting source files or virtual environment."""
+    from main import _cleanup_target_dirs, ggg
+    target_dirs = _cleanup_target_dirs()
+    assert ggg not in target_dirs
+    for d in target_dirs:
+        assert d != ggg
+
+
+def test_reboot_calls_nonexistent_pytgcalls_stop():
+    """/reboot does `await call.stop()` on each PyTgCalls instance, but PyTgCalls
+    has no stop(). The AttributeError is swallowed by a bare except, so calls are
+    never torn down before os.execl re-executes the process."""
+    from pytgcalls import PyTgCalls
+    assert not hasattr(PyTgCalls, "stop")
+    assert "await call.stop()" in open("plugins/admin_sudo.py").read()
+
+
+def test_stream_cache_stores_urls_with_no_expire_as_permanent_miss():
+    """_mem_cache_set stores (value, None) when the stream URL carries no
+    `expire` query param. _mem_cache_get then always returns None for that key
+    AND never falls through to _MEM_CACHE, so those entries are pure leak:
+    they occupy the bounded _STREAM_CACHE but can never be read back."""
+    import youtube
+    youtube._STREAM_CACHE.clear()
+    youtube._MEM_CACHE.clear()
+    key = ("audio", "https://youtu.be/noexpire")
+    youtube._mem_cache_set(key, "https://example.com/videoplayback?itag=140")
+    assert youtube._STREAM_CACHE[key][1] is None
+    assert key in youtube._MEM_CACHE          # written...
+    assert youtube._mem_cache_get(key) is None  # ...but never readable
+    assert key not in youtube._MEM_CACHE      # and the failed read evicts it
+    assert key not in youtube._STREAM_CACHE

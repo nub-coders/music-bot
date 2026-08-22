@@ -1,4 +1,5 @@
 import asyncio
+import glob
 import os
 import logging
 
@@ -58,13 +59,27 @@ def _clean_stale_files_sync(root_dirs: list, max_age_s: float) -> int:
     return removed
 
 
+def _cleanup_target_dirs() -> list:
+    """Directories the janitor is allowed to delete from.
+
+    Never `ggg` itself: that is the project root, and the walker below removes
+    every file older than max_age, which would delete the bot's own source tree
+    and its virtualenv. Only generated scratch dirs belong here — the cache, the
+    download dir, and the per-bot `user_<bot_id>/<chat_id>/` media dirs created
+    by download_media_with_progress / remove_active_chat.
+    """
+    dirs = [cache_dir, os.path.join(ggg, "downloads")]
+    dirs += [p for p in glob.glob(os.path.join(ggg, "user_*")) if os.path.isdir(p)]
+    return dirs
+
+
 async def _cache_cleanup_loop(max_age_hours: int = 6, interval_hours: int = 6):
     """Periodically delete stale files from cache/ and download directories off the event loop."""
     max_age_s = max_age_hours * 3600
     interval_s = interval_hours * 3600
     while True:
         try:
-            target_dirs = [cache_dir, ggg, "downloads"]
+            target_dirs = _cleanup_target_dirs()
             removed = await asyncio.to_thread(_clean_stale_files_sync, target_dirs, max_age_s)
             if removed:
                 logger.info(f"[cache_cleanup] Removed {removed} stale file(s) across temp directories")
@@ -105,9 +120,15 @@ async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
                             # If this chat has an active stream or is authorized / exempt, skip
                             if cid in state.active or cid in active_in_ast or cid in exempt_chat_ids or str(cid) in AUTH or cid in AUTH:
                                 continue
-                            # If last played was within ASSISTANT_LEAVE_TIME, skip.
-                            # On startup, unrecorded chats use StartTime as baseline to prevent mass-leaves.
-                            last_played_ts = state.played.get(cid, StartTime)
+                            # Skip chats with no observed playback. state.played is
+                            # in-memory only, so after a restart every chat looks
+                            # "never played" — using StartTime as the baseline there
+                            # would mass-leave every group once uptime exceeds
+                            # ASSISTANT_LEAVE_TIME. Absence of a record means
+                            # "unknown", not "idle", so keep the chat.
+                            last_played_ts = state.played.get(cid)
+                            if last_played_ts is None:
+                                continue
                             if (now - last_played_ts) < ASSISTANT_LEAVE_TIME:
                                 continue
                             # Otherwise, leave idle chat to conserve group slots
