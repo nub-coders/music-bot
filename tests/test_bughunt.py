@@ -226,3 +226,23 @@ def test_main_module_has_main_guard():
     src = open("main.py").read()
     assert "asyncio.run(main())" in src
     assert '__name__ == "__main__"' in src or "__name__ == '__main__'" in src
+
+
+
+# ── Fixed: SSL CA cert bundle configured and valid ────────────────────────────
+def test_ssl_ca_bundle_configured():
+    import os
+    import certifi
+    import config  # noqa: F401
+    for env_var in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        path = os.getenv(env_var)
+        assert path is not None and os.path.exists(path), f"{env_var} must point to a valid CA bundle"
+
+
+# ── Fixed: run_cmd catches FileNotFoundError gracefully ───────────────────────
+@pytest.mark.asyncio
+async def test_run_cmd_missing_executable():
+    stdout, stderr, code, pid = await tools.run_cmd(["non_existent_binary_xyz_123"])
+    assert code == 127
+    assert "not found" in stderr.lower()
+

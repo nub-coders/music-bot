@@ -422,18 +422,26 @@ def convert_bytes(size: float) -> str:
 
 async def run_cmd(args: list):
     """Execute a command (argv list, no shell) asynchronously and return (stdout, stderr, exit_code, pid)."""
-    process = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await process.communicate()
-    return (
-        stdout.decode().strip() if stdout else "",
-        stderr.decode().strip() if stderr else "",
-        process.returncode,
-        process.pid,
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        return (
+            stdout.decode().strip() if stdout else "",
+            stderr.decode().strip() if stderr else "",
+            process.returncode,
+            process.pid,
+        )
+    except FileNotFoundError as e:
+        cmd_name = args[0] if args else "unknown"
+        logger.error(f"[run_cmd] Executable not found: {cmd_name}")
+        return ("", f"Executable not found: {cmd_name} ({e})", 127, -1)
+    except Exception as e:
+        logger.error(f"[run_cmd] Error executing {args}: {e}")
+        return ("", str(e), 1, -1)
 
 
 async def convert_to_image(message, client) -> str | None:
@@ -553,15 +561,51 @@ async def add_text_img(image_path, text):
     if is_video:
         import subprocess
         import json
+        import shutil
 
-        probe_cmd = [
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width,height", "-of", "json", image_path
-        ]
-        out = subprocess.check_output(probe_cmd)
-        probe_data = json.loads(out)
-        image_width = probe_data["streams"][0]["width"]
-        image_height = probe_data["streams"][0]["height"]
+        image_width, image_height = 512, 512
+        probed = False
+
+        if shutil.which("ffprobe"):
+            try:
+                probe_cmd = [
+                    "ffprobe", "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=width,height", "-of", "json", image_path
+                ]
+                out = subprocess.check_output(probe_cmd)
+                probe_data = json.loads(out)
+                streams = probe_data.get("streams", [])
+                if streams and "width" in streams[0] and "height" in streams[0]:
+                    image_width = int(streams[0]["width"])
+                    image_height = int(streams[0]["height"])
+                    probed = True
+            except Exception as e:
+                logger.warning(f"[add_text_img] ffprobe probe failed: {e}")
+
+        if not probed:
+            try:
+                from pymediainfo import MediaInfo
+                _mi = MediaInfo.parse(image_path)
+                vt = next((t for t in _mi.tracks if t.track_type == "Video"), None)
+                if vt and vt.width and vt.height:
+                    image_width = int(vt.width)
+                    image_height = int(vt.height)
+                    probed = True
+            except Exception:
+                pass
+
+        if not probed:
+            try:
+                import cv2
+                cap = cv2.VideoCapture(str(image_path))
+                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                cap.release()
+                if w > 0 and h > 0:
+                    image_width, image_height = w, h
+                    probed = True
+            except Exception:
+                pass
 
         overlay = Image.new("RGBA", (image_width, image_height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
@@ -607,23 +651,30 @@ async def add_text_img(image_path, text):
         overlay_temp = f"temp_overlay_{uuid.uuid4().hex[:8]}.png"
         overlay.save(overlay_temp)
 
+        if not shutil.which("ffmpeg"):
+            if os.path.exists(overlay_temp):
+                os.remove(overlay_temp)
+            raise RuntimeError("ffmpeg is not installed on this system. Please install ffmpeg to create video memes.")
+
         final_video = os.path.join(f"memify_{uuid.uuid4().hex[:8]}.webm")
-        ffmpeg_cmd = [
-            "ffmpeg", "-y",
-            "-i", image_path,
-            "-i", overlay_temp,
-            "-filter_complex", "[0:v][1:v]overlay=0:0",
-            "-c:v", "libvpx-vp9",
-            "-pix_fmt", "yuva420p",
-            "-b:v", "500k",
-            "-an",
-            "-t", "3",
-            final_video
-        ]
-        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if os.path.exists(overlay_temp):
-            os.remove(overlay_temp)
-        return final_video
+        try:
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-i", image_path,
+                "-i", overlay_temp,
+                "-filter_complex", "[0:v][1:v]overlay=0:0",
+                "-c:v", "libvpx-vp9",
+                "-pix_fmt", "yuva420p",
+                "-b:v", "500k",
+                "-an",
+                "-t", "3",
+                final_video
+            ]
+            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return final_video
+        finally:
+            if os.path.exists(overlay_temp):
+                os.remove(overlay_temp)
 
     img = Image.open(image_path).convert("RGBA")
     img_info = img.info

@@ -5,6 +5,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── SSL CA Certificates Setup ──────────────────────────────────────────────────
+# Ensure SSL CA certificates are properly configured for httpx, requests, urllib,
+# yt-dlp, etc., preventing FileNotFoundError on HTTPS connections in minimal environments.
+try:
+    import certifi
+    ca_bundle = certifi.where()
+    for env_var in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        val = os.getenv(env_var)
+        if not val or not os.path.exists(val):
+            os.environ[env_var] = ca_bundle
+except Exception:
+    pass
+
 # ── Telegram (non-sensitive — safe as defaults) ─────────────────────────────────
 API_ID      = os.getenv("API_ID", "2040")
 API_HASH    = os.getenv("API_HASH", "b18441a1ff607e10a989891a5462e627")

@@ -302,6 +302,12 @@ async def memify(client, message):
         )
         if os.path.exists(meme):
             os.remove(meme)
+    except Exception as e:
+        logger.error(f"[memify] Error: {e}")
+        try:
+            await Nub.edit(f"❌ Failed to create meme: {e}")
+        except Exception:
+            pass
     finally:
         if os.path.exists(file):
             os.remove(file)

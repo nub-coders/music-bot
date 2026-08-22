@@ -1,8 +1,9 @@
 FROM python:3.13
 
-# Install ffmpeg, git, and curl
+# Install ffmpeg, git, curl, ca-certificates
 RUN apt-get update && \
-    apt-get install -y ffmpeg git curl unzip && \
+    apt-get install -y ffmpeg git curl unzip ca-certificates && \
+    update-ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Deno runtime

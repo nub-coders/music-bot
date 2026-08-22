@@ -106,10 +106,21 @@ def get_http_client() -> httpx.AsyncClient:
             use_h2 = True
         except ImportError:
             logger.warning("[youtube] h2 package not installed; HTTP/2 disabled for httpx client")
+
+        verify: bool | str = True
+        try:
+            import certifi
+            ca_path = certifi.where()
+            if os.path.exists(ca_path):
+                verify = ca_path
+        except Exception:
+            pass
+
         _http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=8.0),
             follow_redirects=True,
             http2=use_h2,
+            verify=verify,
             limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=90),
         )
     return _http_client

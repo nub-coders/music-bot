@@ -1,4 +1,5 @@
 ffmpeg
+ca-certificates
 libmediainfo0
 libmagic1
 libffi-dev
