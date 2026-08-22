@@ -105,7 +105,7 @@ async def test_get_assistant_routing_memory_and_db():
     chat_id = -100555
 
     with patch("tools.db_get_chat_assistant", new_callable=AsyncMock) as mock_db_get, \
-         patch("tools.db_set_chat_assistant", new_callable=AsyncMock) as mock_db_set:
+         patch("tools.db_set_chat_assistant", new_callable=AsyncMock):
 
         # Case 1: Unassigned in memory and DB -> assign least-loaded (Assistant 1)
         mock_db_get.return_value = None

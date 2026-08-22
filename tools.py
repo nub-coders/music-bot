@@ -905,7 +905,6 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         else:
             display_title = f'<b>{title_formatted}</b>'
 
-        chat_title = _html.escape(chat.title) if (chat and hasattr(chat, 'title') and chat.title) else str(chat_id)
         requester_mention = by.mention() if hasattr(by, 'mention') else (by if by else "User")
 
         text = Messages.PLAY.format(
