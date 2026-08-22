@@ -3,6 +3,8 @@ import random
 import os
 import re
 import hashlib
+import threading
+import uuid
 import aiofiles
 import aiohttp
 import numpy as np
@@ -323,7 +325,12 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
 
     background = background.convert("RGB")
     background_path = f"cache/{random_id}_{videoid}_premium.png"
-    background.save(background_path, format="PNG", optimize=False)
+    # Write to a unique temp file then atomically rename: a concurrent get_thumb
+    # checks os.path.exists(cached_card), so saving in place would let it return
+    # (and upload) a half-written PNG.
+    tmp_path = f"{background_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    background.save(tmp_path, format="PNG", optimize=False)
+    os.replace(tmp_path, background_path)
 
     for temp_file in temp_files_to_delete:
         try:
@@ -474,11 +481,9 @@ def draw_text_with_shadow(background, draw, position, text, font, fill, shadow_o
 
 
 async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoid=None, track_id=None, chat_id=None, update_callback=None):
+    temp_files_to_delete = []
     try:
-        import uuid
-
         random_id = str(uuid.uuid4())[:8]
-        temp_files_to_delete = []
 
         if videoid:
             videoid = str(videoid).replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
@@ -508,7 +513,11 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
             async with session.get(thumbnail) as resp:
                 if resp.status == 200:
                     os.makedirs("cache", exist_ok=True)
-                    temp_thumb_path = f"cache/thumb_{random_id}_{videoid}.png"
+                    # random_id is a deterministic hash (so the rendered card can be
+                    # cached), which means two concurrent plays of the same track
+                    # derive the same download path and clobber/delete each other's
+                    # file mid-render. A uuid keeps the scratch download private.
+                    temp_thumb_path = f"cache/thumb_{uuid.uuid4().hex[:8]}_{videoid}.png"
                     f = await aiofiles.open(temp_thumb_path, mode="wb")
                     await f.write(await resp.read())
                     await f.close()
@@ -528,13 +537,6 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
             random_id,
         )
 
-        for temp_file in temp_files_to_delete:
-            try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            except Exception:
-                pass
-
         # If provided, notify caller that thumbnail is ready
         if update_callback and track_id and chat_id:
             try:
@@ -548,3 +550,13 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
         print(f"Error generating thumbnail for video {videoid}: {e}")
         logger.error(f"Error generating thumbnail for video {videoid}: {type(e).__name__} - {e}", exc_info=True)
         return None
+
+    finally:
+        # Runs on the error path too: a failed download or render used to leak its
+        # scratch file into cache/ until the 6h janitor sweep.
+        for temp_file in temp_files_to_delete:
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except Exception:
+                pass

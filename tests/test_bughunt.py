@@ -717,3 +717,72 @@ def test_played_timestamps_are_persisted_and_restored():
     # And the wiring must actually exist on both ends.
     assert "db_set_last_played" in open("tools.py").read(), "playback start not persisted"
     assert "get_all_last_played" in open("main.py").read(), "startup does not restore played"
+
+
+# ── Peripheral-file audit: thumbnail + /about file handling ───────────────────
+def test_thumbnail_card_is_written_atomically():
+    """render_thumb saves the card to the SAME path a concurrent get_thumb probes
+    with os.path.exists(), so an in-place save lets the other caller return (and
+    upload) a truncated PNG. Proven: a 0-byte read raised UnidentifiedImageError."""
+    import ast
+    fn = next(
+        n for n in ast.walk(ast.parse(open("thumbnails.py").read()))
+        if isinstance(n, ast.FunctionDef) and n.name == "render_thumb"
+    )
+    body = ast.unparse(fn)
+    assert "os.replace(" in body, "card must be renamed into place, not saved in place"
+    save_lines = [ln.strip() for ln in body.splitlines() if ".save(" in ln]
+    assert save_lines, save_lines
+    for line in save_lines:
+        assert "tmp_path" in line, f"save must target a temp file, got: {line}"
+
+
+def test_thumbnail_download_path_is_unique_per_call():
+    """random_id is a deterministic md5 so the rendered card can be cached. The
+    scratch download must NOT reuse it: two concurrent plays of one track would
+    derive the same path and delete each other's file mid-render."""
+    import ast
+    fn = next(
+        n for n in ast.walk(ast.parse(open("thumbnails.py").read()))
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "get_thumb"
+    )
+    line = [ln.strip() for ln in ast.unparse(fn).splitlines() if "temp_thumb_path =" in ln]
+    assert len(line) == 1, line
+    assert "random_id" not in line[0], f"scratch path shares the cache key: {line[0]}"
+    assert "uuid" in line[0], line[0]
+
+
+def test_thumbnail_temp_files_cleaned_on_error_path():
+    """A failed download/render used to leak its scratch file into cache/ until
+    the 6h janitor sweep, because cleanup sat before the return in the try body."""
+    import ast
+    fn = next(
+        n for n in ast.walk(ast.parse(open("thumbnails.py").read()))
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "get_thumb"
+    )
+    tries = [n for n in fn.body if isinstance(n, ast.Try)]
+    assert tries and tries[0].finalbody, "get_thumb needs a finally block"
+    assert "temp_files_to_delete" in ast.unparse(tries[0].finalbody)
+
+
+def test_about_does_not_clobber_the_bot_branding_logo():
+    """/about downloaded an arbitrary user's profile photo to {user_dir}/logo.jpg
+    -- the same path /start and /setwelcome read back as the bot's own logo, and
+    they prefer it whenever os.path.exists() is True."""
+    import ast
+    tree = ast.parse(open("plugins/about.py").read())
+    fn = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "info_command"
+    )
+    line = [ln.strip() for ln in ast.unparse(fn).splitlines() if "photo_path =" in ln]
+    assert len(line) == 1, line
+    assert not line[0].rstrip().endswith("logo.jpg'"), f"collides with branding: {line[0]}"
+
+    helper = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "_build_and_send_user_info"
+    )
+    tries = [n for n in ast.walk(helper) if isinstance(n, ast.Try)]
+    assert any("os.remove(photo_path)" in ast.unparse(t.finalbody) for t in tries), \
+        "per-message download must be cleaned up"

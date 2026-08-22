@@ -43,6 +43,12 @@ async def _build_and_send_user_info(client, message, user, chat, photo_path, cre
             await message.reply_photo(photo_path, caption=response, reply_markup=markup)
         except Exception:
             await message.reply(response, reply_markup=markup, link_preview_options=None)
+        finally:
+            try:
+                if os.path.exists(photo_path):
+                    os.remove(photo_path)
+            except Exception:
+                pass
     else:
         await message.reply(response, reply_markup=markup, link_preview_options=None)
 
@@ -56,7 +62,10 @@ async def info_command(client: Client, message: Message):
     session_name = f'user_{client.me.id}'
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
-    photo_path = f"{user_dir}/logo.jpg"
+    # NOT {user_dir}/logo.jpg: that path is the bot's own branding logo, read back
+    # by /start and /setwelcome. Writing an arbitrary user's profile photo there
+    # silently replaces the start-card image until the janitor sweeps it.
+    photo_path = f"{user_dir}/about_{message.id}.jpg"
 
     def create_copy_markup(text: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup([[
