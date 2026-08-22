@@ -333,6 +333,18 @@ async def main():
         ADMIN.extend(db_admins)
         client_name = f"{bot.me.first_name} {bot.me.last_name or ''}".strip()
         logger.info(f"Bot authorized successfully! 🎉 Authorized as: {client_name} with {len(assistants)} Assistant(s)")
+        if not HAS_OWNER:
+            logger.info(
+                "[startup] Running without an owner (OWNER_ID unset) — owner-only commands "
+                f"are reachable via SUDO ({len(SUDO)}) / admins ({len(ADMIN)}) only. "
+                "Set INITIAL_ADMIN_IDS to bootstrap access."
+            )
+            if not SUDO and not ADMIN:
+                logger.warning(
+                    "[startup] No owner, no sudoers and no admins are configured: every "
+                    "privileged command is currently unreachable. Set OWNER_ID or "
+                    "INITIAL_ADMIN_IDS to administer this bot."
+                )
 
         # Ask Telegram once whether this bot may send premium/custom emoji, then
         # bake the answer into the emoji constants. Everything built after this

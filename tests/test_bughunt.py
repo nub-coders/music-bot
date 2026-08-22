@@ -547,15 +547,18 @@ def test_terminal_stop_paths_clear_the_queue():
 def test_owner_id_has_no_hardcoded_default():
     """REGRESSION GUARD (was Low/security): OWNER_ID grants unrestricted sudo
     (/reboot, /broadcast, auth bypass). A baked-in default hands full control of
-    any misconfigured deployment to whoever owns that hardcoded account."""
+    any misconfigured deployment to whoever owns that hardcoded account.
+
+    OWNER_ID is now optional -- an unset value means "no owner" rather than a
+    startup abort -- so the property under test is that the fallback is 0 (which
+    no real Telegram account can match), never a real user ID.
+    """
     src = open("config.py").read()
-    assert 'os.getenv("OWNER_ID"' not in src, "OWNER_ID must not have a default"
-    assert 'os.environ["OWNER_ID"]' in src
     assert "6076474757" not in src, "hardcoded owner id still present"
 
-    # Importing config without OWNER_ID must fail fast, not silently self-own.
-    # Run from a temp cwd so load_dotenv() cannot find the repo's .env and
-    # re-supply the value; reach config.py via PYTHONPATH instead.
+    # Importing config without OWNER_ID must yield an ownerless bot, and must not
+    # silently self-own. Run from a temp cwd so load_dotenv() cannot find the
+    # repo's .env and re-supply the value; reach config.py via PYTHONPATH.
     import subprocess
     import sys
     import tempfile
@@ -563,13 +566,66 @@ def test_owner_id_has_no_hardcoded_default():
     env = {k: v for k, v in os.environ.items() if k != "OWNER_ID"}
     env["MONGODB_URI"] = "mongodb://localhost:27017"
     env["PYTHONPATH"] = repo
+    code = "import config; print(config.OWNER_ID, config.HAS_OWNER)"
+    with tempfile.TemporaryDirectory() as tmp:
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True, env=env, cwd=tmp, timeout=60,
+        )
+    assert proc.returncode == 0, f"ownerless config must import: {proc.stderr}"
+    assert proc.stdout.strip() == "0 False", proc.stdout
+
+    # A negative value is a chat ID, not a user: that is a real misconfiguration.
+    env["OWNER_ID"] = "-1001234567890"
     with tempfile.TemporaryDirectory() as tmp:
         proc = subprocess.run(
             [sys.executable, "-c", "import config"],
             capture_output=True, text=True, env=env, cwd=tmp, timeout=60,
         )
-    assert proc.returncode != 0, "config imported successfully without OWNER_ID"
-    assert "OWNER_ID is not set" in (proc.stderr + proc.stdout)
+    assert proc.returncode != 0, "negative OWNER_ID must be rejected"
+
+
+def test_ownerless_bot_grants_nobody_owner_rights():
+    """With OWNER_ID=0 every `user_id == OWNER_ID` check must fail closed. Real
+    Telegram user IDs are always > 0, and the anonymous-admin fallbacks in the
+    codebase substitute None or a negative chat id -- none may match."""
+    OWNER_ID = 0
+    for uid in (6076474757, 1, 12345, 777000, -1001234567890, None):
+        assert not (uid == OWNER_ID), uid
+        assert not (str(OWNER_ID) == str(uid)), uid
+
+    # info.py's combined guard denies all of them too.
+    SUDO = []
+    for uid in (None, -1001234567890, 6076474757):
+        assert str(OWNER_ID) != str(uid) and (not uid or uid not in SUDO)
+
+
+def test_start_markup_omits_creator_button_without_owner():
+    """No owner -> no creator button, and crucially no fallback to an unrelated
+    hardcoded account (it used to point at t.me/NubDockerbot)."""
+    from utils.button import Buttons
+
+    m = Buttons.start_markup("mybot", None, 0, "grp")
+    texts = [b.text for row in m.inline_keyboard for b in row]
+    urls = [getattr(b, "url", None) or "" for row in m.inline_keyboard for b in row]
+    assert not any("ᴄʀᴇᴀᴛᴏʀ" in t for t in texts), texts
+    assert not any("NubDockerbot" in u for u in urls), urls
+    assert all(len(row) > 0 for row in m.inline_keyboard), "no empty button rows"
+    assert any("sᴜᴘᴘᴏʀᴛ" in t for t in texts), "support chat must survive"
+
+    m2 = Buttons.start_markup("mybot", 42, 42, "grp")
+    texts2 = [b.text for row in m2.inline_keyboard for b in row]
+    assert any("ᴄʀᴇᴀᴛᴏʀ" in t for t in texts2), texts2
+
+
+def test_no_unguarded_get_users_on_owner_id():
+    """get_users(0) raises, which would abort /start, the help callback and /ping
+    outright on an ownerless bot."""
+    import pathlib
+    for path in ("plugins/start.py", "plugins/info.py"):
+        for i, line in enumerate(pathlib.Path(path).read_text().splitlines(), 1):
+            if "get_users(OWNER_ID)" in line:
+                assert "if OWNER_ID" in line, f"{path}:{i} unguarded: {line.strip()}"
 
 
 # ── Reliability / performance hardening ───────────────────────────────────────

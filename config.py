@@ -26,17 +26,27 @@ GROUP       = os.getenv("GROUP", "nub_coder_s")
 # OWNER_ID grants unrestricted sudo (/reboot, /broadcast, auth bypass), so it
 # must never fall back to a baked-in identity: any deployment that forgot to set
 # it would hand full control of the bot to whoever owns that hardcoded account.
-# 0 / negative are rejected too -- they are not valid user IDs, and silently
-# accepting the placeholder leaves the real owner locked out of every owner-only
-# command while get_users(0) fails at startup.
-try:
-    OWNER_ID = int(os.environ["OWNER_ID"])
-except KeyError:
-    raise SystemExit("OWNER_ID is not set. Set it via environment (or .env for local dev) — no default owner is baked in.")
-except ValueError:
-    raise SystemExit("OWNER_ID must be a numeric Telegram user ID.")
-if OWNER_ID <= 0:
-    raise SystemExit(f"OWNER_ID={OWNER_ID} is not a valid Telegram user ID. Set it to your own numeric user ID (get it from @userinfobot).")
+#
+# It is OPTIONAL. Leave it unset (or 0) to run an ownerless bot: no user holds
+# owner rights, the "creator" button is omitted from /start, and owner-only
+# commands are reachable only via SUDO / admin.txt. Every `user_id == OWNER_ID`
+# check fails closed for 0, since no real Telegram account has ID 0. Negative
+# values are still rejected -- they are group/channel IDs, not users, so they
+# indicate a genuine misconfiguration rather than a deliberate opt-out.
+_owner_raw = os.getenv("OWNER_ID", "").strip()
+if not _owner_raw:
+    OWNER_ID = 0
+else:
+    try:
+        OWNER_ID = int(_owner_raw)
+    except ValueError:
+        raise SystemExit("OWNER_ID must be a numeric Telegram user ID (or empty for an ownerless bot).")
+    if OWNER_ID < 0:
+        raise SystemExit(f"OWNER_ID={OWNER_ID} is not a valid user ID (negative IDs are chats). Leave it empty to run without an owner.")
+
+# True when a real owner is configured. Prefer this over truth-testing OWNER_ID
+# at call sites that must not contact Telegram for a nonexistent account.
+HAS_OWNER = OWNER_ID > 0
 
 # ── Sensitive — must be set via environment, no defaults ────────────────────────
 BOT_TOKEN       = os.getenv("BOT_TOKEN", "")

@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 async def pingme(client, message):
     uptime = await get_readable_time(int(time.time() - StartTime))
     start = datetime.datetime.now()
-    owner = await client.get_users(OWNER_ID)
+    owner = await client.get_users(OWNER_ID) if OWNER_ID else None
 
     ping_frames = [
         "█▒▒▒▒▒▒▒▒▒ 10%", "███▒▒▒▒▒▒▒ 30%", "█████▒▒▒▒▒ 50%",
@@ -57,6 +57,7 @@ async def pingme(client, message):
         f"Sonic boom! {EmojiTag.ROCKET}",
     ]
 
+    owner_line = f"│ {EmojiTag.CROWN} <b>Owner:</b> {owner.mention()}\n" if owner else ""
     response = (
         f"╭──────────────────\n"
         f"│   <b>PONG!</b> {EmojiTag.PING}\n"
@@ -64,7 +65,7 @@ async def pingme(client, message):
         f"│ {EmojiTag.BOLT} <b>Speed:</b> <code>{ms:.2f}ms</code>\n"
         f"│ {EmojiTag.STATS} <b>Status:</b> {status}\n"
         f"│ {EmojiTag.LOADING} <b>Uptime:</b> <code>{uptime}</code>\n"
-        f"│ {EmojiTag.CROWN} <b>Owner:</b> {owner.mention()}\n"
+        f"{owner_line}"
         f"│ {EmojiTag.HEADPHONES} <b>Assistants:</b> <code>{len(assistants)} Online</code>\n"
         f"╰──────────────────"
     )

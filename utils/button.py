@@ -54,24 +54,29 @@ class Buttons:
 
     @staticmethod
     def start_markup(bot_username, ow_id, OWNER_ID, GROUP):
-        """Generates the markup for the /start command."""
-        buttons = [
-            [InlineKeyboardButton("➕ ᴀᴅᴅ ᴍᴇ ᴛᴏ ɢʀᴏᴜᴘ", url=f"https://t.me/{bot_username}?startgroup=true", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.ADD)],
-            [InlineKeyboardButton("ℹ️ ʜᴇʟᴘ & ᴄᴏᴍᴍᴀɴᴅs",  callback_data="commands_all",                      style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.HELP)],
-            [
+        """Generates the markup for the /start command.
+
+        When no owner is configured (OWNER_ID falsy) the creator button is left
+        out entirely rather than pointing at an unrelated hardcoded account.
+        """
+        creator_row = []
+        if OWNER_ID:
+            creator_row.append(
                 InlineKeyboardButton(
                     "👑 ᴄʀᴇᴀᴛᴏʀ",
                     user_id=OWNER_ID,
                     style=ButtonStyle.DEFAULT,
                     icon_custom_emoji_id=Emoji.CROWN,
-                ) if ow_id else InlineKeyboardButton(
-                    "👑 ᴄʀᴇᴀᴛᴏʀ",
-                    url="https://t.me/NubDockerbot",
-                    style=ButtonStyle.DEFAULT,
-                    icon_custom_emoji_id=Emoji.CROWN,
-                ),
-                InlineKeyboardButton("💬 sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ", url=f"https://t.me/{GROUP}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.CHAT),
-            ],
+                )
+            )
+        creator_row.append(
+            InlineKeyboardButton("💬 sᴜᴘᴘᴏʀᴛ ᴄʜᴀᴛ", url=f"https://t.me/{GROUP}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.CHAT),
+        )
+
+        buttons = [
+            [InlineKeyboardButton("➕ ᴀᴅᴅ ᴍᴇ ᴛᴏ ɢʀᴏᴜᴘ", url=f"https://t.me/{bot_username}?startgroup=true", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.ADD)],
+            [InlineKeyboardButton("ℹ️ ʜᴇʟᴘ & ᴄᴏᴍᴍᴀɴᴅs",  callback_data="commands_all",                      style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.HELP)],
+            creator_row,
             [
                 InlineKeyboardButton("🌐 ʀᴇᴘᴏ", url="https://github.com/nub-coders/nub-music-bot", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.REPO),
             ],

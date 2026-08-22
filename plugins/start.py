@@ -148,8 +148,9 @@ async def user_client_start_handler(client, message):
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
     editing = await message.reply(Messages.LOADING, link_preview_options=None)
-    owner = await client.get_users(OWNER_ID)
-    ow_id = owner.id if owner.username else None
+    # No owner configured -> never call get_users(0); it raises and would abort /start.
+    owner = await client.get_users(OWNER_ID) if OWNER_ID else None
+    ow_id = owner.id if (owner and owner.username) else None
 
     buttons_markup = Buttons.start_markup(client.me.username, ow_id, OWNER_ID, GROUP)
     import psutil
@@ -275,11 +276,11 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data.split("_")[1]
     user_id = callback_query.from_user.id
     admin_ids = get_admin_ids(f"{ggg}/admin.txt")
-    is_owner = str(OWNER_ID) == str(user_id)
+    is_owner = bool(OWNER_ID) and str(OWNER_ID) == str(user_id)
     is_sudo = is_owner or user_id in SUDO
     is_admin = is_owner or is_sudo or (user_id in admin_ids)
-    owner = await client.get_users(OWNER_ID)
-    ow_id = owner.id if owner.username else None
+    owner = await client.get_users(OWNER_ID) if OWNER_ID else None
+    ow_id = owner.id if (owner and owner.username) else None
 
     # ---------- Command pages (text blocks) ----------
     playback_commands = (
