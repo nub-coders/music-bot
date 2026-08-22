@@ -18,6 +18,7 @@ db = client[DB_NAME]
 user_sessions = db["user_sessions"]
 collection = db["collection"]
 chat_assistants = db["chat_assistants"]
+chat_playback = db["chat_playback"]
 
 
 async def ensure_indexes():
@@ -27,9 +28,40 @@ async def ensure_indexes():
         await user_sessions.create_index("user_id")
         await collection.create_index("bot_id")
         await chat_assistants.create_index("chat_id", unique=True)
-        logger.info("[db] Indexes ensured on user_sessions(bot_id, user_id), collection(bot_id), and chat_assistants(chat_id)")
+        await chat_playback.create_index("chat_id", unique=True)
+        logger.info("[db] Indexes ensured on user_sessions(bot_id, user_id), collection(bot_id), chat_assistants(chat_id), and chat_playback(chat_id)")
     except Exception as e:
         logger.warning(f"[db] Failed to ensure indexes: {e}")
+
+
+async def set_last_played(chat_id: int, ts: int):
+    """Persist the last time a chat started playback.
+
+    state.played is in-memory only, so after a restart every chat looks "never
+    played" and the auto-leave sweep cannot tell idle from unknown. Persisting it
+    lets idle reclamation survive reboots.
+    """
+    try:
+        await chat_playback.update_one(
+            {"chat_id": int(chat_id)},
+            {"$set": {"last_played": int(ts)}},
+            upsert=True,
+        )
+    except Exception as e:
+        logger.warning(f"[db] set_last_played error for {chat_id}: {e}")
+
+
+async def get_all_last_played() -> dict:
+    """Load every chat's last playback timestamp as {chat_id: ts} for warm start."""
+    out = {}
+    try:
+        async for doc in chat_playback.find({}, {"chat_id": 1, "last_played": 1}):
+            cid, ts = doc.get("chat_id"), doc.get("last_played")
+            if cid is not None and ts is not None:
+                out[int(cid)] = int(ts)
+    except Exception as e:
+        logger.warning(f"[db] get_all_last_played error: {e}")
+    return out
 
 
 async def get_chat_assistant(chat_id: int) -> int | None:

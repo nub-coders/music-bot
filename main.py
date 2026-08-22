@@ -16,7 +16,7 @@ from pyrogram.errors.exceptions import (
 from tools import *
 from config import *
 from youtube import check_and_update_ytdlp, export_browser_cookies, refresh_cookies_loop
-from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes
+from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes, get_all_last_played
 from utils.premium_emoji import setup_premium_emoji
 
 logging.basicConfig(
@@ -91,7 +91,13 @@ async def _cache_cleanup_loop(max_age_hours: int = 6, interval_hours: int = 6):
 async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
     """Periodically scan groups and make assistants leave idle chats to stay under Telegram's 500-group limit."""
     if not AUTO_LEAVING_ASSISTANT:
+        logger.info("[auto_leave] Disabled (AUTO_LEAVING_ASSISTANT is off); no groups will be left")
         return
+    logger.info(
+        f"[auto_leave] Enabled — idle threshold {ASSISTANT_LEAVE_TIME}s, "
+        f"max {ASSISTANT_MAX_LEAVES_PER_SWEEP or 'unlimited'} leave(s)/sweep, "
+        f"dry_run={ASSISTANT_LEAVE_DRY_RUN}"
+    )
     await asyncio.sleep(90)  # grace period on startup
     while True:
         try:
@@ -111,8 +117,15 @@ async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
 
             for idx, ast in list(assistants.items()):
                 active_in_ast = state.assistant_active.get(idx, set())
+                left_this_sweep = 0
                 try:
                     async for dialog in ast.get_dialogs():
+                        if ASSISTANT_MAX_LEAVES_PER_SWEEP > 0 and left_this_sweep >= ASSISTANT_MAX_LEAVES_PER_SWEEP:
+                            logger.warning(
+                                f"[auto_leave] Assistant {idx} hit the per-sweep cap "
+                                f"({ASSISTANT_MAX_LEAVES_PER_SWEEP}); deferring the rest to the next sweep"
+                            )
+                            break
                         chat = dialog.chat
                         chat_type_str = str(getattr(chat, "type", "")).lower()
                         if "group" in chat_type_str or "supergroup" in chat_type_str:
@@ -121,11 +134,10 @@ async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
                             if cid in state.active or cid in active_in_ast or cid in exempt_chat_ids or str(cid) in AUTH or cid in AUTH:
                                 continue
                             # Skip chats with no observed playback. state.played is
-                            # in-memory only, so after a restart every chat looks
-                            # "never played" — using StartTime as the baseline there
-                            # would mass-leave every group once uptime exceeds
-                            # ASSISTANT_LEAVE_TIME. Absence of a record means
-                            # "unknown", not "idle", so keep the chat.
+                            # seeded from Mongo at startup, so a missing record now
+                            # genuinely means "this bot has never played here" — not
+                            # merely "we restarted". Absence still means "unknown",
+                            # so keep the chat rather than mass-leaving on uptime.
                             last_played_ts = state.played.get(cid)
                             if last_played_ts is None:
                                 continue
@@ -133,15 +145,31 @@ async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
                                 continue
                             # Otherwise, leave idle chat to conserve group slots
                             chat_title = getattr(chat, "title", str(cid))
-                            logger.info(f"[auto_leave] Assistant {idx} leaving idle chat '{chat_title}' ({cid}) (inactive for {int(now - last_played_ts)}s)...")
+                            idle_for = int(now - last_played_ts)
+                            if ASSISTANT_LEAVE_DRY_RUN:
+                                logger.info(
+                                    f"[auto_leave][DRY RUN] Assistant {idx} would leave idle chat "
+                                    f"'{chat_title}' ({cid}) (inactive for {idle_for}s) — no action taken"
+                                )
+                                left_this_sweep += 1
+                                continue
+                            logger.info(f"[auto_leave] Assistant {idx} leaving idle chat '{chat_title}' ({cid}) (inactive for {idle_for}s)...")
                             try:
                                 await ast.leave_chat(cid)
+                                left_this_sweep += 1
+                                # Membership is gone: drop the cached confirmation so a
+                                # later /play redoes the join handshake instead of
+                                # trusting a stale entry and failing to stream.
+                                state.forget_member(idx, cid)
                                 logger.info(f"[auto_leave] Assistant {idx} successfully left idle chat '{chat_title}' ({cid})")
                                 await asyncio.sleep(2.0)  # Rate limit safety spacing
                             except Exception as leave_err:
                                 logger.warning(f"[auto_leave] Assistant {idx} failed to leave chat '{chat_title}' ({cid}): {leave_err}")
                 except Exception as dialog_err:
                     logger.warning(f"[auto_leave] Error scanning dialogs for Assistant {idx}: {dialog_err}")
+                if left_this_sweep:
+                    verb = "would leave" if ASSISTANT_LEAVE_DRY_RUN else "left"
+                    logger.info(f"[auto_leave] Assistant {idx} {verb} {left_this_sweep} idle chat(s) this sweep")
         except Exception as e:
             logger.warning(f"[auto_leave] Exception in auto-leave loop: {e}")
         await asyncio.sleep(check_interval_seconds)
@@ -266,6 +294,18 @@ async def main():
         # Start the bot client
         await bot.start()
         await ensure_indexes()
+
+        # Warm-start playback timestamps. state.played drives the auto-leave idle
+        # heuristic; without this every chat looks "never played" after a restart,
+        # so idle groups were never reclaimed until they happened to play again.
+        try:
+            _played = await get_all_last_played()
+            if _played:
+                state.played.update(_played)
+                logger.info(f"[startup] Restored last-played timestamps for {len(_played)} chat(s)")
+        except Exception as e:
+            logger.warning(f"[startup] Could not restore last-played timestamps: {e}")
+
         user_data = await async_user_sessions.find_one({"bot_id": bot.me.id})
         bot_data = await async_collection.find_one({"bot_id": bot.me.id})
 

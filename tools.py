@@ -27,6 +27,7 @@ from database import (
     get_chat_assistant as db_get_chat_assistant,
     set_chat_assistant as db_set_chat_assistant,
     remove_chat_assistant as db_remove_chat_assistant,
+    set_last_played as db_set_last_played,
 )
 
 import logging
@@ -648,7 +649,11 @@ async def add_text_img(image_path, text):
                 )
                 y += line_height
 
-        overlay_temp = f"temp_overlay_{uuid.uuid4().hex[:8]}.png"
+        # Scratch + output files belong in the cache dir, not the CWD (= repo
+        # root), where they accumulate forever and mix with the source tree.
+        _meme_dir = os.path.join(ggg, "cache")
+        os.makedirs(_meme_dir, exist_ok=True)
+        overlay_temp = os.path.join(_meme_dir, f"temp_overlay_{uuid.uuid4().hex[:8]}.png")
         overlay.save(overlay_temp)
 
         if not shutil.which("ffmpeg"):
@@ -656,7 +661,7 @@ async def add_text_img(image_path, text):
                 os.remove(overlay_temp)
             raise RuntimeError("ffmpeg is not installed on this system. Please install ffmpeg to create video memes.")
 
-        final_video = os.path.join(f"memify_{uuid.uuid4().hex[:8]}.webm")
+        final_video = os.path.join(_meme_dir, f"memify_{uuid.uuid4().hex[:8]}.webm")
         try:
             ffmpeg_cmd = [
                 "ffmpeg", "-y",
@@ -719,7 +724,9 @@ async def add_text_img(image_path, text):
             )
             y += line_height
 
-    final_image = os.path.join(f"memify_{uuid.uuid4().hex[:8]}.webp")
+    _meme_dir = os.path.join(ggg, "cache")
+    os.makedirs(_meme_dir, exist_ok=True)
+    final_image = os.path.join(_meme_dir, f"memify_{uuid.uuid4().hex[:8]}.webp")
     img.save(final_image, **{str(k): v for k, v in img_info.items()})
     return final_image
 
@@ -729,6 +736,17 @@ async def add_text_img(image_path, text):
 async def hd_stream_closed_kicked(client, update):
     logger.info(update)
     chat_id = update.chat_id
+    # Registered for both CLOSED_VOICE_CHAT and KICKED, which Telegram often
+    # delivers together; without this guard the second delivery re-runs the
+    # whole teardown (leave_call on a call we already left, another round of
+    # state pops) and logs spurious errors. state.active is the single source
+    # of truth for "there is still something to tear down".
+    if chat_id not in state.active:
+        logger.debug(f"[hd_stream_closed_kicked] Chat {chat_id} already torn down; ignoring duplicate update")
+        return
+    # A KICKED update means membership is gone; drop the cached confirmation so
+    # the next /play re-runs the join handshake rather than trusting it.
+    state.forget_member(None, chat_id)
     await remove_active_chat(chat_id)
     state.queues.pop(chat_id, None)
     state.playing.pop(chat_id, None)
@@ -876,6 +894,10 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         }
         state.played[chat_id] = int(time.time())
         state.last_played[chat_id] = state.playing[chat_id]
+        # Persist alongside the in-memory value: the auto-leave sweep needs to
+        # tell "idle" from "unknown" after a restart, and state.played is
+        # process-local. Fire-and-forget so playback never waits on Mongo.
+        db_task(db_set_last_played(chat_id, state.played[chat_id]))
         logger.debug(f"[join_call] Playing status updated, timestamp: {state.played[chat_id]}")
 
         if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None):
@@ -964,6 +986,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             await clients["bot"].send_message(ui_chat_id, Messages.NO_ACTIVE_VC, link_preview_options=None)
     except Exception as e:
         logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
+        # play() is the first thing that actually exercises membership, so this is
+        # where a stale "assistant is a member" cache entry surfaces (kicked,
+        # banned, or left since we cached it). Drop it so the next /play redoes
+        # the full join handshake instead of failing forever on the fast path.
+        state.forget_member(None, chat_id)
         await remove_active_chat(chat_id)
         err_str = str(e).lower()
         if "bot" in clients and clients["bot"]:
@@ -1087,7 +1114,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
 
                 by_user = "AUTO"
                 chat_obj = last_song.get("chat") or getattr(sent_msg, 'chat', None)
-                ast_num = state.get_chat_assistant(chat_id) or 1
+                ast_num = state.get_chat_assistant(chat_id)
                 await join_call(
                     sent_msg,
                     top_title,
@@ -1145,7 +1172,7 @@ async def end(client, update):
                 state.last_played[chat_id] = next_song
 
         if next_song:
-            ast_num = state.get_chat_assistant(chat_id) or 1
+            ast_num = state.get_chat_assistant(chat_id)
             await join_call(
                 next_song['message'],
                 next_song['title'],

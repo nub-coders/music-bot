@@ -290,6 +290,7 @@ async def memify(client, message):
     file = await client.download_media(reply_message)
     if not file:
         return await Nub.edit(Messages.MMF_DOWNLOAD_FAILED)
+    meme = None
     try:
         meme = await add_text_img(file, text)
         await asyncio.gather(
@@ -300,8 +301,6 @@ async def memify(client, message):
                 reply_to_message_id=reply_message.id,
             ),
         )
-        if os.path.exists(meme):
-            os.remove(meme)
     except Exception as e:
         logger.error(f"[memify] Error: {e}")
         try:
@@ -309,8 +308,19 @@ async def memify(client, message):
         except Exception:
             pass
     finally:
+        # Both the download and the rendered meme must go even when
+        # send_sticker raises (file too large, forbidden, flood wait) --
+        # previously the meme cleanup sat in the success path only and leaked.
+        if meme and os.path.exists(meme):
+            try:
+                os.remove(meme)
+            except OSError:
+                pass
         if os.path.exists(file):
-            os.remove(file)
+            try:
+                os.remove(file)
+            except OSError:
+                pass
     try:
         await message.delete()
     except Exception:

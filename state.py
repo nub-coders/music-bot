@@ -10,6 +10,7 @@ containers for Redis (keyed f"{bot_id}:{chat_id}") behind these same attributes/
 methods to go multi-worker, without touching the ~80 call sites.
 """
 import asyncio
+import time
 from collections import defaultdict, deque
 
 
@@ -26,9 +27,41 @@ class SessionStore:
         self.history = defaultdict(lambda: deque(maxlen=50))  # chat_id -> deque of recent video_ids
         self.chat_assistants = {}    # chat_id -> int (assigned assistant index 1..5)
         self.assistant_active = defaultdict(set)  # assistant_num -> set of active chat_ids
+        # (assistant_num, chat_id) -> unix ts the assistant was confirmed a member.
+        # Lets /play skip the get_chat -> create_chat_invite_link -> join_chat
+        # round-trips on repeat plays in the same chat. Confirmations expire so a
+        # kick/ban is re-discovered, and are dropped eagerly on any join failure.
+        self._membership = {}
         # ponytail: one lock per chat_id, created on demand and never reaped;
         # locks are tiny, and a bot serving even 100k chats is well within budget.
         self._locks = defaultdict(asyncio.Lock)
+
+    # ── Assistant membership cache ────────────────────────────────────────────
+    MEMBERSHIP_TTL = 21600  # 6h: long enough to help, short enough to re-verify
+
+    def is_member_cached(self, assistant_num: int, chat_id: int) -> bool:
+        """True iff this assistant was recently confirmed to be in chat_id."""
+        ts = self._membership.get((int(assistant_num), int(chat_id)))
+        if ts is None:
+            return False
+        if (time.time() - ts) >= self.MEMBERSHIP_TTL:
+            self._membership.pop((int(assistant_num), int(chat_id)), None)
+            return False
+        return True
+
+    def mark_member(self, assistant_num: int, chat_id: int):
+        """Record that this assistant is a confirmed member of chat_id."""
+        self._membership[(int(assistant_num), int(chat_id))] = time.time()
+
+    def forget_member(self, assistant_num: int | None, chat_id: int):
+        """Drop cached membership. Pass assistant_num=None to clear every
+        assistant for this chat (used when we cannot attribute the failure)."""
+        cid = int(chat_id)
+        if assistant_num is None:
+            for key in [k for k in self._membership if k[1] == cid]:
+                self._membership.pop(key, None)
+        else:
+            self._membership.pop((int(assistant_num), cid), None)
 
     def set_now_playing(self, chat_id, message):
         """Record the active now-playing message for chat_id."""
@@ -110,7 +143,18 @@ class SessionStore:
             return not was_active
 
     async def deactivate(self, chat_id: int):
-        """Remove a chat from active calls across all assistants and reap state."""
+        """Release a chat's voice-call slot and assistant binding.
+
+        Deliberately does NOT touch `queues` or `playing`: deactivate() runs from
+        recoverable error paths (a failed join, a transient stream error) where
+        the caller still intends to retry with the queue intact. Callers that do
+        want the queue gone (/stop, /end, kicked-from-VC) pop it explicitly.
+
+        Locks are never reaped here either -- `locked()` goes briefly False
+        between release() and the woken waiter resuming, so popping the lock
+        there hands a *second* lock object to the pending waiter and both
+        coroutines proceed as if they held it.
+        """
         cid = int(chat_id)
         async with self.lock(cid):
             self.active.discard(cid)
@@ -119,15 +163,8 @@ class SessionStore:
             for ast_set in self.assistant_active.values():
                 ast_set.discard(cid)
                 ast_set.discard(chat_id)
-            self.queues.pop(cid, None)
-            self.queues.pop(chat_id, None)
-            self.playing.pop(cid, None)
-            self.playing.pop(chat_id, None)
             self.now_playing_msgs.pop(cid, None)
             self.now_playing_msgs.pop(chat_id, None)
-        for k in (cid, chat_id):
-            if k in self._locks and not self._locks[k].locked():
-                self._locks.pop(k, None)
 
     async def pop_track(self, chat_id, track_id):
         """Remove and return the queued entry with this _track_id, or None if it

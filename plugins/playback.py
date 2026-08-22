@@ -41,6 +41,7 @@ async def dend(client, update, channel_id= None):
                 next_song.get('stream_url'),
                 yt_task=next_song.get('_yt_task'),
                 queue_msg=next_song.get('queue_msg'),
+                assistant_num=state.get_chat_assistant(chat_id),
             )
         else:
             logger.info(f"Song queue for chat {chat_id} is empty.")
@@ -52,6 +53,7 @@ async def dend(client, update, channel_id= None):
                 except Exception:
                     pass
             await remove_active_chat(client, chat_id)
+            state.queues.pop(chat_id, None)
             state.playing.pop(chat_id, None)
     except Exception as e:
         logger.error(f"Error in dend function: {e}")
@@ -390,6 +392,16 @@ async def play_handler_func(client, message):
     while attempt < max_retries:
         attempt += 1
         try:
+            # Fast path: this assistant was recently confirmed to be a member, so
+            # skip the get_chat -> create_chat_invite_link -> join_chat round
+            # trips. Any later failure (kick, ban, left) surfaces on call_py.play
+            # in join_call, which clears the entry so the next /play re-verifies.
+            _fp_chat = linked_chat if channel_mode else message.chat
+            if _fp_chat is not None and state.is_member_cached(ast_num, _fp_chat.id):
+                logger.info(f"[play] Assistant {ast_num} membership cached for {_fp_chat.id}; skipping join handshake")
+                target_chat = _fp_chat
+                break
+
             if channel_mode:
                 target_chat = linked_chat
                 try:
@@ -404,6 +416,7 @@ async def play_handler_func(client, message):
                         chan_link = await client.create_chat_invite_link(linked_chat.id, member_limit=1, expire_date=chan_expire)
                         target_chat = await ast_session.join_chat(chan_link.invite_link)
                         logger.info(f"[play] Assistant {ast_num} joined private linked channel {linked_chat.id} via invite link")
+                state.mark_member(ast_num, linked_chat.id)
                 break
             else:
                 joined_chat = None
@@ -416,6 +429,7 @@ async def play_handler_func(client, message):
                     except UserAlreadyParticipant:
                         joined_chat = message.chat
                     target_chat = joined_chat
+                    state.mark_member(ast_num, message.chat.id)
                     break
                 else:
                     # Private group
@@ -440,12 +454,16 @@ async def play_handler_func(client, message):
                         joined_chat = await ast_session.join_chat(link_obj.invite_link)
                         logger.info(f"[play] Assistant {ast_num} joined private group {message.chat.id} via invite link")
                     target_chat = joined_chat or message.chat
+                    state.mark_member(ast_num, message.chat.id)
                     break
 
         except UserAlreadyParticipant:
             target_chat = linked_chat if channel_mode else message.chat
+            if target_chat is not None:
+                state.mark_member(ast_num, target_chat.id)
             break
         except (InviteHashExpired, ChannelPrivate, UserBlocked) as ban_err:
+            state.forget_member(ast_num, target_chat_id)
             if attempt < max_retries:
                 logger.warning(f"[play] Assistant {ast_num} banned/failed ({ban_err}), trying next assistant...")
                 ast_num, ast_session, ast_call_py = await change_assistant(target_chat_id)
@@ -459,6 +477,7 @@ async def play_handler_func(client, message):
                     await massage.edit(Messages.ASSISTANT_BANNED.format(ast_mention, ast_session.me.id))
                 return await remove_active_chat(client, target_chat_id)
         except (ChatAdminRequired, ChatWriteForbidden):
+            state.forget_member(ast_num, target_chat_id)
             if channel_mode:
                 chan_title = getattr(linked_chat, 'title', None) or str(linked_chat.id)
                 await massage.edit(Messages.NEED_INVITE_PERMISSION_CHANNEL.format(chan_title))
@@ -466,6 +485,7 @@ async def play_handler_func(client, message):
                 await massage.edit(Messages.NEED_INVITE_PERMISSION)
             return await remove_active_chat(client, target_chat_id)
         except Exception as e:
+            state.forget_member(ast_num, target_chat_id)
             err_str = str(e).lower()
             if "chat_admin_required" in err_str or "invite" in err_str or "forbidden" in err_str:
                 if channel_mode:

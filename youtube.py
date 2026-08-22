@@ -70,6 +70,14 @@ def _mem_cache_set(key, value):
             _SEARCH_CACHE[val] = value
         elif kind in ("audio", "video"):
             expire = _extract_expire(value)
+            if not expire:
+                # No expire= in the URL means we cannot know when it dies.
+                # Storing it anyway put a (value, None) entry in _STREAM_CACHE
+                # that _mem_cache_get always treats as expired -- a permanent
+                # miss that additionally evicted the _MEM_CACHE fallback on
+                # every lookup. Skip it, exactly as _write_cache does on disk.
+                logger.warning(f"[MEM CACHE SKIP] No expire found in {kind} stream URL for {str(val)[:80]}")
+                return
             if len(_STREAM_CACHE) >= _MAX_STREAM_CACHE_SIZE:
                 now = time.time()
                 expired = [k for k, v in _STREAM_CACHE.items() if v[1] and now >= v[1] - 15]

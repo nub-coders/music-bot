@@ -30,12 +30,15 @@ async def reboot_handler(client: Client, message: Message):
         except Exception as e:
             logger.warning(f"[reboot] Error cleaning active chat {cid}: {e}")
 
-    # Stop all calls instances
-    for call in clients.get("calls", {}).values():
+    # Stop all assistant clients. Note: it is the pyrogram Clients that have
+    # .stop() -- PyTgCalls (clients["calls"]) has no stop(), so calling it there
+    # raised AttributeError that the bare except silently swallowed, leaving
+    # every assistant session un-terminated across the os.execl re-exec.
+    for idx, ast in clients.get("assistants", {}).items():
         try:
-            await call.stop()
-        except Exception:
-            pass
+            await ast.stop()
+        except Exception as e:
+            logger.warning(f"[reboot] Error stopping assistant {idx}: {e}")
 
     # Close HTTP clients
     try:
