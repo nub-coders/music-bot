@@ -137,7 +137,7 @@ async def mentionall(client, message):
         if usrnum == 5:
             if args:
                 txt = f"<blockquote>{EmojiTag.BROADCAST} <b>{args}</b>\n\n{usrtxt}</blockquote>"
-                await client.send_message(chat_id, txt, link_preview_options=None)
+                await rich_send(client, chat_id, txt)
             elif direp:
                 await direp.reply(f"<blockquote>{EmojiTag.BROADCAST} {usrtxt}</blockquote>", link_preview_options=None)
             await asyncio.sleep(5)

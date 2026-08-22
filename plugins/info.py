@@ -80,7 +80,7 @@ async def pingme(client, message):
     ]
     loading = ["🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘","🕙","🕚","🕛"]
 
-    msg = await message.reply_text(Messages.PINGING, link_preview_options=None)
+    msg = await rich_reply(message, rich_note(Messages.PINGING), client=client)
     for frame in ping_frames:
         await msg.edit(f"```\n{frame}\n```{choice(loading)}")
         await asyncio.sleep(0.3)

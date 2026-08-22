@@ -10,7 +10,7 @@ import textwrap
 import datetime
 
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.enums import ChatType
+from pyrogram.enums import ChatType, ButtonStyle
 from pyrogram.errors import ChatAdminRequired, ChatWriteForbidden
 
 from pytgcalls.types import AudioQuality, MediaStream, VideoQuality, StreamEnded
@@ -313,7 +313,7 @@ async def update_progress_button(message, duration_str, chat, markup):
             # survives a read-back if the echoed button still carries its style,
             # and the emoji vanishing on the first edit says it does not.
             keyboard = markup.inline_keyboard
-            progress_row = [InlineKeyboardButton(text=progress_text, callback_data="ignore")]
+            progress_row = [InlineKeyboardButton(text=progress_text, callback_data="ignore", style=ButtonStyle.DEFAULT)]
             updated_keyboard = keyboard[:1] + [progress_row] + keyboard[1:]
 
             try:

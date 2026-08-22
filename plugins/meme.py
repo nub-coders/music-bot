@@ -36,7 +36,7 @@ async def kang(client, message):
     if not replied or not replied.media:
         return await rich_reply(message, rich_note(Messages.REPLY_TO_MEDIA), ephemeral=True)
 
-    Nub = await message.reply_text(Messages.STICKER_LONG, link_preview_options=None)
+    Nub = await rich_reply(message, rich_note(Messages.STICKER_LONG), client=client)
     media_ = None
     emoji_ = None
     is_anim = False

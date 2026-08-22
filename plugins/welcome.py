@@ -238,10 +238,7 @@ async def set_welcome_handler(client, message):
             logger.info(f"Error showing preview: {str(e)}")
             welcome_text = await gvarstatus(sender_id, "WELCOME")
             if welcome_text:
-                await client.send_message(
-                    message.chat.id,
-                    welcome_text,
-                link_preview_options=None)
+                await rich_send(client, message.chat.id, welcome_text)
     except Exception as e:
         logger.info(f"Error for user {message.from_user.id}: {str(e)}")
         return await rich_reply(
