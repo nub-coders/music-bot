@@ -190,12 +190,22 @@ def rich_caption(html_text: str) -> str:
     return _plain_fallback(html_text)
 
 
+def _normalize_html(html_text: str) -> str:
+    """Normalize HTML for Telegram API & InputRichMessage.
+    Fixes unquoted attributes like href=tg://user?id=123 -> href="tg://user?id=123"
+    which Kurigram's User.mention() generates and Telegram's HTML parser rejects."""
+    if not html_text:
+        return ""
+    text = str(html_text)
+    return re.sub(r'href=([^\s">]+)', r'href="\1"', text)
+
+
 def _plain_fallback(html_text: str) -> str:
     """Plain text for a failed rich send, keeping the inline tags Telegram's
     normal HTML parser *does* understand (b/i/u/s/code/pre/blockquote/emoji)."""
     if not html_text:
         return ""
-    text = str(html_text)
+    text = _normalize_html(html_text)
     # Headings -> bold lines, table/detail structure -> newlines & bullets.
     text = re.sub(r"<h[1-6]>(.*?)</h[1-6]>", r"<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<summary>(.*?)</summary>", r"<b>\1</b>\n", text, flags=re.I | re.S)
@@ -214,7 +224,7 @@ def _plain_fallback(html_text: str) -> str:
 
 
 def _input_rich(html_text: str) -> InputRichMessage:
-    return InputRichMessage(html=html_text)
+    return InputRichMessage(html=_normalize_html(html_text))
 
 
 def _is_group(chat_type) -> bool:

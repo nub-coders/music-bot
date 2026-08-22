@@ -136,6 +136,28 @@ async def unauth_user(client, message):
             await rich_reply(message, rich_note(Messages.REPLY_OR_PROVIDE_ID), ephemeral=True, client=client)
 
 
+@Client.on_message(filters.command(["authlist", "authusers"]) & filters.group)
+async def authlist_handler(client, message):
+    chat_id = message.chat.id
+    auth_users = AUTH.get(str(chat_id), [])
+    if not auth_users:
+        return await rich_reply(message, rich_note("<b>ɴᴏ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs ɪɴ ᴛʜɪs ᴄʜᴀᴛ.</b>"), ephemeral=True, client=client)
+
+    table = rich_table(
+        ["#", "ᴜsᴇʀ ɪᴅ"],
+        [(rich_code(i), rich_code(uid)) for i, uid in enumerate(auth_users, 1)],
+    )
+    body = table if len(auth_users) <= 10 else rich_details(
+        f"sʜᴏᴡ ᴀʟʟ {len(auth_users)} ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs", table
+    )
+    authlist_text = (
+        rich_heading(f"{EmojiTag.USER} ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs", 1)
+        + body
+        + rich_note(f"{EmojiTag.INFO} ᴜsᴇ {rich_code('/unauth <user id>')} ᴛᴏ ʀᴇᴍᴏᴠᴇ ᴀᴄᴄᴇss.")
+    )
+    await rich_reply(message, authlist_text, client=client)
+
+
 @Client.on_message(filters.command("block"))
 async def block_user(client, message):
     admin_file = f"{ggg}/admin.txt"

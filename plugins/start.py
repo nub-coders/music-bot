@@ -3,16 +3,10 @@
 from plugins._common import *  # noqa: F401,F403
 
 
-def _cmd_page(title: str, rows) -> str:
-    """One help page: heading + a native command table.
-
-    Built as rich HTML from a single source. The help menu lives in the caption
-    of the start card (photo/video), and captions have no ``rich_message``
-    parameter, so the delivery sites flatten this with ``rich_caption()``.
-    """
-    return rich_heading(title, 1) + rich_table(
-        ["ᴄᴏᴍᴍᴀɴᴅ", "ᴅᴇsᴄʀɪᴘᴛɪᴏɴ"], rows
-    )
+def _cmd_page(title: str, rows, open: bool = False) -> str:
+    """One help page section wrapped inside native Telegram <details> and <summary> dropdown tags."""
+    tbl = rich_table(["ᴄᴏᴍᴍᴀɴᴅ", "ᴅᴇsᴄʀɪᴘᴛɪᴏɴ"], rows)
+    return rich_details(summary=title, body=tbl, open=open)
 
 
 async def send_log_message(client, log_group_id, message, is_private):
@@ -294,45 +288,48 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     playback_commands = _cmd_page(
         f"{EmojiTag.MUSIC_NOTE} ᴘʟᴀʏʙᴀᴄᴋ ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.PLAY} <code>/play</code> <code>/vplay</code>", "ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ"),
-            (f"{EmojiTag.QUEUE_ICON} <code>/queue</code>", "sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)"),
-            (f"{EmojiTag.ROCKET} <code>/playforce</code> <code>/vplayforce</code>", "꩖ᴏʀᴄᴇ ᴘʟᴀʏ (sᴋɪᴘ ᴄᴜʀʀᴇɴᴛ)"),
-            (f"{EmojiTag.GLOBE} <code>/cplay</code> <code>/cvplay</code>", "ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ"),
-            (f"{EmojiTag.PAUSE} <code>/pause</code>", "ᴘᴀᴜsᴇ sᴛʀᴇᴀᴍ"),
-            (f"{EmojiTag.RESUME} <code>/resume</code>", "ʀᴇsᴜᴍᴇ sᴛʀᴇᴀᴍ"),
-            (f"{EmojiTag.SKIP} <code>/skip</code> <code>/cskip</code>", "ɴᴇxᴛ ᴛʀᴀᴄᴋ"),
-            (f"{EmojiTag.STOP} <code>/end</code> <code>/cend</code>", "sᴛᴏᴘ &amp; ᴄʟᴇᴀʀ ǫᴜᴇᴜᴇ"),
-            (f"{EmojiTag.NEXT} <code>/seek &lt;sec&gt;</code>", "ᴊᴜᴍᴘ ꩖ᴏʀᴡᴀʀᴅ"),
-            (f"{EmojiTag.BACK} <code>/seekback &lt;sec&gt;</code>", "ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ"),
-            (f"{EmojiTag.LOOP} <code>/loop &lt;1-20&gt;</code>", "ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ"),
-            (f"{EmojiTag.SETTINGS} <code>/autoplay [on|off]</code>", "ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs"),
+            (f"{EmojiTag.PLAY} <mark><code>/play</code></mark> <code>/vplay</code>", "ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ"),
+            (f"{EmojiTag.QUEUE_ICON} <mark><code>/queue</code></mark> <code>/cqueue</code>", "sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)"),
+            (f"{EmojiTag.ROCKET} <mark><code>/playforce</code></mark> <code>/cplayforce</code>", "꩖ᴏʀᴄᴇ ᴘʟᴀʏ (sᴋɪᴘ ᴄᴜʀʀᴇɴᴛ)"),
+            (f"{EmojiTag.GLOBE} <mark><code>/cplay</code></mark> <code>/cvplay</code>", "ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ"),
+            (f"{EmojiTag.MUSIC_NOTE} <mark><code>/np</code></mark> <code>/nowplaying</code>", "sʜᴏᴡ ᴄᴜʀʀᴇɴᴛʟʏ ᴘʟᴀʏɪɴɢ ᴛʀᴀᴄᴋ"),
+            (f"{EmojiTag.PAUSE} <mark><code>/pause</code></mark> <code>/cpause</code>", "ᴘᴀᴜsᴇ sᴛʀᴇᴀᴍ"),
+            (f"{EmojiTag.RESUME} <mark><code>/resume</code></mark> <code>/cresume</code>", "ʀᴇsᴜᴍᴇ sᴛʀᴇᴀᴍ"),
+            (f"{EmojiTag.SKIP} <mark><code>/skip</code></mark> <code>/cskip</code>", "ɴᴇxᴛ ᴛʀᴀᴄᴋ"),
+            (f"{EmojiTag.STOP} <mark><code>/end</code></mark> <code>/cstop</code>", "sᴛᴏᴘ &amp; ᴄʟᴇᴀʀ ǫᴜᴇᴜᴇ"),
+            (f"{EmojiTag.REFRESH} <mark><code>/shuffle</code></mark> <code>/cshuffle</code>", "sʜᴜғғʟᴇ ǫᴜᴇᴜᴇᴅ ᴛʀᴀᴄᴋs"),
+            (f"{EmojiTag.NEXT} <mark><code>/seek &lt;sec&gt;</code></mark> <code>/cseek</code>", "ᴊᴜᴍᴘ ꩖ᴏʀᴡᴀʀᴅ"),
+            (f"{EmojiTag.BACK} <mark><code>/seekback &lt;sec&gt;</code></mark> <code>/cseekback</code>", "ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ"),
+            (f"{EmojiTag.LOOP} <mark><code>/loop &lt;1-20&gt;</code></mark> <code>/cloop</code>", "ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ"),
+            (f"{EmojiTag.SETTINGS} <mark><code>/autoplay [on|off]</code></mark>", "ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs"),
         ],
+        open=True,
     )
 
     auth_commands = _cmd_page(
         f"{EmojiTag.LOCK} ᴀᴜᴛʜᴏʀɪᴢᴀᴛɪᴏɴ ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.LOCK} <code>/auth &lt;reply|id&gt;</code>", "ᴀʟʟᴏᴡ ᴜsᴇʀ ᴛᴏ ᴜsᴇ ᴘʟᴀʏᴇʀ"),
-            (f"{EmojiTag.UNLOCK} <code>/unauth &lt;reply|id&gt;</code>", "ʀᴇᴍᴏᴠᴇ ᴛʜᴀᴛ ᴘᴇʀᴍɪssɪᴏɴ"),
-            (f"{EmojiTag.USER} <code>/authlist</code>", "ʟɪsᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs"),
+            (f"{EmojiTag.LOCK} <mark><code>/auth &lt;reply|id&gt;</code></mark>", "ᴀʟʟᴏᴡ ᴜsᴇʀ ᴛᴏ ᴜsᴇ ᴘʟᴀʏᴇʀ"),
+            (f"{EmojiTag.UNLOCK} <mark><code>/unauth &lt;reply|id&gt;</code></mark>", "ʀᴇᴍᴏᴠᴇ ᴛʜᴀᴛ ᴘᴇʀᴍɪssɪᴏɴ"),
+            (f"{EmojiTag.USER} <mark><code>/authlist</code></mark>", "ʟɪsᴛ ᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴜsᴇʀs"),
         ],
     )
 
     blocklist_commands = _cmd_page(
         f"{EmojiTag.BLOCKED} ʙʟᴏᴄᴋʟɪsᴛ ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.BLOCKED} <code>/block &lt;reply|id&gt;</code>", "ʙʟᴏᴄᴋ ᴜsᴇʀ ꩖ʀᴏᴍ ʙᴏᴛ"),
-            (f"{EmojiTag.SUCCESS} <code>/unblock &lt;reply|id&gt;</code>", "ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ"),
-            (f"{EmojiTag.USERS} <code>/blocklist</code>", "ᴠɪᴇᴡ ʙʟᴏᴄᴋᴇᴅ ʟɪsᴛ"),
+            (f"{EmojiTag.BLOCKED} <mark><code>/block &lt;reply|id&gt;</code></mark>", "ʙʟᴏᴄᴋ ᴜsᴇʀ ꩖ʀᴏᴍ ʙᴏᴛ"),
+            (f"{EmojiTag.SUCCESS} <mark><code>/unblock &lt;reply|id&gt;</code></mark>", "ᴜɴʙʟᴏᴄᴋ ᴜsᴇʀ"),
+            (f"{EmojiTag.USERS} <mark><code>/blocklist</code></mark>", "ᴠɪᴇᴡ ʙʟᴏᴄᴋᴇᴅ ʟɪsᴛ"),
         ],
     )
 
     sudo_commands = _cmd_page(
         f"{EmojiTag.KEY} sᴜᴅᴏ ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.KEY} <code>/addsudo &lt;reply|id&gt;</code>", "ᴀᴅᴅ sᴜᴅᴏ ᴜsᴇʀ"),
-            (f"{EmojiTag.CLOSE} <code>/rmsudo &lt;reply|id&gt;</code>", "ʀᴇᴍᴏᴠᴇ sᴜᴅᴏ ᴜsᴇʀ"),
-            (f"{EmojiTag.CROWN} <code>/sudolist</code>", "ʟɪsᴛ sᴜᴅᴏ ᴜsᴇʀs"),
+            (f"{EmojiTag.KEY} <mark><code>/addsudo &lt;reply|id&gt;</code></mark>", "ᴀᴅᴅ sᴜᴅᴏ ᴜsᴇʀ"),
+            (f"{EmojiTag.CLOSE} <mark><code>/rmsudo &lt;reply|id&gt;</code></mark>", "ʀᴇᴍᴏᴠᴇ sᴜᴅᴏ ᴜsᴇʀ"),
+            (f"{EmojiTag.CROWN} <mark><code>/sudolist</code></mark>", "ʟɪsᴛ sᴜᴅᴏ ᴜsᴇʀs"),
         ],
     )
 
@@ -340,7 +337,7 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴍᴀɴᴅs",
         [
             (
-                f"{EmojiTag.BROADCAST} <code>/broadcast</code>",
+                f"{EmojiTag.BROADCAST} <mark><code>/broadcast</code></mark> <code>/fbroadcast</code>",
                 "ᴏᴘᴇɴ ʙʀᴏᴀᴅᴄᴀsᴛ ᴘᴀɴᴇʟ ᴡɪᴛʜ ᴄᴏᴘʏ / ꩖ᴏʀᴡᴀʀᴅ &amp; ᴛᴀʀɢᴇᴛ ᴛᴏɢɢʟᴇs",
             ),
         ],
@@ -349,38 +346,61 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     tools_commands = _cmd_page(
         f"{EmojiTag.TOOLS} ᴛᴏᴏʟs ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.CLOSE} <code>/del</code>", "ᴅᴇʟᴇᴛᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ"),
-            (f"{EmojiTag.USERS} <code>/tagall</code>", "ᴍᴇɴᴛɪᴏɴ ᴀʟʟ ᴍᴇᴍʙᴇʀs"),
-            (f"{EmojiTag.ERROR} <code>/cancel</code>", "ᴀʙᴏʀᴛ ʀᴜɴɴɪɴɢ ᴛᴀɢᴀʟʟ"),
-            (f"{EmojiTag.SHIELD} <code>/powers</code>", "sʜᴏᴡ ʙᴏᴛ ᴘᴇʀᴍɪssɪᴏɴs"),
+            (f"{EmojiTag.CLOSE} <mark><code>/del</code></mark>", "ᴅᴇʟᴇᴛᴇ ʀᴇᴘʟɪᴇᴅ ᴍᴇssᴀɢᴇ"),
+            (f"{EmojiTag.USERS} <mark><code>/tagall</code></mark>", "ᴍᴇɴᴛɪᴏɴ ᴀʟʟ ᴍᴇᴍʙᴇʀs"),
+            (f"{EmojiTag.ERROR} <mark><code>/cancel</code></mark>", "ᴀʙᴏʀᴛ ʀᴜɴɴɪɴɢ ᴛᴀɢᴀʟʟ"),
+            (f"{EmojiTag.SHIELD} <mark><code>/powers</code></mark>", "sʜᴏᴡ ʙᴏᴛ ᴘᴇʀᴍɪssɪᴏɴs"),
         ],
     )
 
     kang_commands = _cmd_page(
         f"{EmojiTag.KANG} sᴛɪᴄᴋᴇʀ &amp; ᴍᴇᴍᴇ ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.KANG} <code>/kang</code>", "ᴄʟᴏɴᴇ sᴛɪᴄᴋᴇʀ/ᴘʜᴏᴛᴏ ᴛᴏ ʏᴏᴜʀ ᴘᴀᴄᴋ"),
-            (f"{EmojiTag.TOOLS} <code>/mmf &lt;text&gt;</code>", "ᴡʀɪᴛᴇ ᴛᴇxᴛ ᴏɴ ɪᴍᴀɢᴇ/sᴛɪᴄᴋᴇʀ"),
+            (f"{EmojiTag.KANG} <mark><code>/kang</code></mark>", "ᴄʟᴏɴᴇ sᴛɪᴄᴋᴇʀ/ᴘʜᴏᴛᴏ ᴛᴏ ʏᴏᴜʀ ᴘᴀᴄᴋ"),
+            (f"{EmojiTag.TOOLS} <mark><code>/mmf &lt;text&gt;</code></mark>", "ᴡʀɪᴛᴇ ᴛᴇxᴛ ᴏɴ ɪᴍᴀɢᴇ/sᴛɪᴄᴋᴇʀ"),
         ],
     )
 
     status_commands = _cmd_page(
         f"{EmojiTag.STATS} sᴛᴀᴛᴜs &amp; ɪɴ꩖ᴏ ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.PING} <code>/ping</code>", "ʟᴀᴛᴇɴᴄʏ &amp; ᴜᴘᴛɪᴍᴇ"),
-            (f"{EmojiTag.STATS} <code>/stats</code>", "ʙᴏᴛ ᴜsᴀɢᴇ sᴛᴀᴛs"),
-            (f"{EmojiTag.CHAT} <code>/ac</code>", "ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs"),
-            (f"{EmojiTag.INFO} <code>/about</code>", "ᴜsᴇʀ / ɢʀᴏᴜᴘ / ᴄʜᴀɴɴᴇʟ ɪɴ꩖ᴏ"),
+            (f"{EmojiTag.PING} <mark><code>/ping</code></mark>", "ʟᴀᴛᴇɴᴄʏ &amp; ᴜᴘᴛɪᴍᴇ"),
+            (f"{EmojiTag.STATS} <mark><code>/stats</code></mark>", "ʙᴏᴛ ᴜsᴀɢᴇ sᴛᴀᴛs"),
+            (f"{EmojiTag.CHAT} <mark><code>/ac</code></mark>", "ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛs"),
+            (f"{EmojiTag.INFO} <mark><code>/about</code></mark>", "ᴜsᴇʀ / ɢʀᴏᴜᴘ / ᴄʜᴀɴɴᴇʟ ɪɴ꩖ᴏ"),
+            (f"{EmojiTag.USER} <mark><code>/assistants</code></mark>", "ʟɪsᴛ ᴀssɪsᴛᴀɴᴛ ᴜsᴇʀʙᴏᴛs"),
+            (f"{EmojiTag.SETTINGS} <mark><code>/changeassistant</code></mark>", "sᴡɪᴛᴄʜ ᴀssɪsᴛᴀɴᴛ for ᴄʜᴀᴛ"),
+            (f"{EmojiTag.GLOBE} <mark><code>/lang</code></mark> <code>/setlang</code>", "ᴄʜᴀɴɢᴇ ʙᴏᴛ ʟᴀɴɢᴜᴀɢᴇ"),
         ],
     )
 
     owner_commands = _cmd_page(
         f"{EmojiTag.SETTINGS} ᴏᴡɴᴇʀ ᴄᴏᴍᴍᴀɴᴅs",
         [
-            (f"{EmojiTag.REFRESH} <code>/reboot</code>", "ʀᴇsᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
-            (f"{EmojiTag.PIN} <code>/setwelcome</code>", "sᴇᴛ ᴄᴜsᴛᴏᴍ <code>/start</code> ᴍᴇssᴀɢᴇ"),
-            (f"{EmojiTag.CLOSE} <code>/resetwelcome</code>", "ʀᴇsᴇᴛ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ &amp; ʟᴏɢᴏ"),
+            (f"{EmojiTag.REFRESH} <mark><code>/reboot</code></mark>", "ʀᴇsᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ"),
+            (f"{EmojiTag.PIN} <mark><code>/setwelcome</code></mark>", "sᴇᴛ ᴄᴜsᴛᴏᴍ <code>/start</code> ᴍᴇssᴀɢᴇ"),
+            (f"{EmojiTag.CLOSE} <mark><code>/resetwelcome</code></mark>", "ʀᴇsᴇᴛ ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ &amp; ʟᴏɢᴏ"),
+            (f"{EmojiTag.BLOCKED} <mark><code>/leaveall</code></mark>", "ᴍᴀᴋᴇ ᴀssɪsᴛᴀɴᴛs ʟᴇᴀᴠᴇ ᴀʟʟ ᴄʜᴀᴛs"),
         ],
+    )
+
+    # Merged dropdown pages (combines multiple categories into interactive collapsible sections)
+    merged_all = (
+        playback_commands + "\n" +
+        tools_commands + "\n" +
+        status_commands + "\n" +
+        kang_commands +
+        ("\n" + auth_commands if (is_admin or is_sudo or is_owner) else "") +
+        ("\n" + blocklist_commands + "\n" + sudo_commands + "\n" + broadcast_commands if (is_sudo or is_owner) else "") +
+        ("\n" + owner_commands if is_owner else "")
+    )
+
+    merged_tools = tools_commands + "\n" + status_commands + "\n" + kang_commands
+
+    merged_admin = (
+        (auth_commands if (is_admin or is_sudo or is_owner) else "") +
+        ("\n" + blocklist_commands + "\n" + sudo_commands + "\n" + broadcast_commands if (is_sudo or is_owner) else "") +
+        ("\n" + owner_commands if is_owner else "")
     )
 
     category_pages = {
@@ -389,10 +409,12 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         "blocklist": blocklist_commands,
         "sudo": sudo_commands,
         "broadcast": broadcast_commands,
-        "tools": tools_commands,
+        "tools": merged_tools,
         "kang": kang_commands,
         "status": status_commands,
         "owner": owner_commands,
+        "admin": merged_admin,
+        "all_dropdown": merged_all,
     }
 
     # ---------- Routing ----------
@@ -404,6 +426,8 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         )
     elif data in category_pages:
         # Permission checks for restricted categories
+        if data in ("owner", "admin") and not (is_admin or is_sudo or is_owner):
+            return await callback_query.answer(clean_alert(Messages.ADMIN_RESTRICTED_ACTION), show_alert=True)
         if data == "owner" and not is_owner:
             return await callback_query.answer(clean_alert(Messages.BOT_OWNER_ONLY), show_alert=True)
         if data in ("sudo", "broadcast", "blocklist") and not is_sudo:

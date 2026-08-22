@@ -11,39 +11,24 @@ class Buttons:
     # ─── Help Menu Category Selector ───────────────────────────────────────
     @staticmethod
     def help_markup(is_admin: bool = False, is_owner: bool = False, is_sudo: bool = False) -> InlineKeyboardMarkup:
-        """Generates category buttons tailored to the viewer's permission status."""
+        """Generates minimized help category buttons with merged dropdowns."""
         rows = [
             [
                 InlineKeyboardButton("🎵 ᴘʟᴀʏʙᴀᴄᴋ",    callback_data="commands_playback", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.MUSIC_NOTE),
-                InlineKeyboardButton("🎨 ᴋᴀɴɢ/ᴍᴇᴍᴇ",   callback_data="commands_kang",     style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.KANG),
-            ],
-            [
-                InlineKeyboardButton("🛠️ ᴛᴏᴏʟs",         callback_data="commands_tools",    style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.TOOLS),
-                InlineKeyboardButton("📊 sᴛᴀᴛᴜs",        callback_data="commands_status",   style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.STATS),
+                InlineKeyboardButton("🛠️ ᴛᴏᴏʟs & ɪɴꜰᴏ", callback_data="commands_tools",    style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.TOOLS),
             ],
         ]
 
         if is_admin or is_sudo or is_owner:
             rows.append([
-                InlineKeyboardButton("🔐 ᴀᴜᴛʜ",          callback_data="commands_auth",     style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.AUTH_ICON),
-            ])
-
-        if is_sudo or is_owner:
-            rows.append([
-                InlineKeyboardButton("🚫 ʙʟᴏᴄᴋʟɪsᴛ",    callback_data="commands_blocklist", style=ButtonStyle.DANGER,  icon_custom_emoji_id=Emoji.BLOCKLIST_ICON),
-                InlineKeyboardButton("🔑 sᴜᴅᴏ",           callback_data="commands_sudo",      style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.KEY),
-            ])
-            rows.append([
-                InlineKeyboardButton("📢 ʙʀᴏᴀᴅᴄᴀsᴛ",    callback_data="commands_broadcast", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.BROADCAST),
-            ])
-
-        if is_owner:
-            rows.append([
-                InlineKeyboardButton("⚙️ ᴏᴡɴᴇʀ",        callback_data="commands_owner",     style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.SETTINGS),
+                InlineKeyboardButton("🔐 ᴀᴅᴍɪɴ & sᴜᴅᴏ", callback_data="commands_admin", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.KEY),
             ])
 
         rows.append([
-            InlineKeyboardButton("🏠 ʜᴏᴍᴇ",             callback_data="commands_home",      style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.HOME)
+            InlineKeyboardButton("📋 ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs (ᴅʀᴏᴘᴅᴏᴡɴs)", callback_data="commands_all_dropdown", style=ButtonStyle.SUCCESS, icon_custom_emoji_id=Emoji.HELP),
+        ])
+        rows.append([
+            InlineKeyboardButton("🏠 ʜᴏᴍᴇ", callback_data="commands_home", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.HOME)
         ])
         return InlineKeyboardMarkup(rows)
 
@@ -141,23 +126,6 @@ class Buttons:
         return InlineKeyboardMarkup([[
             InlineKeyboardButton("🎬 sᴛʀᴇᴀᴍ ᴏɴ ʏᴏᴜᴛᴜʙᴇ", url=youtube_url, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.ROCKET),
         ]])
-
-    @staticmethod
-    def font_markup():
-        """Generates the markup for font selection command."""
-        return InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("sᴍᴀʟʟ ᴄᴀᴘs", callback_data="font_small_caps", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.STAR),
-                InlineKeyboardButton("𝐁𝐨𝐥𝐝 𝐒𝐞𝐫𝐢𝐟", callback_data="font_bold_serif", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.STAR),
-            ],
-            [
-                InlineKeyboardButton("𝗕𝗼𝗹𝗱 𝗦𝗮𝗻𝘀",  callback_data="font_bold_sans",  style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.STAR),
-                InlineKeyboardButton("𝙼𝚘𝚗𝚘𝚜𝚙𝚊𝚌ᴇ",  callback_data="font_monospace",  style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.STAR),
-            ],
-            [
-                InlineKeyboardButton("✖ ᴄʟᴏsᴇ", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),
-            ],
-        ])
 
     @staticmethod
     def suggestion_markup(suggestions: list, autoplay_enabled: bool = True):
