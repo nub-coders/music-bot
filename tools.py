@@ -760,11 +760,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
     """Join voice call and start streaming"""
     original_title = title
     title = trim_title(title)
+    if not hasattr(chat, "id") and hasattr(message, "chat") and hasattr(message.chat, "id"):
+        chat = message.chat
+    chat_id = getattr(chat, "id", chat)
     logger.debug(f"[join_call] Title trimmed from: {original_title} -> {title}")
-    logger.info(f"[join_call] Starting join_call for chat {chat.id} (Title: {title}, Mode: {mode})")
+    logger.info(f"[join_call] Starting join_call for chat {chat_id} (Title: {title}, Mode: {mode})")
 
     try:
-        chat_id = chat.id
         ui_chat_id = message.chat.id if (message and hasattr(message, 'chat') and message.chat) else chat_id
         audio_flags = MediaStream.Flags.IGNORE if mode == "audio" else None
 
@@ -854,7 +856,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 err_text = Messages.ERROR_STREAM
                 if title and ("exceeds" in title.lower() or "limit" in title.lower() or "error" in title.lower()):
                     err_text = f"<b>{title}</b>"
-                await rich_send(clients["bot"], chat.id, rich_note(err_text))
+                await rich_send(clients["bot"], ui_chat_id, rich_note(err_text))
             return await remove_active_chat(chat_id)
 
         # Resolve the active assistant and PyTgCalls instance

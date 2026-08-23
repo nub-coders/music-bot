@@ -426,12 +426,16 @@ async def play_handler_func(client, message):
                     logger.info(f"[play] Assistant {ast_num} already in linked channel {linked_chat.id}")
                 except Exception:
                     if getattr(linked_chat, "username", None):
-                        target_chat = await ast_session.join_chat(linked_chat.username)
+                        res = await ast_session.join_chat(linked_chat.username)
+                        if res and hasattr(res, "id"):
+                            target_chat = res
                         logger.info(f"[play] Assistant {ast_num} joined public linked channel @{linked_chat.username}")
                     else:
                         chan_expire = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
                         chan_link = await client.create_chat_invite_link(linked_chat.id, member_limit=1, expire_date=chan_expire)
-                        target_chat = await ast_session.join_chat(chan_link.invite_link)
+                        res = await ast_session.join_chat(chan_link.invite_link)
+                        if res and hasattr(res, "id"):
+                            target_chat = res
                         logger.info(f"[play] Assistant {ast_num} joined private linked channel {linked_chat.id} via invite link")
                 state.mark_member(ast_num, linked_chat.id)
                 break
@@ -445,7 +449,7 @@ async def play_handler_func(client, message):
                             joined_chat = await ast_session.join_chat(message.chat.username)
                     except UserAlreadyParticipant:
                         joined_chat = message.chat
-                    target_chat = joined_chat
+                    target_chat = joined_chat if (joined_chat and hasattr(joined_chat, "id")) else message.chat
                     state.mark_member(ast_num, message.chat.id)
                     break
                 else:
@@ -470,13 +474,13 @@ async def play_handler_func(client, message):
                         link_obj = await client.create_chat_invite_link(message.chat.id, member_limit=1, expire_date=expire_at)
                         joined_chat = await ast_session.join_chat(link_obj.invite_link)
                         logger.info(f"[play] Assistant {ast_num} joined private group {message.chat.id} via invite link")
-                    target_chat = joined_chat or message.chat
+                    target_chat = joined_chat if (joined_chat and hasattr(joined_chat, "id")) else message.chat
                     state.mark_member(ast_num, message.chat.id)
                     break
 
         except UserAlreadyParticipant:
             target_chat = linked_chat if channel_mode else message.chat
-            if target_chat is not None:
+            if target_chat is not None and hasattr(target_chat, "id"):
                 state.mark_member(ast_num, target_chat.id)
             break
         except (InviteHashExpired, ChannelPrivate, UserBlocked) as ban_err:
@@ -523,7 +527,7 @@ async def play_handler_func(client, message):
                 await rich_edit(massage, rich_note(Messages.FAILED_JOIN_GROUP), client=client)
             return await remove_active_chat(client, target_chat_id)
 
-    if not target_chat:
+    if not target_chat or not hasattr(target_chat, "id"):
         target_chat = linked_chat if channel_mode else message.chat
 
 
@@ -577,7 +581,8 @@ async def play_handler_func(client, message):
                             youtube_link = yt_result[2] if yt_result[2] else youtube_link
                     except Exception:
                         duration = "N/A"
-                position = len(state.queues.get(target_chat.id, []))
+                target_chat_id = target_chat.id if hasattr(target_chat, "id") else (linked_chat.id if channel_mode else message.chat.id)
+                position = len(state.queues.get(target_chat_id, []))
                 keyboard = Buttons.queue_markup(track_id, channel_mode)
                 is_local_file = bool(youtube_link) and os.path.exists(youtube_link)
                 video_id = extract_video_id(youtube_link) if youtube_link and not is_local_file else None
@@ -604,7 +609,7 @@ async def play_handler_func(client, message):
 
 
     else:
-      await dend(client, massage, target_chat.id if channel_mode else None)
+      await dend(client, massage, target_chat_id if channel_mode else None)
     try:
         await message.delete()
     except Exception:
@@ -631,13 +636,15 @@ async def put_queue(
     except Exception:
         _duration_in_seconds = 0
     track_id = track_id or uuid.uuid4().hex[:12]
+    safe_chat = chat if (chat and hasattr(chat, "id")) else getattr(message, "chat", chat)
+    chat_id = getattr(safe_chat, "id", safe_chat)
     put = QueueEntry(
         message=message,
         title=trim_title(title),
         duration=duration,
         mode=audio_flags,
         yt_link=yt_link,
-        chat=chat,
+        chat=safe_chat,
         by=by,
         session=client,
         thumb=thumb,
@@ -646,18 +653,18 @@ async def put_queue(
         _yt_task=yt_task,
     )
     if forceplay:
-        async with state.lock(chat.id):
-            check = state.queues.get(chat.id)
+        async with state.lock(chat_id):
+            check = state.queues.get(chat_id)
             if check:
-                state.queues[chat.id].insert(0, put)
+                state.queues[chat_id].insert(0, put)
             else:
-                state.queues[chat.id] = []
-                state.queues[chat.id].append(put)
+                state.queues[chat_id] = []
+                state.queues[chat_id].append(put)
     else:
-        async with state.lock(chat.id):
-            check = state.queues.get(chat.id)
+        async with state.lock(chat_id):
+            check = state.queues.get(chat_id)
 
             if not check:
-               state.queues[chat.id] = []
-            state.queues[chat.id].append(put)
+               state.queues[chat_id] = []
+            state.queues[chat_id].append(put)
     return track_id, put
