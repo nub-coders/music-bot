@@ -23,8 +23,7 @@ def _render_queue_image_sync(display_items, header_text="CURRENT QUEUE (MAX 20)"
     # Body items
     y = 85
     for idx, title, duration in display_items:
-        # Truncate title on image to fit width nicely
-        img_title = (title[:42] + "…") if len(title) > 45 else title
+        img_title = trim_title(title, max_length=42)
         draw.text((35, y), f"{idx}. {img_title}  [{duration}]", fill=(230, 230, 255), font=font_body)
         y += 36
 

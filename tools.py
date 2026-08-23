@@ -756,6 +756,40 @@ async def hd_stream_closed_kicked(client, update):
     state.playing.pop(chat_id, None)
 
 
+async def sync_video_state(call_py, chat_id):
+    """Push the assistant's real camera state to Telegram after a stream swap.
+
+    Workaround for a py-tgcalls/ntgcalls gap. `PyTgCalls.play()` on a chat we are
+    already connected to takes the `set_stream_sources()` fast path, which swaps
+    the ffmpeg sources and updates NTgCalls' internal MediaState but never emits
+    `on_upgrade`. `on_upgrade` is the *only* thing wired to `_update_status()` ->
+    `EditGroupCallParticipant`, so the `video_stopped` flag Telegram holds is the
+    one sent once at join time and never revised. Handing a video track's slot to
+    an audio-only MediaStream therefore stops sending frames while every client
+    keeps rendering the assistant as an active camera broadcaster.
+
+    We read the authoritative native state and feed it to the same
+    `_update_status` the missing callback would have used, so the MTProto flag
+    matches what NTgCalls is actually transmitting. Best-effort: a failure here
+    only leaves the stale camera indicator, so it must never break playback.
+    """
+    if not call_py:
+        return
+    try:
+        resolved = await call_py.resolve_chat_id(chat_id)
+        media_state = await call_py._binding.get_state(resolved)
+        logger.debug(
+            f"[sync_video_state] chat={resolved} muted={media_state.muted} "
+            f"video_paused={media_state.video_paused} "
+            f"video_stopped={media_state.video_stopped}"
+        )
+        await call_py._update_status(resolved, media_state)
+    except Exception as e:
+        logger.debug(
+            f"[sync_video_state] skipped for chat {chat_id}: {type(e).__name__}: {e}"
+        )
+
+
 async def join_call(message, title, youtube_link, chat, by, duration, mode, thumb, stream_url=None, yt_task=None, queue_msg=None, assistant_num=None):
     """Join voice call and start streaming"""
     original_title = title
@@ -884,6 +918,12 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         )
         _jc_call_ms = (time.perf_counter() - _jc_t0) * 1000
         logger.info(f"[join_call] ⏱ call_py.play() took {_jc_call_ms:.1f}ms for chat {chat_id} (Assistant {ast_num})")
+
+        # play() only tells Telegram about the camera when it has to *join* the
+        # call; the already-connected fast path leaves the old video_stopped flag
+        # in place. Re-assert it so a video -> audio switch actually closes the
+        # camera indicator (and audio -> video reopens it).
+        await sync_video_state(call_py, chat_id)
 
         # Mark chat active with this assistant
         await state.activate(chat_id, assistant_num=ast_num)
@@ -1220,29 +1260,35 @@ async def end(client, update):
 
 
 
-def trim_title(title):
+def trim_title(title, max_length=40):
     """
-    Trim video title to 25 characters or 6 words, whichever is shorter.
+    Trim video title to a readable length without cutting words in half.
 
     Args:
         title (str): The original video title
+        max_length (int): Maximum allowed character length (default: 40)
 
     Returns:
-        str: The trimmed title
+        str: The cleaned and trimmed title
     """
     if not title:
         return ""
 
-    # Split into words and take maximum 6 words
-    words = title.split()
-    if len(words) > 10:
-        title = " ".join(words[:10])
+    title = str(title).strip()
+    if len(title) <= max_length:
+        return title
 
-    # If still longer than 25 characters, truncate
-    if len(title) > 30:
-        title = title[:30].rstrip()
+    target_len = max_length - 1
+    truncated = title[:target_len]
 
-    return title
+    # Break at last space if space exists in the latter half of the truncated string
+    if " " in truncated:
+        last_space = truncated.rfind(" ")
+        if last_space > target_len // 2:
+            truncated = truncated[:last_space]
+
+    return truncated.rstrip() + "…"
+
 
 
 # Aliases / helpers

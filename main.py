@@ -25,6 +25,18 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
+# Opt-in deep tracing of the voice-call stack. Off by default: at DEBUG these
+# two loggers are extremely chatty (per-frame and per-signaling-packet), which
+# is exactly what you want while diagnosing a stream transition and exactly what
+# you do not want in steady-state production.
+if os.getenv("CALLS_DEBUG", "").lower() in ("true", "1", "yes"):
+    logging.getLogger("pytgcalls").setLevel(logging.DEBUG)
+    logging.getLogger("py-tgcalls").setLevel(logging.DEBUG)
+    logging.getLogger("ntgcalls").setLevel(logging.DEBUG)
+    logging.getLogger(__name__).info(
+        "CALLS_DEBUG enabled — pytgcalls/ntgcalls logging at DEBUG"
+    )
+
 import time
 
 logger = logging.getLogger(__name__)
