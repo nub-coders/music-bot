@@ -321,6 +321,11 @@ async def play_handler_func(client, message):
         if not media_type:
             await rich_edit(massage, rich_note(Messages.UNSUPPORTED_MEDIA), client=client)
             return await remove_active_chat(client, target_chat_id)
+        # Check Telegram media size against 2 GB limit
+        file_size = getattr(media, "file_size", 0) or 0
+        if file_size > MAX_FILE_SIZE_BYTES:
+            await rich_edit(massage, rich_note(Messages.FILE_TOO_LARGE), client=client)
+            return await remove_active_chat(client, target_chat_id)
         # For media messages
         youtube_link = await download_media_with_progress(
             client,

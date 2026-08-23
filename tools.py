@@ -851,7 +851,10 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         if not stream_source:
             logger.error(f"[join_call] No stream source provided (neither stream_url nor youtube_link) for chat {chat_id}")
             if "bot" in clients and clients["bot"]:
-                await rich_send(clients["bot"], chat.id, rich_note(Messages.ERROR_STREAM))
+                err_text = Messages.ERROR_STREAM
+                if title and ("exceeds" in title.lower() or "limit" in title.lower() or "error" in title.lower()):
+                    err_text = f"<b>{title}</b>"
+                await rich_send(clients["bot"], chat.id, rich_note(err_text))
             return await remove_active_chat(chat_id)
 
         # Resolve the active assistant and PyTgCalls instance

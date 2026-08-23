@@ -247,7 +247,9 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     )
     background.paste(track_bg, (progress_x, progress_y), track_bg)
 
-    if duration != "Live":
+    is_live_duration = duration in ("Live", "Live Stream") or "live" in str(duration).lower()
+
+    if not is_live_duration:
         progress_percentage = random.uniform(0.15, 0.85)
         filled_width = int(progress_width * progress_percentage)
 
@@ -297,8 +299,8 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
     time_y = progress_y + 30
     draw_text_with_shadow(background, draw, (progress_x, time_y), "00:00", time_font, (200, 200, 240), shadow_offset=(1, 1), shadow_blur=2)
 
-    duration_display = "LIVE" if duration == "Live" else duration
-    duration_color = (255, 80, 80) if duration == "Live" else (200, 200, 240)
+    duration_display = "LIVE" if is_live_duration else duration
+    duration_color = (255, 80, 80) if is_live_duration else (200, 200, 240)
     draw_text_with_shadow(background, draw, (progress_x + progress_width - 80, time_y), duration_display, time_font, duration_color, shadow_offset=(1, 1), shadow_blur=2)
 
     try:

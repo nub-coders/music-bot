@@ -143,7 +143,16 @@ async def close_http_client():
 
 
 # All config read from config.py (single source of truth)
-from config import YT_API_TOKEN as API_TOKEN, NUB_YT_API_BASE_URL as BASE_URL, YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW, YT_COOKIES_FILE, COOKIES_FROM_BROWSER, COOKIES_BOOTSTRAP_URL, COOKIES_REFRESH_HOURS
+from config import (
+    YT_API_TOKEN as API_TOKEN,
+    NUB_YT_API_BASE_URL as BASE_URL,
+    YOUTUBE_API_KEYS as _YOUTUBE_API_KEYS_RAW,
+    YT_COOKIES_FILE,
+    COOKIES_FROM_BROWSER,
+    COOKIES_BOOTSTRAP_URL,
+    COOKIES_REFRESH_HOURS,
+    MAX_FILE_SIZE_BYTES,
+)
 
 SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -525,7 +534,10 @@ async def resolve_innertube(argument: str, mode: str = "audio") -> dict | None:
         duration_sec = int(details.get("lengthSeconds", 0))
         # format_duration handles minute/hour rollover; parse_dur(f"PT{n}S") does
         # not, and would render 213s as "0:213" instead of "03:33".
-        duration_formatted = format_duration(duration_sec) if duration_sec else "N/A"
+        if details.get("isLive") or details.get("isLiveContent") or (not duration_sec and details.get("isLive") is not False):
+            duration_formatted = "Live Stream"
+        else:
+            duration_formatted = format_duration(duration_sec) if duration_sec else "N/A"
         youtube_link = f"https://www.youtube.com/watch?v={vid}"
         thumbs = (details.get("thumbnail") or {}).get("thumbnails") or []
         thumbnail_url = thumbs[-1].get("url") if thumbs else "N/A"
@@ -1015,6 +1027,32 @@ def extract_best_format(formats):
 
     return 'N/A'
 
+
+async def _get_remote_file_size(url: str) -> int | None:
+    """Fetch file size from Content-Length / Content-Range HTTP headers for non-live stream URLs."""
+    if not url or not url.startswith(("http://", "https://")):
+        return None
+    try:
+        http = get_http_client()
+        resp = await http.head(url, follow_redirects=True, timeout=5.0)
+        if resp.status_code == 200 and "content-length" in resp.headers:
+            val = resp.headers["content-length"]
+            if val.isdigit():
+                return int(val)
+        resp = await http.get(url, headers={"Range": "bytes=0-0"}, follow_redirects=True, timeout=5.0)
+        cr = resp.headers.get("content-range", "")
+        if "/" in cr:
+            total = cr.split("/")[-1]
+            if total.isdigit():
+                return int(total)
+        cl = resp.headers.get("content-length", "")
+        if cl.isdigit() and resp.status_code == 200:
+            return int(cl)
+    except Exception as e:
+        logger.debug(f"[youtube._get_remote_file_size] Size check for {url[:60]}: {e}")
+    return None
+
+
 async def get_video_details(video_id):
     """
     Get video details using direct stream resolution, API (for YouTube videos), or yt-dlp fallback.
@@ -1029,6 +1067,11 @@ async def get_video_details(video_id):
     # Direct stream URL resolution (bypasses YouTube API and external ytube API)
     if is_direct_stream_url(video_id):
         logger.info(f"[youtube.get_video_details] Handling direct stream URL: '{video_id[:80]}...'")
+        is_live = (
+            ".m3u8" in video_id.lower()
+            or ".mpd" in video_id.lower()
+            or "/live" in video_id.lower()
+        )
         try:
             ydl_opts = {
                 "quiet": True,
@@ -1043,9 +1086,34 @@ async def get_video_details(video_id):
                 if info:
                     if "entries" in info and info["entries"]:
                         info = info["entries"][0]
-                    duration = "N/A"
-                    if info.get("duration"):
-                        duration = format_duration(int(info["duration"]))
+
+                    protocol = str(info.get("protocol", "")).lower()
+                    ext = str(info.get("ext", "")).lower()
+                    if (
+                        info.get("is_live") is True
+                        or info.get("live_status") == "is_live"
+                        or protocol in ("m3u8", "m3u8_native", "http_dash_segments")
+                        or ext in ("m3u8", "mpd")
+                    ):
+                        is_live = True
+
+                    duration = "Live Stream" if is_live else "N/A"
+                    if not is_live and info.get("duration"):
+                        try:
+                            duration = format_duration(int(info["duration"]))
+                        except Exception:
+                            duration = "N/A"
+
+                    # 2 GB limit check for non-live files
+                    if not is_live:
+                        filesize = info.get("filesize") or info.get("filesize_approx")
+                        if not filesize:
+                            filesize = await _get_remote_file_size(video_id)
+                        if filesize and filesize > MAX_FILE_SIZE_BYTES:
+                            size_mb = filesize / (1024 * 1024)
+                            logger.warning(f"[youtube.get_video_details] Direct URL file size {size_mb:.1f}MB exceeds 2 GB limit")
+                            return {"error": f"File size ({size_mb:.1f} MB) exceeds the 2 GB limit."}
+
                     thumbnail = "N/A"
                     if info.get("thumbnails"):
                         thumbnail = info["thumbnails"][-1].get("url", "N/A")
@@ -1066,9 +1134,17 @@ async def get_video_details(video_id):
         except Exception as e:
             logger.warning(f"[youtube.get_video_details] Direct URL yt-dlp extraction notice: {e}")
 
+        # Fallback when yt-dlp extraction fails or returns notice
+        if not is_live:
+            remote_size = await _get_remote_file_size(video_id)
+            if remote_size and remote_size > MAX_FILE_SIZE_BYTES:
+                size_mb = remote_size / (1024 * 1024)
+                logger.warning(f"[youtube.get_video_details] Direct URL file size {size_mb:.1f}MB exceeds 2 GB limit")
+                return {"error": f"File size ({size_mb:.1f} MB) exceeds the 2 GB limit."}
+
         clean_filename = video_id.split("/")[-1].split("?")[0]
         title = clean_filename if clean_filename and len(clean_filename) < 50 else "Direct Stream"
-        duration = "Live Stream" if ".m3u8" in video_id.lower() else "N/A"
+        duration = "Live Stream" if is_live else "N/A"
         return {
             "title": title,
             "thumbnail": "N/A",
@@ -1207,8 +1283,9 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
     details = await get_video_details(argument)
 
     if 'error' in details:
-        logger.warning(f"[youtube.handle_youtube] Failed to get details: {details.get('error')}")
-        return ("Error", "00:00", None, None, None, None, None, None)
+        err_msg = str(details.get('error', 'Error'))
+        logger.warning(f"[youtube.handle_youtube] Failed to get details: {err_msg}")
+        return (err_msg, "00:00", None, None, None, None, None, None)
 
     # Convert dict result to tuple format
     result_tuple = (

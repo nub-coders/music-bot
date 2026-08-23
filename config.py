@@ -136,6 +136,10 @@ except ValueError:
 SPOTIFY_CLIENT_ID     = os.getenv("SPOTIFY_CLIENT_ID", None)
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", None)
 
+# ── Media File Limits ─────────────────────────────────────────────────────────────
+MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB limit (2,147,483,648 bytes)
+
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()
 StartTime = time.time()
+

@@ -158,6 +158,7 @@ class Messages:
     WELCOME_RESET = f"{EmojiTag.SUCCESS} <b>ᴡᴇʟᴄᴏᴍᴇ ᴍᴇssᴀɢᴇ ᴀɴᴅ ʟᴏɢᴏ ʜᴀᴠᴇ ʙᴇᴇɴ ʀᴇsᴇᴛ.</b>"
 
     UNSUPPORTED_MEDIA = f"{EmojiTag.WARNING} <b>ᴜɴsᴜᴘᴘᴏʀᴛᴇᴅ ᴍᴇᴅɪᴀ ᴛʏᴘᴇ.</b>"
+    FILE_TOO_LARGE = f"{EmojiTag.WARNING} <b>ꜰɪʟᴇ sɪᴢᴇ ᴇxᴄᴇᴇᴅs ᴛʜᴇ 2 ɢʙ ʟɪᴍɪᴛ.</b>"
     NO_QUERY_MATCH = f"{EmojiTag.ERROR} <b>ɴᴏ ᴍᴀᴛᴄʜɪɴɢ ʀᴇsᴜʟᴛ ꜰᴏᴜɴᴅ. ᴛʀʏ ᴀɴᴏᴛʜᴇʀ ǫᴜᴇʀʏ.</b>"
     NO_QUERY_GIVEN = f"{EmojiTag.INFO} <b>ɴᴏ ǫᴜᴇʀʏ ᴘʀᴏᴠɪᴅᴇᴅ.</b>"
     NEED_INVITE_PERMISSION = f"{EmojiTag.LOCK} <b>ɪ ɴᴇᴇᴅ 'ɪɴᴠɪᴛᴇ ᴜsᴇʀs ᴠɪᴀ ʟɪɴᴋ' ᴘᴇʀᴍɪssɪᴏɴ ᴛᴏ ᴊᴏɪɴ.</b>"
