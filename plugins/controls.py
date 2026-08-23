@@ -170,9 +170,6 @@ async def seek_handler_func(client, message):
                     ffmpeg_parameters=ffmpeg_params,
                 ),
             )
-            # Seek re-enters play() on an already-connected call, so the camera
-            # flag Telegram holds is not refreshed by the library. Keep it honest.
-            await sync_video_state(active_cp, chat_id)
 
             # Update played time based on command
             if is_forward:
