@@ -34,6 +34,7 @@ import html as _html
 import logging
 import re
 
+from pyrogram.enums import ParseMode
 from pyrogram.types import InputRichMessage, ReplyParameters
 
 logger = logging.getLogger("pyrogram")
@@ -84,6 +85,17 @@ _EMOJI_TAG_RE = re.compile(
     r'<(?:tg-)?emoji\s+(?:emoji-)?id="[^"]*"\s*>(.*?)</(?:tg-)?emoji>', re.I | re.S
 )
 _ANY_TAG_RE = re.compile(r"<[^>]+>")
+_RICH_TAGS_RE = re.compile(
+    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|sub|sup)\b", re.I
+)
+
+
+def _has_rich_only_tags(html_text: str) -> bool:
+    """Check if html_text contains Bot API 10.2 block tags that specifically require InputRichMessage."""
+    if not html_text:
+        return False
+    return bool(_RICH_TAGS_RE.search(str(html_text)))
+
 
 
 # ── builders ────────────────────────────────────────────────────────────────
@@ -267,7 +279,7 @@ async def rich_send(
     if reply_parameters is None and reply_to_message_id:
         reply_parameters = ReplyParameters(message_id=reply_to_message_id)
 
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and (receiver_user_id or _has_rich_only_tags(html_text)):
         try:
             return await client.send_rich_message(
                 chat_id=chat_id,
@@ -284,11 +296,12 @@ async def rich_send(
         except Exception as e:
             logger.debug(f"[rich_send] rich delivery failed, falling back: {e}")
 
-    # ── plain-text fallback ──
+    # ── standard HTML send ──
     try:
         return await client.send_message(
             chat_id,
-            _plain_fallback(html_text),
+            _normalize_html(html_text),
+            parse_mode=ParseMode.HTML,
             reply_markup=reply_markup,
             reply_parameters=reply_parameters,
             message_thread_id=message_thread_id,
@@ -375,7 +388,7 @@ async def rich_edit(
 
     # CallbackQuery — has a rich-aware edit_message_text of its own.
     if hasattr(target, "edit_message_text") and hasattr(target, "data"):
-        if RICH_AVAILABLE:
+        if RICH_AVAILABLE and _has_rich_only_tags(html_text):
             try:
                 return await target.edit_message_text(
                     rich_message=_input_rich(html_text),
@@ -385,7 +398,7 @@ async def rich_edit(
                 logger.debug(f"[rich_edit] cq rich edit failed, falling back: {e}")
         try:
             return await target.edit_message_text(
-                _plain_fallback(html_text), reply_markup=reply_markup
+                _normalize_html(html_text), parse_mode=ParseMode.HTML, reply_markup=reply_markup
             )
         except Exception as e:
             logger.debug(f"[rich_edit] cq plain edit failed: {e}")
@@ -402,7 +415,8 @@ async def rich_edit(
             )
         try:
             return await target.edit_text(
-                _plain_fallback(html_text),
+                _normalize_html(html_text),
+                parse_mode=ParseMode.HTML,
                 reply_markup=reply_markup,
                 link_preview_options=None,
             )
@@ -420,7 +434,7 @@ async def _rich_edit_via_client(app, chat_id, message_id, html_text, reply_marku
     if chat_id is None or not message_id:
         logger.debug("[rich_edit] missing chat_id/message_id")
         return None
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and _has_rich_only_tags(html_text):
         try:
             return await app.edit_message_text(
                 chat_id=chat_id,
@@ -434,7 +448,8 @@ async def _rich_edit_via_client(app, chat_id, message_id, html_text, reply_marku
         return await app.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=_plain_fallback(html_text),
+            text=_normalize_html(html_text),
+            parse_mode=ParseMode.HTML,
             reply_markup=reply_markup,
             link_preview_options=None,
         )
