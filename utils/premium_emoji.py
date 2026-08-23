@@ -158,13 +158,8 @@ _UNICODE_TO_EMOJI_ID = {
 # may only cover an actual emoji, so message text never upgrades these.
 _BUTTON_ONLY_GLYPHS = {"II", "‣‣I", "▷", "▢", "‣"}
 
-# Keycap digits ("1️⃣") get their own ids, and Telegram sends them with or
-# without the variation selector — accept both spellings.
-# NOTE: TENS are intentionally excluded here. Each TENS ID is a single custom
-# emoji glyph, but keycaps() always produces two separate keycap characters
-# (e.g. "1️⃣0️⃣") — wrapping two emoji in one <emoji> tag violates Telegram's
-# CUSTOM_EMOJI entity rule (must span exactly one emoji) and causes
-# ENTITY_TEXT_INVALID. Individual digits 1-9 are still upgraded via DIGITS.
+# Keycap digits ("1️⃣") get their own ids from Emoji.DIGITS, and Telegram sends
+# them with or without the variation selector — accept both spellings.
 _MESSAGE_EMOJI_IDS = {
     **{g: i for g, i in _UNICODE_TO_EMOJI_ID.items() if g not in _BUTTON_ONLY_GLYPHS},
     **{f"{d}️⃣": i for d, i in Emoji.DIGITS.items()},
@@ -336,24 +331,11 @@ def strip_custom_emoji_text(text):
 
 
 def position_tag(n: int) -> str:
-    """Return keycaps emoji or custom emoji tag for position n.
+    """Return keycaps emoji for position n.
 
-    HTML.parse automatically upgrades single keycap emoji (e.g. '5️⃣') to custom emoji
-    tags (<tg-emoji emoji-id="...">5️⃣</tg-emoji>) when PREMIUM_EMOJI is active. However, for
-    positions present in Emoji.TENS (e.g. 10, 20, ..., 90), there is no '0' digit
-    in Emoji.DIGITS. We directly return the TENS custom emoji tag wrapping a single
-    keycap character fallback (e.g. '1️⃣') to prevent Telegram's ENTITY_TEXT_INVALID error.
+    HTML.parse automatically upgrades keycap emoji (e.g. '5️⃣', '1️⃣0️⃣') to custom emoji
+    tags (<tg-emoji emoji-id="...">5️⃣</tg-emoji>) when PREMIUM_EMOJI is active via DIGITS.
     """
-    if PREMIUM_EMOJI:
-        s = str(n)
-        if s in Emoji.TENS and Emoji.TENS[s]:
-            first_digit = s[0]
-            return _emoji_tag(Emoji.TENS[s], f"{first_digit}️⃣")
-        if len(s) > 2 and s.endswith("0"):
-            prefix = s[:-1]
-            if prefix in Emoji.TENS and Emoji.TENS[prefix]:
-                first_digit = prefix[0]
-                return _emoji_tag(Emoji.TENS[prefix], f"{first_digit}️⃣") + "0️⃣"
     return keycaps(n)
 
 
@@ -446,8 +428,6 @@ def apply_premium_emoji(available):
                 setattr(Emoji, name, None)
         for k in Emoji.DIGITS:
             Emoji.DIGITS[k] = None
-        for k in Emoji.TENS:
-            Emoji.TENS[k] = None
 
     # Markups built at import captured the pre-verdict state, either way.
     from utils.button import Buttons
