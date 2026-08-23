@@ -212,15 +212,12 @@ async def set_welcome_handler(client, message):
                 if 'video' in mime.from_file(alive_logo):
                     alive_logo = rename_file(alive_logo, logo_path_mp4)
 
-            welcome_text = await gvarstatus(sender_id, "WELCOME") or f"""
-🌟 𝖂𝖊𝖑𝖈𝖔𝖒𝖊, {name}! 🌟
-
-🎶 Your **musical journey** begins with {botname}!
-
-✨ Enjoy _crystal-clear_ audio and a vast library of sounds.
-
-🚀 Get ready for an *unparalleled* musical adventure!
-"""
+            user_mention = message.from_user.mention() if message.from_user else "user"
+            raw_welcome = await gvarstatus(sender_id, "WELCOME") or Messages.DEFAULT_START_MESSAGE
+            try:
+                welcome_text = raw_welcome.format(name=user_mention, id=message.chat.id, botname=client.me.mention())
+            except Exception:
+                welcome_text = raw_welcome
             if alive_logo.endswith(".mp4"):
                 await client.send_video(
                     message.chat.id,

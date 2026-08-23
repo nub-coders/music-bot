@@ -194,12 +194,7 @@ async def user_client_start_handler(client, message):
            if 'video' in mime.from_file(alive_logo):
                alive_logo = rename_file(alive_logo, logo_path_mp4)
 
-       greet_message = await gvarstatus(client.me.id, "WELCOME") or (
-            f"{EmojiTag.USER} <b>ʜᴇʏ {{name}}!</b>\n\n"
-            f"{EmojiTag.MUSIC_NOTE} <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {{botname}}</b>\n\n"
-            "<i>ᴀ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ & ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ sᴛʀᴇᴀᴍɪɴɢ.</i>\n\n"
-            "<b><i>ᴜsᴇ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ.</i></b>"
-        )
+       greet_message = await gvarstatus(client.me.id, "WELCOME") or Messages.DEFAULT_START_MESSAGE
 
        send = client.send_video if alive_logo.endswith(".mp4") else client.send_photo
        await editing.delete()
@@ -266,7 +261,7 @@ async def format_welcome_message(client, text, chat_id, user_or_chat_name):
     """Helper function to format welcome message with real data"""
     try:
         botname = client.me.mention()
-        formatted_text = text.format(name=user_or_chat_name, botname=botname)
+        formatted_text = text.format(name=user_or_chat_name, id=chat_id, botname=botname)
         return formatted_text
     except Exception as e:
         logger.info(f"Error formatting welcome message: {e}")
@@ -443,12 +438,7 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         )
     elif data in ("home", "back"):
         await callback_query.answer()
-        greet_message = await gvarstatus(client.me.id, "WELCOME") or (
-            f"{EmojiTag.USER} <b>ʜᴇʏ {{name}}!</b>\n\n"
-            f"{EmojiTag.MUSIC_NOTE} <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {{botname}}</b>\n\n"
-            "<i>ᴀ ᴍᴜsɪᴄ ʙᴏᴛ ᴡɪᴛʜ ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ & ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ sᴛʀᴇᴀᴍɪɴɢ.</i>\n\n"
-            "<b><i>ᴜsᴇ ᴛʜᴇ ʜᴇʟᴘ ʙᴜᴛᴛᴏɴ ꜰᴏʀ ᴍᴏʀᴇ ɪɴꜰᴏ.</i></b>"
-        )
+        greet_message = await gvarstatus(client.me.id, "WELCOME") or Messages.DEFAULT_START_MESSAGE
         greet_message = await format_welcome_message(client, greet_message, user_id, callback_query.from_user.mention())
         buttons_markup = Buttons.start_markup(client.me.username, ow_id, OWNER_ID, GROUP)
         await callback_query.message.edit_caption(

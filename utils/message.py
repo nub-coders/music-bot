@@ -206,12 +206,25 @@ class Messages:
     MMF_DOWNLOAD_FAILED = "Failed to download media for memify."
     INVALID_FONT_SELECTION = "Invalid font style selection."
     HELP_CATEGORY_SELECT = f"<u><b>{EmojiTag.INFO} | sᴇʟᴇᴄᴛ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴄᴀᴛᴇɢᴏʀʏ</b></u>"
+    DEFAULT_START_MESSAGE = (
+        f"{EmojiTag.USER} <b>ʜᴇʏ {{name}}!</b>\n\n"
+        f"{EmojiTag.MUSIC_NOTE} <b>ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {{botname}}</b>\n"
+        f"<i>ʏᴏᴜʀ ᴜʟᴛɪᴍᴀᴛᴇ ʜɪɢʜ-ǫᴜᴀʟɪᴛʏ ᴍᴜsɪᴄ &amp; ᴠɪᴅᴇᴏ sᴛʀᴇᴀᴍɪɴɢ ʙᴏᴛ ꜰᴏʀ ᴛᴇʟᴇɢʀᴀᴍ!</i>\n\n"
+        f"✨ <b><u>sᴘᴇᴄɪᴀʟ ꜰᴇᴀᴛᴜʀᴇs</u></b> ✨\n\n"
+        f"• {EmojiTag.HEADPHONES} <b>ᴜʟᴛʀᴀ-ʜᴅ sᴛʀᴇᴀᴍɪɴɢ:</b> <i>ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴀᴜᴅɪᴏ &amp; ᴠɪᴅᴇᴏ in ɢʀᴏᴜᴘs &amp; ᴄʜᴀɴɴᴇʟs.</i>\n"
+        f"• {EmojiTag.ROCKET} <b>sᴍᴀʀᴛ ᴀᴜᴛᴏᴘʟᴀʏ (<code>/autoplay</code>):</b> <i>ᴀᴜᴛᴏ-ᴘʟᴀʏs ʀᴇʟᴀᴛᴇᴅ sᴏɴɢs sᴏ ᴍᴜsɪᴄ ɴᴇᴠᴇʀ sᴛᴏᴘs.</i>\n"
+        f"• {EmojiTag.BOLT} <b>ᴍᴜʟᴛɪ-ᴀssɪsᴛᴀɴᴛ:</b> <i>sᴇᴀᴍʟᴇss ʟᴏᴀᴅ-ʙᴀʟᴀɴᴄɪɴɢ ᴀᴄʀᴏss ᴍᴜʟᴛɪᴘʟᴇ ᴀssɪsᴛᴀɴᴛs.</i>\n"
+        f"• {EmojiTag.SETTINGS} <b>ᴀᴅᴠᴀɴᴄᴇᴅ ᴄᴏɴᴛʀᴏʟs:</b> <i>sᴇᴇᴋ (<code>/seek</code>), ʟᴏᴏᴘ (<code>/loop</code>), ꩖ᴏʀᴄᴇ-ᴘʟᴀʏ &amp; sʜᴜꜰꜰʟᴇ.</i>\n"
+        f"• {EmojiTag.TOOLS} <b>ꜰᴜɴ &amp; ᴜᴛɪʟɪᴛɪᴇs:</b> <i>sᴛɪᴄᴋᴇʀ ᴄʟᴏɴɪɴɢ (<code>/kang</code>), ᴍᴇᴍᴇs (<code>/mmf</code>) &amp; ᴛᴀɢᴀʟʟ.</i>\n\n"
+        f"<b><i>👇 ᴜsᴇ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ᴇxᴘʟᴏʀᴇ ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs!</i></b>"
+    )
     GROUP_WELCOME = (
         f"{EmojiTag.MUSIC_NOTE} <b>ʜᴇʏ {{adder}}!</b> ᴛʜᴀɴᴋs ꜰᴏʀ ᴀᴅᴅɪɴɢ ᴍᴇ ᴛᴏ <b>{{group_name}}</b> 🎉\n\n"
         f"ɪ'ᴍ <b>{{botname}}</b> — ʏᴏᴜʀ ᴅᴇᴅɪᴄᴀᴛᴇᴅ ᴍᴜsɪᴄ ʙᴏᴛ.\n\n"
         f"{EmojiTag.MUSIC_NOTES} ᴄʀʏsᴛᴀʟ-ᴄʟᴇᴀʀ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ sᴛʀᴇᴀᴍɪɴɢ\n"
         f"{EmojiTag.BOLT} ʙʟᴀᴢɪɴɢ-ꜰᴀsᴛ ᴘʟᴀʏʙᴀᴄᴋ ᴡɪᴛʜ ǫᴜᴇᴜᴇ\n"
-        f"{EmojiTag.GLOBE} ʏᴏᴜᴛᴜʙᴇ, sᴘᴏᴛɪꜰʏ & ᴍᴏʀᴇ\n\n"
+        f"{EmojiTag.ROCKET} sᴍᴀʀᴛ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs (<code>/autoplay</code>)\n"
+        f"{EmojiTag.GLOBE} ʏᴏᴜᴛᴜʙᴇ, sᴘᴏᴛɪꜰʏ &amp; ᴍᴏʀᴇ\n\n"
         f"<i>ᴜsᴇ <code>/play [song]</code> ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</i>"
     )
 
