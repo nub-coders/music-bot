@@ -54,7 +54,7 @@ from utils.button import Buttons
 from utils.emoji import Emoji, EmojiTag, keycaps
 from utils.premium_emoji import position_tag, strip_custom_emoji_text
 from utils.rich_ui import *  # noqa: F403  (rich_send/rich_reply/rich_edit/rich_table/... )
-from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task, remove_chat_assistant as db_remove_chat_assistant
+from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task, remove_chat_assistant as db_remove_chat_assistant, get_top_chats
 from thumbnails import get_thumb
 from PIL import Image
 import imageio
@@ -63,7 +63,35 @@ from mutagen import File
 from mutagen import MutagenError
 import magic
 
-logger = logging.getLogger("pyrogram")
+logger = logging.getLogger(__name__)
+
+# Global cache for admin status: (chat_id, user_id) -> (status, expires_at)
+_admin_member_cache = {}
+
+
+async def _build_top_groups_table(client) -> str:
+    """Build the Top 10 Groups table sorted by song play count."""
+    top_chats = await get_top_chats(10)
+    if not top_chats:
+        return ""
+
+    rows = []
+    for rank, (cid, count) in enumerate(top_chats, 1):
+        try:
+            chat_obj = await client.get_chat(cid)
+            title = getattr(chat_obj, "title", None) or getattr(chat_obj, "first_name", None) or f"Chat {cid}"
+            name_str = rich_esc(title)
+        except Exception:
+            name_str = f"<i>[ID: {rich_code(cid)}]</i>"
+        rows.append((f"<b>#{rank}</b>", name_str, rich_code(count)))
+
+    if not rows:
+        return ""
+
+    return (
+        rich_heading(f"{EmojiTag.CROWN} ᴛᴏᴘ 10 ɢʀᴏᴜᴘs (sᴏɴɢs ᴘʟᴀʏᴇᴅ)", 2)
+        + rich_table(["#", "ɢʀᴏᴜᴘ", "ᴘʟᴀʏs"], rows)
+    )
 
 
 def clean_alert(text: str) -> str:
@@ -303,6 +331,93 @@ async def status(client, message):
         message_thread_id=getattr(message, "message_thread_id", None),
     ) as draft:
         await draft.update(rich_note(Messages.COLLECTING_STATS))
+
+        # Check if called from a group/supergroup: show group-specific stats & connected channel
+        if message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+            chat_id = message.chat.id
+            linked_chat = None
+            try:
+                chat_obj = await client.get_chat(chat_id)
+                linked_chat = getattr(chat_obj, "linked_chat", None)
+            except Exception as e:
+                logger.debug(f"[status] Failed to fetch chat info for {chat_id}: {e}")
+
+            if linked_chat:
+                chan_title = rich_esc(getattr(linked_chat, "title", "Connected Channel"))
+                username = getattr(linked_chat, "username", None)
+                if username:
+                    channel_info = f"{chan_title} (<code>@{username}</code>)"
+                else:
+                    channel_info = f"{chan_title} (<code>ID: {linked_chat.id}</code>)"
+            else:
+                channel_info = "<i>Not Connected</i>"
+
+            try:
+                ast_num, ast_userbot, _ = await get_assistant(chat_id)
+                ast_info = assistant_info.get(ast_num, {})
+                ast_name = ast_info.get("name") or (
+                    getattr(ast_userbot.me, "first_name", f"Assistant {ast_num}")
+                    if ast_userbot
+                    else f"Assistant {ast_num}"
+                )
+                assistant_text = f"Assistant {ast_num} ({rich_esc(ast_name)})"
+            except Exception:
+                assistant_text = "Assistant 1"
+
+            target_id = (
+                linked_chat.id
+                if (linked_chat and chat_id not in state.playing and linked_chat.id in state.playing)
+                else chat_id
+            )
+            song = state.playing.get(target_id)
+            if song:
+                song_title = song.get("title", "Unknown")
+                mode = song.get("mode", "audio")
+                mode_label = f"{EmojiTag.MUSIC_NOTE} Audio" if mode == "audio" else f"{EmojiTag.PLAY} Video"
+                stream_status = f"<b>{rich_esc(song_title)}</b> ({mode_label})"
+            else:
+                stream_status = "<i>No Active Stream</i>"
+
+            queue_len = len(state.queues.get(chat_id, []))
+            queue_status = f"{queue_len} track(s)" if queue_len > 0 else "Empty"
+            autoplay_status = "Enabled" if state.is_autoplay_enabled(chat_id) else "Disabled"
+
+            lang_code = await get_lang(chat_id)
+            lang_meta = LANGUAGES.get(lang_code, {"name": lang_code, "flag": "🏳️"})
+            lang_text = f"{lang_meta['flag']} {lang_code.upper()} — {rich_esc(lang_meta['name'])}"
+
+            members_count = None
+            try:
+                members_count = await client.get_chat_members_count(chat_id)
+            except Exception:
+                pass
+
+            rows = [
+                (f"{EmojiTag.USERS} ɢʀᴏᴜᴘ ɴᴀᴍᴇ", rich_esc(message.chat.title or "This Group")),
+                (f"{EmojiTag.KEY} ɢʀᴏᴜᴘ ɪᴅ", rich_code(chat_id)),
+                (f"{EmojiTag.INFO} ᴄʜᴀᴛ ᴛʏᴘᴇ", rich_code(message.chat.type.name.capitalize())),
+            ]
+            if members_count:
+                rows.append((f"{EmojiTag.USER} ᴍᴇᴍʙᴇʀs", rich_code(members_count)))
+            rows.extend([
+                (f"{EmojiTag.BROADCAST} ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴄʜᴀɴɴᴇʟ", channel_info),
+                (f"{EmojiTag.HEADPHONES} ᴀssɪsᴛᴀɴᴛ", assistant_text),
+                (f"{EmojiTag.MUSIC_NOTE} sᴛʀᴇᴀᴍ sᴛᴀᴛᴜs", stream_status),
+                (f"{EmojiTag.QUEUE_ICON} ǫᴜᴇᴜᴇ", rich_code(queue_status)),
+                (f"{EmojiTag.SETTINGS} ᴀᴜᴛᴏᴘʟᴀʏ", rich_code(autoplay_status)),
+                (f"{EmojiTag.GLOBE} ʟᴀɴɢᴜᴀɢᴇ", lang_text),
+            ])
+
+            top_groups_table = await _build_top_groups_table(client)
+
+            await draft.finish(
+                rich_heading(f"{EmojiTag.STATS} ɢʀᴏᴜᴘ sᴛᴀᴛɪsᴛɪᴄs", 1)
+                + rich_kv_table(rows)
+                + top_groups_table
+                + rich_note(f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Group Performance Summary</b>")
+            )
+            return
+
         start = datetime.datetime.now()
         u = g = sg = c = a_chat = play_count = 0
         user_data = await collection.find_one({"bot_id": client.me.id})
@@ -319,6 +434,8 @@ async def status(client, message):
             users = user_data.get('users', [])
             total_users = len(users)
 
+            top_groups_table = await _build_top_groups_table(client)
+
             if total_users > 500:
                 await draft.finish(
                     rich_heading(f"{EmojiTag.STATS} Bot Statistics", 1)
@@ -330,6 +447,7 @@ async def status(client, message):
                             (f"{EmojiTag.INFO} Detailed stats", rich_code("Skipped to avoid timeout")),
                         ],
                     )
+                    + top_groups_table
                     + rich_note(
                         f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code('0s')}\n"
                         f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
@@ -398,6 +516,7 @@ async def status(client, message):
                         (f"{EmojiTag.MUSIC_NOTE} Songs Played (24h)", rich_code(play_count)),
                     ],
                 )
+                + top_groups_table
                 + rich_note(
                     f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code(f'{ms}s')}\n"
                     f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"

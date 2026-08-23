@@ -339,30 +339,10 @@ async def toggle_setting(client, callback_query):
 
 
 @Client.on_message(filters.command("stats"))
+@admin_only()
 async def status_command_handler(client, message):
-    user_id = message.from_user.id
-    admin_file = f"{ggg}/admin.txt"
-
-    # Get user data and permissions
-    users_data = await user_sessions.find_one({"bot_id": client.me.id})
-    sudoers = users_data.get("SUDOERS", []) if users_data else []
-
-    is_admin = False
-    if os.path.exists(admin_file):
-        admin_ids = get_admin_ids(admin_file)
-        is_admin = user_id in admin_ids
-
-    # Check permissions
-    is_authorized = (
-        is_admin or
-        str(OWNER_ID) == str(user_id) or
-        user_id in sudoers
-    )
-
-    if not is_authorized:
-        return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
-
     await status(client, message)
+
 
 
 @Client.on_message(filters.command(["broadcast", "fbroadcast"]) & filters.private)

@@ -35,7 +35,7 @@ async def ensure_indexes():
 
 
 async def set_last_played(chat_id: int, ts: int):
-    """Persist the last time a chat started playback.
+    """Persist the last time a chat started playback and increment its play count.
 
     state.played is in-memory only, so after a restart every chat looks "never
     played" and the auto-leave sweep cannot tell idle from unknown. Persisting it
@@ -44,7 +44,7 @@ async def set_last_played(chat_id: int, ts: int):
     try:
         await chat_playback.update_one(
             {"chat_id": int(chat_id)},
-            {"$set": {"last_played": int(ts)}},
+            {"$set": {"last_played": int(ts)}, "$inc": {"play_count": 1}},
             upsert=True,
         )
     except Exception as e:
@@ -62,6 +62,22 @@ async def get_all_last_played() -> dict:
     except Exception as e:
         logger.warning(f"[db] get_all_last_played error: {e}")
     return out
+
+
+async def get_top_chats(limit: int = 10) -> list:
+    """Retrieve top chats sorted by play_count descending."""
+    top_list = []
+    try:
+        cursor = chat_playback.find({}, {"chat_id": 1, "play_count": 1}).sort("play_count", -1).limit(limit)
+        async for doc in cursor:
+            cid = doc.get("chat_id")
+            cnt = doc.get("play_count", 0)
+            if cid is not None:
+                top_list.append((int(cid), int(cnt)))
+    except Exception as e:
+        logger.warning(f"[db] get_top_chats error: {e}")
+    return top_list
+
 
 
 async def get_chat_assistant(chat_id: int) -> int | None:
