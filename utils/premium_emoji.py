@@ -488,10 +488,10 @@ if __name__ == "__main__":  # python -m utils.premium_emoji
         f'<tg-emoji emoji-id="{Emoji.DIGITS["1"]}">1️⃣</tg-emoji>'
         f'<tg-emoji emoji-id="{Emoji.DIGITS["2"]}">2️⃣</tg-emoji>'
     )
-    # Two-digit positions (10, 20 ...) must NOT be wrapped in a single <tg-emoji>
-    # tag — that would span two keycap characters and cause ENTITY_TEXT_INVALID.
+    # Two-digit positions (10, 20 ...) get each digit upgraded individually in its own <tg-emoji> tag.
     assert _upgrade_unicode_emoji(keycaps(10)) == (
-        f'<tg-emoji emoji-id="{Emoji.DIGITS["1"]}">1️⃣</tg-emoji>0️⃣'
+        f'<tg-emoji emoji-id="{Emoji.DIGITS["1"]}">1️⃣</tg-emoji>'
+        f'<tg-emoji emoji-id="{Emoji.DIGITS["0"]}">0️⃣</tg-emoji>'
     )
     out = parse("hi 🎵")
     assert out["message"] == "hi 🎵"

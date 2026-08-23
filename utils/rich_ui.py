@@ -193,10 +193,17 @@ def rich_caption(html_text: str) -> str:
 def _normalize_html(html_text: str) -> str:
     """Normalize HTML for Telegram API & InputRichMessage.
     Fixes unquoted attributes like href=tg://user?id=123 -> href="tg://user?id=123"
-    which Kurigram's User.mention() generates and Telegram's HTML parser rejects."""
+    which Kurigram's User.mention() generates and Telegram's HTML parser rejects.
+    Upgrades unicode emoji (such as keycap digits in tables) to custom emoji tags if PREMIUM_EMOJI is enabled.
+    """
     if not html_text:
         return ""
     text = str(html_text)
+    try:
+        from utils.premium_emoji import PREMIUM_EMOJI, _upgrade_unicode_emoji, strip_custom_emoji_text
+        text = _upgrade_unicode_emoji(text) if PREMIUM_EMOJI else strip_custom_emoji_text(text)
+    except Exception:
+        pass
     return re.sub(r'href=([^\s">]+)', r'href="\1"', text)
 
 
