@@ -117,6 +117,7 @@ async def broadcast_callback_handler(client, callback_query):
         async with RichDraft(client, chat_id_for_progress) as draft:
             await draft.update(rich_note(Messages.START_ASSISTANT_BROADCAST))
             try:
+                bot_username = getattr(client.me, "username", None) or client.me.id
                 # Ensure communication with the bot
                 try:
                     await session.get_chat(client.me.id)
@@ -342,9 +343,17 @@ async def broadcast_command_handler(client, message, user_data=None):
     forward = user_data.get('forward', False)
 
     if isinstance(message, CallbackQuery):
-        await message.message.delete()
+        chat_id = message.message.chat.id if message.message else user_id
+        try:
+            await message.message.delete()
+        except Exception:
+            pass
     else:
-        await message.delete()
+        chat_id = message.chat.id
+        try:
+            await message.delete()
+        except Exception:
+            pass
 
     # Broadcast settings menu
     btns = []
@@ -370,7 +379,7 @@ async def broadcast_command_handler(client, message, user_data=None):
 
     await rich_send(
         client,
-        message.chat.id,
+        chat_id,
         rich_note(Messages.BROADCAST_SETTINGS.format(
             group="✅" if group else "❌",
             private="✅" if private else "❌",
@@ -381,5 +390,5 @@ async def broadcast_command_handler(client, message, user_data=None):
             pin="✅" if pin else "❌",
             forward="✅" if forward else "❌",
         )),
-        markup=markup,
+        reply_markup=markup,
     )

@@ -273,6 +273,7 @@ async def rich_send(
     html_text: str,
     *,
     reply_markup=None,
+    markup=None,
     receiver_user_id=None,
     callback_query_id=None,
     reply_to_message_id=None,
@@ -281,12 +282,16 @@ async def rich_send(
     disable_notification=None,
     protect_content=None,
     effect_id=None,
+    **kwargs,
 ):
     """Send a rich message, falling back to ``send_message`` on any failure.
 
     ``receiver_user_id`` makes the message *ephemeral* (visible only to that
     user, groups/supergroups only). Never changes any callback data.
     """
+    if reply_markup is None:
+        reply_markup = markup
+
     if not html_text:
         return None
 
@@ -398,9 +403,11 @@ async def rich_reply(
     html_text: str,
     *,
     reply_markup=None,
+    markup=None,
     ephemeral: bool = False,
     quote: bool = True,
     client=None,
+    **kwargs,
 ):
     """Reply to an update with rich formatting.
 
@@ -408,6 +415,9 @@ async def rich_reply(
     ``ephemeral=True`` makes the reply visible only to the triggering user
     (groups/supergroups only, ignored in PM).
     """
+    if reply_markup is None:
+        reply_markup = markup
+
     if not html_text:
         return None
 
@@ -462,9 +472,11 @@ async def rich_edit(
     html_text: str,
     *,
     reply_markup=None,
+    markup=None,
     chat_id=None,
     message_id=None,
     client=None,
+    **kwargs,
 ):
     """Edit an existing message into rich HTML.
 
@@ -474,6 +486,8 @@ async def rich_edit(
     ``rich_message`` parameter), or a :class:`Client` together with explicit
     ``chat_id`` / ``message_id``.
     """
+    if reply_markup is None:
+        reply_markup = markup
     if not html_text:
         return None
 
