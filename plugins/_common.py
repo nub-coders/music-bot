@@ -324,19 +324,23 @@ async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
         ))
     return chat_type
 async def _build_stats_content(client, bot_id, period: str = "24h"):
-    """Build stats content for a given period.
+    """Build the bot-wide statistics card for a given period.
+
+    ``dates`` is never pruned here: it is already bounded by the ``$slice: -5000``
+    on every ``$push`` (see :func:`tools.join_call` / :func:`tools.end`), and the
+    old 24h ``$pull`` would have destroyed the history the Week/Overall views read.
 
     Args:
         client: Pyrogram client
         bot_id: Bot's user ID
         period: One of "24h", "week", "overall"
     """
-    now = datetime.datetime.now()
+    started = datetime.datetime.now()
     if period == "24h":
-        time_threshold = now - datetime.timedelta(hours=24)
+        time_threshold = started - datetime.timedelta(hours=24)
         period_label = "24h"
     elif period == "week":
-        time_threshold = now - datetime.timedelta(weeks=1)
+        time_threshold = started - datetime.timedelta(weeks=1)
         period_label = "Week"
     else:  # overall
         time_threshold = None
@@ -357,8 +361,23 @@ async def _build_stats_content(client, bot_id, period: str = "24h"):
 
     top_groups_table = await _build_top_groups_table(client)
 
-    # For overall stats, we still limit detailed breakdown for large bots
-    if total_users > 500 and period == "overall":
+    def _footer(extra: str = "") -> str:
+        elapsed = (datetime.datetime.now() - started).total_seconds()
+        note = f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code(f'{elapsed:.1f}s')}\n"
+        if period == "overall":
+            note += (
+                f"{EmojiTag.INFO} Overall covers the last "
+                f"{rich_code('5000')} recorded plays.\n"
+            )
+        return rich_note(
+            note
+            + extra
+            + f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
+        )
+
+    # The per-chat breakdown enumerates every stored chat, so it is skipped for
+    # large bots regardless of period to avoid timing the handler out.
+    if total_users > 500:
         return (
             rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)
             + rich_table(
@@ -370,11 +389,9 @@ async def _build_stats_content(client, bot_id, period: str = "24h"):
                 ],
             )
             + top_groups_table
-            + rich_note(
-                f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code('0s')}\n"
+            + _footer(
                 f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
                 f"users to enumerate without timing out.\n"
-                f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
             )
         )
 
@@ -382,7 +399,7 @@ async def _build_stats_content(client, bot_id, period: str = "24h"):
     u = g = sg = c = a_chat = 0
     chat_type_cache = dict(user_data.get('chat_type_cache', {}))
 
-    for i, chat_id in enumerate(users):
+    for chat_id in users:
         try:
             chat_type = await get_cached_chat_type(client, bot_id, chat_id, chat_type_cache)
 
@@ -417,9 +434,7 @@ async def _build_stats_content(client, bot_id, period: str = "24h"):
             ],
         )
         + top_groups_table
-        + rich_note(
-            f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
-        )
+        + _footer()
     )
 
 
@@ -522,6 +537,6 @@ async def status(client, message):
         user_data = await collection.find_one({"bot_id": client.me.id})
         if user_data:
             content = await _build_stats_content(client, client.me.id, "24h")
-            await draft.finish(content + Buttons.stats_markup())
+            await draft.finish(content, reply_markup=Buttons.stats_markup())
         else:
             await draft.finish(rich_note(Messages.NO_OPERATIONAL_DATA))
