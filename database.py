@@ -6,6 +6,22 @@ import inspect
 import logging
 
 from motor.motor_asyncio import AsyncIOMotorClient
+from motor.core import AgnosticCollection, AgnosticDatabase, AgnosticClient
+
+# Pyrogram/Kurigram `load_plugins()` inspects `hasattr(attr, "handlers")` for every
+# module-level global. Motor's dynamic `__getattr__` returns sub-collections for any
+# attribute name, causing `hasattr` to return True and crash on `for handler in coll.handlers`.
+for _cls in (AgnosticCollection, AgnosticDatabase, AgnosticClient):
+    _orig = _cls.__getattr__
+
+    def _make_safe(orig):
+        def _safe_getattr(self, name):
+            if name == "handlers" or name.startswith("_"):
+                raise AttributeError(f"{self.__class__.__name__} has no attribute {name!r}")
+            return orig(self, name)
+        return _safe_getattr
+
+    _cls.__getattr__ = _make_safe(_orig)
 
 logger = logging.getLogger(__name__)
 
