@@ -121,6 +121,15 @@ class Buttons:
         return InlineKeyboardMarkup(rows)
 
     @staticmethod
+    def progress_button(progress_text: str) -> InlineKeyboardButton:
+        """Returns a native disabled inline button displaying playback progress."""
+        return InlineKeyboardButton(
+            text=progress_text,
+            disabled=True,
+            style=ButtonStyle.DEFAULT,
+        )
+
+    @staticmethod
     def force_play_markup(youtube_url):
         """Generates the markup for the force play results."""
         return InlineKeyboardMarkup([[

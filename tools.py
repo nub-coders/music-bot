@@ -302,7 +302,7 @@ async def update_progress_button(message, duration_str, chat, markup):
             # survives a read-back if the echoed button still carries its style,
             # and the emoji vanishing on the first edit says it does not.
             keyboard = markup.inline_keyboard
-            progress_row = [InlineKeyboardButton(text=progress_text, callback_data="ignore", style=ButtonStyle.DEFAULT)]
+            progress_row = [Buttons.progress_button(progress_text)]
             updated_keyboard = keyboard[:1] + [progress_row] + keyboard[1:]
 
             try:

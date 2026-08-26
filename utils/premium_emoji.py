@@ -270,6 +270,7 @@ def _rebuild_markup(markup):
                 copy_text=btn.copy_text,
                 icon_custom_emoji_id=btn.icon_custom_emoji_id,
                 style=btn.style,
+                disabled=btn.disabled,
             )
             for btn in row
         ]
