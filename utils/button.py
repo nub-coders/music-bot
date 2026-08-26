@@ -139,14 +139,14 @@ class Buttons:
     @staticmethod
     def suggestion_markup(suggestions: list = None, autoplay_enabled: bool = True):
         """Generates the markup for related video suggestions card controls."""
-        autoplay_text = "🔄 ᴀᴜᴛᴏᴘʟᴀʏ: ON" if autoplay_enabled else "⏸ ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
+        autoplay_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ON" if autoplay_enabled else "ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("⏹ sᴛᴏᴘ", callback_data="sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
+                InlineKeyboardButton("sᴛᴏᴘ", callback_data="sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
                 InlineKeyboardButton(autoplay_text, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
             ],
             [
-                InlineKeyboardButton("✖ ᴄʟᴏsᴇ", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),
+                InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),
             ]
         ])
 

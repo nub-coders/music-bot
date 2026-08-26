@@ -356,6 +356,8 @@ async def rich_send_blocks(
                                     "text": getattr(btn, "text", ""),
                                     "callback_data": getattr(btn, "callback_data", None),
                                     "url": getattr(btn, "url", None),
+                                    "icon_custom_emoji_id": str(getattr(btn, "icon_custom_emoji_id", "")) if getattr(btn, "icon_custom_emoji_id", None) else None,
+                                    "style": getattr(btn.style, "value", str(btn.style)) if getattr(btn, "style", None) else None,
                                 }.items()
                                 if v is not None
                             }

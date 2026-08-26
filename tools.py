@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 from utils.message import Messages
 from utils.button import Buttons
-from utils.emoji import keycaps
+from utils.emoji import Emoji, keycaps
 from utils.rich_ui import (
     rich_button, rich_caption, rich_code, rich_edit, rich_esc, rich_note, rich_send, rich_send_blocks, rich_table,
 )
@@ -1127,13 +1127,13 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
         display_seed = trim_title(seed_title)
         autoplay_enabled = state.is_autoplay_enabled(chat_id)
 
-        # Build Rich Message blocks with embedded callback buttons in each table row
+        # Build Rich Message blocks with title callback buttons in bordered table
         table_rows = [
             [
                 {"text": "#", "is_header": True, "align": "center"},
                 {"text": "ᴛɪᴛʟᴇ", "is_header": True, "align": "left"},
-                {"text": "ᴛɪᴍᴇ", "is_header": True, "align": "center"},
-                {"text": "ᴀᴄᴛɪᴏɴ", "is_header": True, "align": "center"},
+                {"text": "ᴀʀᴛɪsᴛ", "is_header": True, "align": "left"},
+                {"text": "ʟᴇɴɢᴛʜ", "is_header": True, "align": "center"},
             ]
         ]
         plain_lines = []
@@ -1143,25 +1143,32 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             s_dur = item.get("duration", "")
             vid = item.get("video_id")
 
-            row = [
-                {"text": keycaps(idx), "align": "center"},
-                {"text": {"type": "bold", "text": s_title}, "align": "left"},
-                {"text": {"type": "code", "text": s_dur} if s_dur else "", "align": "center"},
-            ]
-            if vid:
-                row.append({
-                    "text": {
-                        "type": "button",
-                        "button": {
-                            "text": "▶️ ᴘʟᴀʏ",
-                            "callback_data": f"sgplay_{vid}",
-                        },
+            str_idx = str(idx)
+            digit_emoji_id = getattr(Emoji, "DIGITS", {}).get(str_idx)
+            num_cell = (
+                {"type": "custom_emoji", "custom_emoji_id": str(digit_emoji_id), "alternative_text": f"{str_idx}️⃣"}
+                if digit_emoji_id
+                else keycaps(idx)
+            )
+
+            title_cell = (
+                {
+                    "type": "button",
+                    "button": {
+                        "text": s_title,
+                        "callback_data": f"sgplay_{vid}",
                     },
-                    "align": "center",
-                })
-            else:
-                row.append({"text": "", "align": "center"})
-            table_rows.append(row)
+                }
+                if vid
+                else {"type": "bold", "text": s_title}
+            )
+
+            table_rows.append([
+                {"text": num_cell, "align": "center"},
+                {"text": title_cell, "align": "left"},
+                {"text": {"type": "italic", "text": s_artist} if s_artist else "", "align": "left"},
+                {"text": {"type": "code", "text": s_dur} if s_dur else "", "align": "center"},
+            ])
 
             plain_lines.append((
                 keycaps(idx),
@@ -1170,24 +1177,40 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 rich_code(s_dur) if s_dur else "",
             ))
 
+        heading_text = (
+            [
+                {"type": "custom_emoji", "custom_emoji_id": str(Emoji.MUSIC_NOTES), "alternative_text": "🎶"},
+                " Queue Ended • Autoplay Suggestions",
+            ]
+            if getattr(Emoji, "MUSIC_NOTES", None)
+            else "🎶 Queue Ended • Autoplay Suggestions"
+        )
+        paragraph_text = [
+            {"type": "bold", "text": "‣ Seed Track: "},
+            {"type": "code", "text": display_seed},
+            "\n",
+            {"type": "custom_emoji", "custom_emoji_id": str(Emoji.LOADING), "alternative_text": "⏳"} if getattr(Emoji, "LOADING", None) else "⏳",
+            " ",
+            {"type": "italic", "text": f"Autoplaying #1 in {countdown_sec}s…"} if autoplay_enabled else {"type": "italic", "text": "Choose a song to play next:"},
+            "\n",
+            {"type": "custom_emoji", "custom_emoji_id": str(Emoji.INFO), "alternative_text": "💡"} if getattr(Emoji, "INFO", None) else "💡",
+            " ",
+            {"type": "italic", "text": "Tap any song title below to play immediately."},
+        ]
+
         blocks = [
             {
                 "type": "heading",
-                "text": "🎶 Queue Ended • Autoplay Suggestions",
+                "text": heading_text,
                 "size": 2,
             },
             {
                 "type": "paragraph",
-                "text": [
-                    {"type": "bold", "text": "‣ Seed Track: "},
-                    {"type": "code", "text": display_seed},
-                    "\n⏳ " if autoplay_enabled else "\n",
-                    {"type": "italic", "text": f"Autoplaying #1 in {countdown_sec}s…"} if autoplay_enabled else {"type": "italic", "text": "Choose a song to play next:"},
-                ],
+                "text": paragraph_text,
             },
             {
                 "type": "table",
-                "is_compact": True,
+                "is_bordered": True,
                 "cells": table_rows,
             },
         ]
