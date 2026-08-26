@@ -117,9 +117,47 @@ class Messages:
     GETTING_CHATS = f"{EmojiTag.LOADING} <b>ꜰᴇᴛᴄʜɪɴɢ ᴄʜᴀᴛs, ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ...</b>"
     BOLT = f"{EmojiTag.BOLT} <b>ᴘʀᴏᴄᴇssɪɴɢ...</b>"
 
+    # ── Broadcast ─────────────────────────────────────────────────────────
     START_BOT_BROADCAST = f"{EmojiTag.BROADCAST} <b>sᴛᴀʀᴛɪɴɢ ʙʀᴏᴀᴅᴄᴀsᴛ ꜰʀᴏᴍ ʙᴏᴛ ᴀᴄᴄᴏᴜɴᴛ...</b>"
     START_ASSISTANT_BROADCAST = f"{EmojiTag.BROADCAST} <b>sᴛᴀʀᴛɪɴɢ ʙʀᴏᴀᴅᴄᴀsᴛ ꜰʀᴏᴍ ᴀssɪsᴛᴀɴᴛ ᴀᴄᴄᴏᴜɴᴛ...</b>"
     REPLY_TO_BROADCAST = f"{EmojiTag.INFO} <b>ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ʙʀᴏᴀᴅᴄᴀsᴛ ɪᴛ.</b>"
+    NO_MSG_FOR_BROADCAST = f"{EmojiTag.WARNING} <b>ɴᴏ ᴍᴇssᴀɢᴇ ᴀᴠᴀɪʟᴀʙʟᴇ ꜰᴏʀ ʙʀᴏᴀᴅᴄᴀsᴛ.</b>"
+    BROADCAST_SETTINGS = (
+        f"{EmojiTag.BROADCAST} <b>ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs</b>\n\n"
+        "<b>‣ ɢʀᴏᴜᴘs:</b> {group}\n"
+        "<b>‣ ᴘʀɪᴠᴀᴛᴇ:</b> {private}\n"
+        "<b>‣ ᴜsᴇʀʙᴏᴛ ɢʀᴏᴜᴘs:</b> {ugroup}\n"
+        "<b>‣ ᴜsᴇʀʙᴏᴛ ᴘʀɪᴠᴀᴛᴇ:</b> {uprivate}\n"
+        "<b>‣ ʙᴏᴛ ʙʀᴏᴀᴅᴄᴀsᴛ:</b> {bot}\n"
+        "<b>‣ ᴜsᴇʀʙᴏᴛ ʙʀᴏᴀᴅᴄᴀsᴛ:</b> {userbot}\n"
+        "<b>‣ ᴘɪɴ ᴍᴇssᴀɢᴇs:</b> {pin}\n"
+        "<b>‣ ꜰᴏʀᴡᴀʀᴅ ᴍᴏᴅᴇ:</b> {forward}"
+    )
+    BROADCAST_PROGRESS = (
+        f"{EmojiTag.BROADCAST} <b>ʙʀᴏᴀᴅᴄᴀsᴛ ɪɴ ᴘʀᴏɢʀᴇss...</b>\n\n"
+        "<b>‣ sᴇɴᴛ:</b> <code>{sent}</code>\n"
+        "<b>‣ ᴜsᴇʀs:</b> <code>{users}</code>\n"
+        "<b>‣ ɢʀᴏᴜᴘs:</b> <code>{groups}</code>\n"
+        "<b>‣ ᴛᴏᴛᴀʟ ᴄʜᴀᴛs:</b> <code>{chats}</code>"
+    )
+    BROADCAST_COMPLETE = (
+        f"{EmojiTag.SUCCESS} <b>ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
+        "<b>‣ ᴛᴏᴛᴀʟ sᴇɴᴛ:</b> <code>{sent}</code>\n"
+        "<b>‣ ᴜsᴇʀs:</b> <code>{users}</code>\n"
+        "<b>‣ ɢʀᴏᴜᴘs:</b> <code>{groups}</code>"
+    )
+    ASSISTANT_BROADCAST_PROGRESS = (
+        f"{EmojiTag.BROADCAST} <b>ᴀssɪsᴛᴀɴᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ɪɴ ᴘʀᴏɢʀᴇss...</b>\n\n"
+        "<b>‣ sᴇɴᴛ:</b> <code>{sent}</code>\n"
+        "<b>‣ ᴜsᴇʀs:</b> <code>{users}</code>\n"
+        "<b>‣ ɢʀᴏᴜᴘs:</b> <code>{groups}</code>"
+    )
+    ASSISTANT_BROADCAST_COMPLETE = (
+        f"{EmojiTag.SUCCESS} <b>ᴀssɪsᴛᴀɴᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ!</b>\n\n"
+        "<b>‣ ᴛᴏᴛᴀʟ sᴇɴᴛ:</b> <code>{sent}</code>\n"
+        "<b>‣ ᴜsᴇʀs:</b> <code>{users}</code>\n"
+        "<b>‣ ɢʀᴏᴜᴘs:</b> <code>{groups}</code>"
+    )
 
     NO_BLOCKLIST = f"{EmojiTag.INFO} <b>ɴᴏ ʙʟᴏᴄᴋʟɪsᴛ ꜰᴏᴜɴᴅ.</b>"
     NO_USERS_BLOCKED = f"{EmojiTag.INFO} <b>ɴᴏ ᴜsᴇʀs ᴀʀᴇ ᴄᴜʀʀᴇɴᴛʟʏ ʙʟᴏᴄᴋᴇᴅ.</b>"
@@ -146,7 +184,6 @@ class Messages:
     TRACK_GONE = f"{EmojiTag.INFO} <b>ᴛʜɪs ᴛʀᴀᴄᴋ ɪs ɴᴏ ʟᴏɴɢᴇʀ ɪɴ ᴛʜᴇ ǫᴜᴇᴜᴇ.</b>"
     QUEUE_EMPTY_STREAM_ENDED = f"{EmojiTag.QUEUE_ICON} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ. sᴛʀᴇᴀᴍ sᴛᴏᴘᴘᴇᴅ.</b>"
 
-    NO_MSG_FOR_BROADCAST = f"{EmojiTag.WARNING} <b>ɴᴏ ᴍᴇssᴀɢᴇ ᴀᴠᴀɪʟᴀʙʟᴇ ꜰᴏʀ ʙʀᴏᴀᴅᴄᴀsᴛ.</b>"
     USE_COMMAND_AS_USER = f"{EmojiTag.WARNING} <b>ᴜsᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ᴀs ᴀ ᴜsᴇʀ ᴀᴄᴄᴏᴜɴᴛ.</b>"
     STICKER_LONG = f"{EmojiTag.INFO} <b>sᴛɪᴄᴋᴇʀ ᴘʀᴏᴄᴇssɪɴɢ ᴍᴀʏ ᴛᴀᴋᴇ ʟᴏɴɢᴇʀ ꜰᴏʀ ʟᴀʀɢᴇ ᴘᴀᴄᴋs.</b>"
     REPLY_TO_PHOTO_OR_STICKER = f"{EmojiTag.INFO} <b>ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴘʜᴏᴛᴏ ᴏʀ sᴛɪᴄᴋᴇʀ.</b>"
