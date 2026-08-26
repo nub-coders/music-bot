@@ -940,10 +940,11 @@ async def autoplay_command_handler(client: Client, message):
 @Client.on_callback_query(filters.regex(r"^stats_(24h|week|overall)$"))
 @admin_only()
 async def stats_period_handler(client: Client, callback_query: CallbackQuery):
-    """Redraw the /stats card for the period picked on the inline keyboard.
+    """Swap the /stats card to the period picked on the inline keyboard.
 
-    Groups get the per-chat card, private chats the bot-wide one, matching what
-    /stats itself renders in each place.
+    All three cards were built when the command ran, so this is normally just a
+    cache lookup and an edit. Recollecting only happens when the cache lost them
+    (restart, or a card older than the TTL).
     """
     user = callback_query.from_user
     if not user or user.id in BLOCK:
@@ -951,13 +952,19 @@ async def stats_period_handler(client: Client, callback_query: CallbackQuery):
         return
 
     period = callback_query.data.split("_", 1)[1]
-    period_label = {"24h": "24h", "week": "Week", "overall": "Overall"}[period]
-    await callback_query.answer(f"Collecting {period_label} stats…", show_alert=False)
-
     message = callback_query.message
-    if message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-        content = await _build_group_stats_content(client, message, period)
-    else:
-        content = await _build_stats_content(client, client.me.id, period)
-    await rich_edit(callback_query, content, reply_markup=Buttons.stats_markup())
+    cards = _stats_cards_get(message.chat.id, message.id)
+
+    # A callback may only be answered once, so ack here and report any later
+    # failure by editing the card instead.
+    await callback_query.answer("Refreshing stats…" if cards is None else None, show_alert=False)
+
+    if cards is None:
+        cards = await build_stats_cards(client, message)
+        if not cards:
+            await rich_edit(callback_query, rich_note(Messages.NO_OPERATIONAL_DATA), reply_markup=None)
+            return
+        _stats_cards_put(message.chat.id, message.id, cards)
+
+    await rich_edit(callback_query, cards[period], reply_markup=Buttons.stats_markup())
 

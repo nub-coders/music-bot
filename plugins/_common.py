@@ -323,111 +323,14 @@ async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
             upsert=True,
         ))
     return chat_type
-async def _build_stats_content(client, bot_id, period: str = "24h"):
-    """Build the bot-wide statistics card for a given period.
+_STATS_PERIODS = ("24h", "week", "overall")
 
-    ``dates`` is never pruned here: it is already bounded by the ``$slice: -5000``
-    on every ``$push`` (see :func:`tools.join_call` / :func:`tools.end`), and the
-    old 24h ``$pull`` would have destroyed the history the Week/Overall views read.
-
-    Args:
-        client: Pyrogram client
-        bot_id: Bot's user ID
-        period: One of "24h", "week", "overall"
-    """
-    started = datetime.datetime.now()
-    time_threshold, period_label = _stats_period_meta(period, started)
-
-    user_data = await collection.find_one({"bot_id": bot_id})
-    if not user_data:
-        return rich_note(Messages.NO_OPERATIONAL_DATA)
-
-    dates = user_data.get('dates', [])
-    if time_threshold:
-        play_count = len([d for d in dates if d >= time_threshold])
-    else:
-        play_count = len(dates)
-
-    users = user_data.get('users', [])
-    total_users = len(users)
-
-    top_groups_table = await _build_top_groups_table(client)
-
-    def _footer(extra: str = "") -> str:
-        elapsed = (datetime.datetime.now() - started).total_seconds()
-        note = f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code(f'{elapsed:.1f}s')}\n"
-        if period == "overall":
-            note += (
-                f"{EmojiTag.INFO} Overall covers the last "
-                f"{rich_code('5000')} recorded plays.\n"
-            )
-        return rich_note(
-            note
-            + extra
-            + f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
-        )
-
-    # The per-chat breakdown enumerates every stored chat, so it is skipped for
-    # large bots regardless of period to avoid timing the handler out.
-    if total_users > 500:
-        return (
-            rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)
-            + rich_table(
-                ["Metric", "Count"],
-                [
-                    (f"{EmojiTag.USER} Stored Users", rich_code(total_users)),
-                    (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_count)),
-                    (f"{EmojiTag.INFO} Detailed stats", rich_code("Skipped to avoid timeout")),
-                ],
-            )
-            + top_groups_table
-            + _footer(
-                f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
-                f"users to enumerate without timing out.\n"
-            )
-        )
-
-    # Count chat types
-    u = g = sg = c = a_chat = 0
-    chat_type_cache = dict(user_data.get('chat_type_cache', {}))
-
-    for chat_id in users:
-        try:
-            chat_type = await get_cached_chat_type(client, bot_id, chat_id, chat_type_cache)
-
-            if chat_type == enums.ChatType.PRIVATE:
-                u += 1
-            elif chat_type == enums.ChatType.GROUP:
-                g += 1
-            elif chat_type == enums.ChatType.SUPERGROUP:
-                sg += 1
-                try:
-                    user_status = await client.get_chat_member(chat_id, bot_id)
-                    if user_status.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
-                        a_chat += 1
-                except Exception as e:
-                    logger.info(f"Admin check error: {e}")
-            elif chat_type == enums.ChatType.CHANNEL:
-                c += 1
-        except Exception as e:
-            logger.info(f"Error processing chat {chat_id}: {e}")
-
-    return (
-        rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)
-        + rich_table(
-            ["Metric", "Count"],
-            [
-                (f"{EmojiTag.USER} Private Chats", rich_code(u)),
-                (f"{EmojiTag.USERS} Groups", rich_code(g)),
-                (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
-                (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
-                (f"{EmojiTag.SHIELD} Admin Privileges", rich_code(a_chat)),
-                (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_count)),
-            ],
-        )
-        + top_groups_table
-        + _footer()
-    )
+# Cards rendered by one collection pass, keyed (chat_id, message_id) ->
+# (expires_at, {period: html}). Pressing a period button then only swaps
+# between pre-built cards instead of re-collecting.
+_stats_cards = {}
+_STATS_CARD_TTL = 3600
+_STATS_CARD_MAX = 200
 
 
 def _stats_period_meta(period: str, reference: datetime.datetime = None):
@@ -441,14 +344,150 @@ def _stats_period_meta(period: str, reference: datetime.datetime = None):
     return None, "Overall"
 
 
-async def _build_group_stats_content(client, message, period: str = "24h"):
-    """Build the group statistics card for a given period.
+def _stats_cards_put(chat_id, message_id, cards):
+    """Cache a message's rendered cards, evicting expired then oldest entries."""
+    now = time.monotonic()
+    for key, (expires_at, _) in list(_stats_cards.items()):
+        if expires_at <= now:
+            _stats_cards.pop(key, None)
+    while len(_stats_cards) >= _STATS_CARD_MAX:
+        _stats_cards.pop(min(_stats_cards, key=lambda k: _stats_cards[k][0]), None)
+    _stats_cards[(chat_id, message_id)] = (now + _STATS_CARD_TTL, cards)
+
+
+def _stats_cards_get(chat_id, message_id):
+    """The cards for a message, or None once expired / lost to a restart."""
+    entry = _stats_cards.get((chat_id, message_id))
+    if not entry:
+        return None
+    expires_at, cards = entry
+    if expires_at <= time.monotonic():
+        _stats_cards.pop((chat_id, message_id), None)
+        return None
+    return cards
+
+
+def _stats_footer(client, started, summary_label: str, extra: str = "") -> str:
+    """Shared footer. Every card in a set shares one collection timestamp, so it
+    is stated outright: a card served from cache is a snapshot, not live state.
+    """
+    elapsed = (datetime.datetime.now() - started).total_seconds()
+    return rich_note(
+        f"{EmojiTag.BOLT} <b>Collected in:</b> {rich_code(f'{elapsed:.1f}s')}\n"
+        f"{EmojiTag.INFO} <b>Snapshot:</b> {rich_code(started.strftime('%H:%M:%S'))} — "
+        f"every period gathered in one pass; re-run /stats to refresh.\n"
+        + extra
+        + f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} {summary_label}</b>"
+    )
+
+
+async def _build_stats_cards(client, bot_id):
+    """Collect bot-wide stats once and render the card for every period.
+
+    Collection is the expensive half (a Mongo read plus a chat-type pass over
+    every stored chat) and is period-independent apart from the play count, so
+    it runs once per command and all three cards come out of it.
+
+    ``dates`` is never pruned here: it is already bounded by the ``$slice: -5000``
+    on every ``$push`` (see :func:`tools.join_call` / :func:`tools.end`), and the
+    old 24h ``$pull`` would have destroyed the history the Week/Overall views read.
+
+    Returns ``{period: html}``, or ``{}`` when nothing is stored yet.
+    """
+    started = datetime.datetime.now()
+
+    user_data = await collection.find_one({"bot_id": bot_id})
+    if not user_data:
+        return {}
+
+    dates = user_data.get('dates', [])
+    users = user_data.get('users', [])
+    total_users = len(users)
+
+    play_counts = {}
+    for period in _STATS_PERIODS:
+        threshold, _ = _stats_period_meta(period, started)
+        play_counts[period] = (
+            len(dates) if threshold is None else len([d for d in dates if d >= threshold])
+        )
+
+    top_groups_table = await _build_top_groups_table(client)
+
+    # The per-chat breakdown enumerates every stored chat, so it is skipped for
+    # large bots to avoid timing the handler out.
+    skip_breakdown = total_users > 500
+    u = g = sg = c = a_chat = 0
+    if not skip_breakdown:
+        chat_type_cache = dict(user_data.get('chat_type_cache', {}))
+        for chat_id in users:
+            try:
+                chat_type = await get_cached_chat_type(client, bot_id, chat_id, chat_type_cache)
+
+                if chat_type == enums.ChatType.PRIVATE:
+                    u += 1
+                elif chat_type == enums.ChatType.GROUP:
+                    g += 1
+                elif chat_type == enums.ChatType.SUPERGROUP:
+                    sg += 1
+                    try:
+                        user_status = await client.get_chat_member(chat_id, bot_id)
+                        if user_status.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
+                            a_chat += 1
+                    except Exception as e:
+                        logger.info(f"Admin check error: {e}")
+                elif chat_type == enums.ChatType.CHANNEL:
+                    c += 1
+            except Exception as e:
+                logger.info(f"Error processing chat {chat_id}: {e}")
+
+    cards = {}
+    for period in _STATS_PERIODS:
+        _, period_label = _stats_period_meta(period, started)
+        extra = ""
+        if period == "overall":
+            extra += (
+                f"{EmojiTag.INFO} Overall covers the last "
+                f"{rich_code('5000')} recorded plays.\n"
+            )
+
+        if skip_breakdown:
+            extra += (
+                f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
+                f"users to enumerate without timing out.\n"
+            )
+            rows = [
+                (f"{EmojiTag.USER} Stored Users", rich_code(total_users)),
+                (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_counts[period])),
+                (f"{EmojiTag.INFO} Detailed stats", rich_code("Skipped to avoid timeout")),
+            ]
+        else:
+            rows = [
+                (f"{EmojiTag.USER} Private Chats", rich_code(u)),
+                (f"{EmojiTag.USERS} Groups", rich_code(g)),
+                (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
+                (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
+                (f"{EmojiTag.SHIELD} Admin Privileges", rich_code(a_chat)),
+                (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_counts[period])),
+            ]
+
+        cards[period] = (
+            rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)
+            + rich_table(["Metric", "Count"], rows)
+            + top_groups_table
+            + _stats_footer(client, started, "Performance Summary", extra)
+        )
+
+    return cards
+
+
+async def _build_group_stats_cards(client, message):
+    """Collect this group's stats once and render the card for every period.
 
     ``message`` may be a :class:`Message` or a :class:`CallbackQuery`'s message —
     only ``chat.id`` / ``chat.title`` / ``chat.type`` are read, so both work.
+    Returns ``{period: html}``.
     """
     started = datetime.datetime.now()
-    time_threshold, period_label = _stats_period_meta(period, started)
 
     chat_id = message.chat.id
     linked_chat = None
@@ -512,47 +551,70 @@ async def _build_group_stats_content(client, message, period: str = "24h"):
     # play_dates (added later) is what makes the windowed views possible.
     playback_doc = await get_chat_playback(chat_id)
     total_plays = int(playback_doc.get("play_count", 0) or 0)
-    if time_threshold is None:
-        play_count = total_plays
-    else:
-        cutoff = time_threshold.timestamp()
-        play_count = len([t for t in playback_doc.get("play_dates", []) if t >= cutoff])
+    play_dates = playback_doc.get("play_dates", [])
+    play_counts = {}
+    for period in _STATS_PERIODS:
+        threshold, _ = _stats_period_meta(period, started)
+        if threshold is None:
+            play_counts[period] = total_plays
+        else:
+            cutoff = threshold.timestamp()
+            play_counts[period] = len([t for t in play_dates if t >= cutoff])
 
-    rows = [
+    base_rows = [
         (f"{EmojiTag.USERS} ɢʀᴏᴜᴘ ɴᴀᴍᴇ", rich_esc(message.chat.title or "This Group")),
         (f"{EmojiTag.KEY} ɢʀᴏᴜᴘ ɪᴅ", rich_code(chat_id)),
         (f"{EmojiTag.INFO} ᴄʜᴀᴛ ᴛʏᴘᴇ", rich_code(message.chat.type.name.capitalize())),
     ]
     if members_count:
-        rows.append((f"{EmojiTag.USER} ᴍᴇᴍʙᴇʀs", rich_code(members_count)))
-    rows.extend([
+        base_rows.append((f"{EmojiTag.USER} ᴍᴇᴍʙᴇʀs", rich_code(members_count)))
+    base_rows.extend([
         (f"{EmojiTag.BROADCAST} ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴄʜᴀɴɴᴇʟ", channel_info),
         (f"{EmojiTag.HEADPHONES} ᴀssɪsᴛᴀɴᴛ", assistant_text),
         (f"{EmojiTag.MUSIC_NOTE} sᴛʀᴇᴀᴍ sᴛᴀᴛᴜs", stream_status),
         (f"{EmojiTag.QUEUE_ICON} ǫᴜᴇᴜᴇ", rich_code(queue_status)),
         (f"{EmojiTag.SETTINGS} ᴀᴜᴛᴏᴘʟᴀʏ", rich_code(autoplay_status)),
         (f"{EmojiTag.GLOBE} ʟᴀɴɢᴜᴀɢᴇ", lang_text),
-        (f"{EmojiTag.STATS} sᴏɴɢs ᴘʟᴀʏᴇᴅ ({period_label})", rich_code(play_count)),
     ])
-    if time_threshold is not None:
-        rows.append((f"{EmojiTag.MUSIC_NOTE} sᴏɴɢs ᴘʟᴀʏᴇᴅ (ᴀʟʟ ᴛɪᴍᴇ)", rich_code(total_plays)))
 
     top_groups_table = await _build_top_groups_table(client)
-    elapsed = (datetime.datetime.now() - started).total_seconds()
 
-    return (
-        rich_heading(f"{EmojiTag.STATS} ɢʀᴏᴜᴘ sᴛᴀᴛɪsᴛɪᴄs ({period_label})", 1)
-        + rich_kv_table(rows)
-        + top_groups_table
-        + rich_note(
-            f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code(f'{elapsed:.1f}s')}\n"
-            f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Group Performance Summary</b>"
+    cards = {}
+    for period in _STATS_PERIODS:
+        threshold, period_label = _stats_period_meta(period, started)
+        rows = base_rows + [
+            (f"{EmojiTag.STATS} sᴏɴɢs ᴘʟᴀʏᴇᴅ ({period_label})", rich_code(play_counts[period])),
+        ]
+        if threshold is not None:
+            rows.append((f"{EmojiTag.MUSIC_NOTE} sᴏɴɢs ᴘʟᴀʏᴇᴅ (ᴀʟʟ ᴛɪᴍᴇ)", rich_code(total_plays)))
+
+        cards[period] = (
+            rich_heading(f"{EmojiTag.STATS} ɢʀᴏᴜᴘ sᴛᴀᴛɪsᴛɪᴄs ({period_label})", 1)
+            + rich_kv_table(rows)
+            + top_groups_table
+            + _stats_footer(client, started, "Group Performance Summary")
         )
-    )
+
+    return cards
+
+
+async def build_stats_cards(client, message):
+    """Render every period's /stats card for wherever this was invoked.
+
+    Groups get the per-chat card, everywhere else the bot-wide one — matching
+    what /stats itself shows in each place. ``{}`` means nothing is stored yet.
+    """
+    if message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        return await _build_group_stats_cards(client, message)
+    return await _build_stats_cards(client, client.me.id)
 
 
 async def status(client, message):
-    """Handles the /status command with song statistics"""
+    """Handles the /stats command with song statistics.
+
+    Collects every period up front and caches the rendered cards against the
+    sent message, so the period buttons only swap views.
+    """
     async with RichDraft(
         client,
         message.chat.id,
@@ -560,16 +622,11 @@ async def status(client, message):
     ) as draft:
         await draft.update(rich_note(Messages.COLLECTING_STATS))
 
-        # Check if called from a group/supergroup: show group-specific stats & connected channel
-        if message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
-            content = await _build_group_stats_content(client, message, "24h")
-            await draft.finish(content, reply_markup=Buttons.stats_markup())
+        cards = await build_stats_cards(client, message)
+        if not cards:
+            await draft.finish(rich_note(Messages.NO_OPERATIONAL_DATA))
             return
 
-        # Default to 24h for initial load
-        user_data = await collection.find_one({"bot_id": client.me.id})
-        if user_data:
-            content = await _build_stats_content(client, client.me.id, "24h")
-            await draft.finish(content, reply_markup=Buttons.stats_markup())
-        else:
-            await draft.finish(rich_note(Messages.NO_OPERATIONAL_DATA))
+        sent = await draft.finish(cards["24h"], reply_markup=Buttons.stats_markup())
+        if sent is not None:
+            _stats_cards_put(message.chat.id, sent.id, cards)
