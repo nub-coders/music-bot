@@ -1153,6 +1153,9 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             pass
 
 
+trigger_suggestions = _trigger_suggestions
+
+
 async def end(client, update):
     if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None):
         db_task(collection.update_one(

@@ -356,8 +356,8 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
                 if last_song:
                     state.last_played[chat_id] = last_song
                     await callback_query.answer(Messages.SKIPPED_AUTOPLAY, show_alert=False)
-                    # Fire and forget — _trigger_suggestions will send the card and start countdown
-                    asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+                    # Fire and forget — trigger_suggestions will send the card and start countdown
+                    asyncio.create_task(trigger_suggestions(client, chat_id, last_song))
                     return
             try:
                 if active_cp:
@@ -614,8 +614,8 @@ async def skip_handler_func(client, message):
                     rich_note(Messages.SKIPPED_AUTOPLAY),
                     client=client,
                 )
-                # Fire and forget — _trigger_suggestions will send the card and start countdown
-                asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+                # Fire and forget — trigger_suggestions will send the card and start countdown
+                asyncio.create_task(trigger_suggestions(client, chat_id, last_song))
                 return
 
         if active_cp:
@@ -953,7 +953,7 @@ async def stats_period_handler(client: Client, callback_query: CallbackQuery):
 
     period = callback_query.data.split("_", 1)[1]
     message = callback_query.message
-    cards = _stats_cards_get(message.chat.id, message.id)
+    cards = stats_cards_get(message.chat.id, message.id)
 
     # A callback may only be answered once, so ack here and report any later
     # failure by editing the card instead.
@@ -964,7 +964,7 @@ async def stats_period_handler(client: Client, callback_query: CallbackQuery):
         if not cards:
             await rich_edit(callback_query, rich_note(Messages.NO_OPERATIONAL_DATA), reply_markup=None)
             return
-        _stats_cards_put(message.chat.id, message.id, cards)
+        stats_cards_put(message.chat.id, message.id, cards)
 
     await rich_edit(callback_query, cards[period], reply_markup=Buttons.stats_markup())
 

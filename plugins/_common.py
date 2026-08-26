@@ -47,7 +47,7 @@ from pytgcalls.types import AudioQuality, MediaStream, VideoQuality
 from config import *
 from tools import *
 from youtube import handle_youtube, extract_video_id, format_duration, get_video_details, format_number, time_to_seconds
-from tools import trim_title, join_call
+from tools import trim_title, join_call, trigger_suggestions
 from utils.message import Messages
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
@@ -185,60 +185,62 @@ def admin_only():
                 if not user_id:
                     linked_chat = await client.get_chat(chat_id)
                     if linked_chat.linked_chat and update.sender_chat.id == linked_chat.linked_chat.id:
-                        return await func(client, update)
-                    if isinstance(update, CallbackQuery):
-                        await update.answer(Messages.ADMIN_UNKNOWN_USER, show_alert=True)
+                        logger.info(f"Authorized sender {update.sender_chat.id} via linked chat for {func.__name__}")
                     else:
-                        try:
-                            await rich_reply(
-                                update,
-                                rich_note(Messages.ADMIN_UNKNOWN_USER),
-                                ephemeral=True,
-                                client=client,
-                            )
-                        except Exception as notify_error:
-                            logger.debug(f"[admin_only] ADMIN_UNKNOWN_USER notice failed for message {reply_id}: {notify_error}")
-                    return
+                        if isinstance(update, CallbackQuery):
+                            await update.answer(Messages.ADMIN_UNKNOWN_USER, show_alert=True)
+                        else:
+                            try:
+                                await rich_reply(
+                                    update,
+                                    rich_note(Messages.ADMIN_UNKNOWN_USER),
+                                    ephemeral=True,
+                                    client=client,
+                                )
+                            except Exception as notify_error:
+                                logger.debug(f"[admin_only] ADMIN_UNKNOWN_USER notice failed for message {reply_id}: {notify_error}")
+                        return
+                else:
+                    # --- Song-owner skip: whoever queued the current track may skip
+                    # it, admin or not (in-memory, no I/O). ---
+                    song_owner_authorized = False
+                    if command in ("skip", "cskip"):
+                        target_id = chat_id
+                        if command == "cskip":
+                            try:
+                                linked = (await client.get_chat(chat_id)).linked_chat
+                                if linked:
+                                    target_id = linked.id
+                            except Exception:
+                                pass
+                        song = state.playing.get(target_id)
+                        if song and getattr(song.get("by"), "id", None) == user_id:
+                            logger.info(f"User {user_id} authorized for {func.__name__} (song owner)")
+                            song_owner_authorized = True
 
-                # --- Song-owner skip: whoever queued the current track may skip
-                # it, admin or not (in-memory, no I/O). ---
-                if command in ("skip", "cskip"):
-                    target_id = chat_id
-                    if command == "cskip":
-                        try:
-                            linked = (await client.get_chat(chat_id)).linked_chat
-                            if linked:
-                                target_id = linked.id
-                        except Exception:
-                            pass
-                    song = state.playing.get(target_id)
-                    if song and getattr(song.get("by"), "id", None) == user_id:
-                        logger.info(f"User {user_id} authorized for {func.__name__} (song owner)")
-                        return await func(client, update)
+                    if not song_owner_authorized:
+                        # AUTH-listed users are trusted for everything except /*del.
+                        allow_auth_users = isinstance(update, CallbackQuery) or not (
+                            command and str(command).endswith('del')
+                        )
+                        if not await is_authorized(client, chat_id, user_id, allow_auth_users):
+                            logger.warning(f"User {user_id} not authorized for command {command}")
+                            if isinstance(update, CallbackQuery):
+                                await update.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
+                            else:
+                                try:
+                                    await rich_reply(
+                                        update,
+                                        rich_heading(f"{EmojiTag.LOCK} Permission Denied", 3)
+                                        + rich_note(Messages.ADMIN_RESTRICTED_CMD),
+                                        ephemeral=True,
+                                        client=client,
+                                    )
+                                except Exception as notify_error:
+                                    logger.debug(f"[admin_only] ADMIN_RESTRICTED_CMD notice failed for message {reply_id}: {notify_error}")
+                            return
 
-                # AUTH-listed users are trusted for everything except /*del.
-                allow_auth_users = isinstance(update, CallbackQuery) or not (
-                    command and str(command).endswith('del')
-                )
-                if not await is_authorized(client, chat_id, user_id, allow_auth_users):
-                    logger.warning(f"User {user_id} not authorized for command {command}")
-                    if isinstance(update, CallbackQuery):
-                        await update.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
-                    else:
-                        try:
-                            await rich_reply(
-                                update,
-                                rich_heading(f"{EmojiTag.LOCK} Permission Denied", 3)
-                                + rich_note(Messages.ADMIN_RESTRICTED_CMD),
-                                ephemeral=True,
-                                client=client,
-                            )
-                        except Exception as notify_error:
-                            logger.debug(f"[admin_only] ADMIN_RESTRICTED_CMD notice failed for message {reply_id}: {notify_error}")
-                    return
-
-                logger.info(f"User {user_id} authorized for {func.__name__}")
-                return await func(client, update)
+                        logger.info(f"User {user_id} authorized for {func.__name__}")
 
             except Exception as e:
                 logger.error(f"Error checking admin status: {e}")
@@ -256,6 +258,8 @@ def admin_only():
                     except Exception as notify_error:
                         logger.debug(f"[admin_only] AUTH_FAILED notice failed: {notify_error}")
                 return
+
+            return await func(client, update)
         return wrapper
     return decorator
 async def is_active_chat(client, chat_id):  # noqa: F811
@@ -344,7 +348,7 @@ def _stats_period_meta(period: str, reference: datetime.datetime = None):
     return None, "Overall"
 
 
-def _stats_cards_put(chat_id, message_id, cards):
+def stats_cards_put(chat_id, message_id, cards):
     """Cache a message's rendered cards, evicting expired then oldest entries."""
     now = time.monotonic()
     for key, (expires_at, _) in list(_stats_cards.items()):
@@ -355,7 +359,7 @@ def _stats_cards_put(chat_id, message_id, cards):
     _stats_cards[(chat_id, message_id)] = (now + _STATS_CARD_TTL, cards)
 
 
-def _stats_cards_get(chat_id, message_id):
+def stats_cards_get(chat_id, message_id):
     """The cards for a message, or None once expired / lost to a restart."""
     entry = _stats_cards.get((chat_id, message_id))
     if not entry:
@@ -365,6 +369,10 @@ def _stats_cards_get(chat_id, message_id):
         _stats_cards.pop((chat_id, message_id), None)
         return None
     return cards
+
+
+_stats_cards_put = stats_cards_put
+_stats_cards_get = stats_cards_get
 
 
 def _stats_footer(client, started, summary_label: str, extra: str = "") -> str:
