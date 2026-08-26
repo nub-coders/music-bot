@@ -40,15 +40,33 @@ async def set_last_played(chat_id: int, ts: int):
     state.played is in-memory only, so after a restart every chat looks "never
     played" and the auto-leave sweep cannot tell idle from unknown. Persisting it
     lets idle reclamation survive reboots.
+
+    ``play_dates`` keeps the individual epochs (capped at the last 1000) so
+    /stats can report a per-group play count for a chosen window; ``play_count``
+    stays the authoritative all-time total, since it predates this array.
     """
     try:
         await chat_playback.update_one(
             {"chat_id": int(chat_id)},
-            {"$set": {"last_played": int(ts)}, "$inc": {"play_count": 1}},
+            {
+                "$set": {"last_played": int(ts)},
+                "$inc": {"play_count": 1},
+                "$push": {"play_dates": {"$each": [int(ts)], "$slice": -1000}},
+            },
             upsert=True,
         )
     except Exception as e:
         logger.warning(f"[db] set_last_played error for {chat_id}: {e}")
+
+
+async def get_chat_playback(chat_id: int) -> dict:
+    """Return a chat's playback stats doc, or {} if it has never played."""
+    try:
+        doc = await chat_playback.find_one({"chat_id": int(chat_id)})
+        return doc or {}
+    except Exception as e:
+        logger.warning(f"[db] get_chat_playback error for {chat_id}: {e}")
+        return {}
 
 
 async def get_all_last_played() -> dict:

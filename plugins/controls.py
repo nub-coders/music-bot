@@ -940,7 +940,11 @@ async def autoplay_command_handler(client: Client, message):
 @Client.on_callback_query(filters.regex(r"^stats_(24h|week|overall)$"))
 @admin_only()
 async def stats_period_handler(client: Client, callback_query: CallbackQuery):
-    """Redraw the /stats card for the period picked on the inline keyboard."""
+    """Redraw the /stats card for the period picked on the inline keyboard.
+
+    Groups get the per-chat card, private chats the bot-wide one, matching what
+    /stats itself renders in each place.
+    """
     user = callback_query.from_user
     if not user or user.id in BLOCK:
         await callback_query.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
@@ -950,6 +954,10 @@ async def stats_period_handler(client: Client, callback_query: CallbackQuery):
     period_label = {"24h": "24h", "week": "Week", "overall": "Overall"}[period]
     await callback_query.answer(f"Collecting {period_label} stats…", show_alert=False)
 
-    content = await _build_stats_content(client, client.me.id, period)
+    message = callback_query.message
+    if message.chat.type in (enums.ChatType.GROUP, enums.ChatType.SUPERGROUP):
+        content = await _build_group_stats_content(client, message, period)
+    else:
+        content = await _build_stats_content(client, client.me.id, period)
     await rich_edit(callback_query, content, reply_markup=Buttons.stats_markup())
 
