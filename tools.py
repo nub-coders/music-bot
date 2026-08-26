@@ -1053,24 +1053,22 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 "groupcall_not_modified",
                 "groupcall_join_missing",
                 "groupcall",
+                "creategroupcall",
+                "joingroupcall",
+                "phone.creategroupcall",
+                "phone.joingroupcall",
             ))
         )
 
         if is_groupcall_error:
             logger.warning(f"[join_call] Voice chat error in chat {chat_id}: {e}. Cleaned up.")
             if "bot" in clients and clients["bot"]:
-                if "forbidden" in err_str or "admin" in err_str:
-                    msg = Messages.NEED_INVITE_PERMISSION_CHANNEL.format(getattr(chat, 'title', str(chat_id))) if is_channel else Messages.NEED_INVITE_PERMISSION
-                else:
-                    msg = Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC
+                msg = Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC
                 await rich_send(clients["bot"], ui_chat_id, rich_note(msg))
         else:
             logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
             if "bot" in clients and clients["bot"]:
-                if "chat_admin_required" in err_str or "admin" in err_str:
-                    msg = Messages.NEED_INVITE_PERMISSION_CHANNEL.format(getattr(chat, 'title', str(chat_id))) if is_channel else Messages.NEED_INVITE_PERMISSION
-                    await rich_send(clients["bot"], ui_chat_id, rich_note(msg))
-                elif "user_already_participant" in err_str:
+                if "user_already_participant" in err_str:
                     logger.info(f"[join_call] Assistant was already in call for chat {chat_id}")
                 else:
                     await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.ERROR_OCCURRED))
