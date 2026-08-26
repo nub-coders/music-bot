@@ -350,6 +350,15 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
             await callback_query.answer(Messages.SKIPPED_SUCCESS, show_alert=False)
         else:
             # No more songs in queue
+            # Check if autoplay is enabled — if so, trigger suggestions instead of leaving
+            if state.is_autoplay_enabled(chat_id):
+                last_song = state.playing.pop(chat_id, None) or state.last_played.get(chat_id)
+                if last_song:
+                    state.last_played[chat_id] = last_song
+                    await callback_query.answer(Messages.SKIPPED_AUTOPLAY, show_alert=False)
+                    # Fire and forget — _trigger_suggestions will send the card and start countdown
+                    asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+                    return
             try:
                 if active_cp:
                     await active_cp.leave_call(chat_id)
@@ -594,6 +603,21 @@ async def skip_handler_func(client, message):
             assistant_num=state.get_chat_assistant(chat_id),
         )
    else:
+        # No more songs in queue
+        # Check if autoplay is enabled — if so, trigger suggestions instead of leaving
+        if state.is_autoplay_enabled(chat_id):
+            last_song = state.playing.pop(chat_id, None) or state.last_played.get(chat_id)
+            if last_song:
+                state.last_played[chat_id] = last_song
+                await rich_reply(
+                    message,
+                    rich_note(Messages.SKIPPED_AUTOPLAY),
+                    client=client,
+                )
+                # Fire and forget — _trigger_suggestions will send the card and start countdown
+                asyncio.create_task(_trigger_suggestions(client, chat_id, last_song))
+                return
+
         if active_cp:
             await active_cp.leave_call(chat_id)
         await remove_active_chat(client, chat_id)

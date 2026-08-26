@@ -27,6 +27,7 @@ class Messages:
     NO_ACTIVE_VC_CHANNEL = f"{EmojiTag.WARNING} <b>ɴᴏ ᴀᴄᴛɪᴠᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ꜰᴏᴜɴᴅ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ.</b>\n<i>ᴘʟᴇᴀsᴇ sᴛᴀʀᴛ ᴛʜᴇ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ ɪɴ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ ꜰɪʀsᴛ, ᴏʀ ᴍᴀᴋᴇ ᴛʜᴇ ᴀssɪsᴛᴀɴᴛ ᴀɴ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ᴛᴏ sᴛᴀʀᴛ ɪᴛ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</i>"
     SKIPPING = f"{EmojiTag.SKIP} <b>sᴋɪᴘᴘɪɴɢ ᴄᴜʀʀᴇɴᴛ ᴛʀᴀᴄᴋ...</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
     SKIPPED_EMPTY = f"{EmojiTag.SKIP} <b>ǫᴜᴇᴜᴇ ɪs ᴇᴍᴘᴛʏ ɴᴏᴡ.</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
+    SKIPPED_AUTOPLAY = f"{EmojiTag.SKIP} <b>ǫᴜᴇᴜᴇ ɪs ᴇᴍᴘᴛʏ — ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ ᴀ ʀᴇʟᴀᴛᴇᴅ ᴛʀᴀᴄᴋ…</b>"
     RESUMED = f"{EmojiTag.RESUME} <b>ᴘʟᴀʏʙᴀᴄᴋ ʀᴇsᴜᴍᴇᴅ.</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
     PAUSED = f"{EmojiTag.PAUSE} <b>ᴘʟᴀʏʙᴀᴄᴋ ᴘᴀᴜsᴇᴅ.</b>\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
     AUTO_LEAVE_EMPTY = f"{EmojiTag.WARNING} <b>ɴᴏ ʟɪsᴛᴇɴᴇʀs ᴅᴇᴛᴇᴄᴛᴇᴅ. ʟᴇᴀᴠɪɴɢ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ.</b>"

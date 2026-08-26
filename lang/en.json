@@ -9,6 +9,7 @@
   "NO_STREAM": "<tg-emoji emoji-id=\"5778527486270770928\">❌</tg-emoji> | <b>ɴᴏ ᴀᴄᴛɪᴠᴇ sᴛʀᴇᴀᴍ ʀɪɢʜᴛ ɴᴏᴡ.</b>",
   "SKIPPING": "<tg-emoji emoji-id=\"5886451926995833684\">⏭</tg-emoji> | <b>sᴋɪᴘᴘɪɴɢ ᴄᴜʀʀᴇɴᴛ ᴛʀᴀᴄᴋ…</b>\n‣ <b>ʙʏ:</b> {by}",
   "SKIPPED_EMPTY": "<tg-emoji emoji-id=\"5886451926995833684\">⏭</tg-emoji> | <b>ǫᴜᴇᴜᴇ ɪs ɴᴏᴡ ᴇᴍᴘᴛʏ.</b>\n‣ <b>ʙʏ:</b> {by}",
+  "SKIPPED_AUTOPLAY": "<tg-emoji emoji-id=\"5886451926995833684\">⏭</tg-emoji> | <b>ǫᴜᴇᴜᴇ ɪs ᴇᴍᴘᴛʏ — ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ ᴀ ʀᴇʟᴀᴛᴇᴅ ᴛʀᴀᴄᴋ…</b>",
   "RESUMED": "<tg-emoji emoji-id=\"5825794181183836432\">▶️</tg-emoji> | <b>ᴘʟᴀʏʙᴀᴄᴋ ʀᴇsᴜᴍᴇᴅ.</b>\n‣ <b>ʙʏ:</b> {by}",
   "PAUSED": "<tg-emoji emoji-id=\"5909201569898827582\">⏸</tg-emoji> | <b>ᴘʟᴀʏʙᴀᴄᴋ ᴘᴀᴜsᴇᴅ.</b>\n‣ <b>ʙʏ:</b> {by}",
   "STREAM_ENDED": "<tg-emoji emoji-id=\"5877413297170419326\">⏹</tg-emoji> | <b>sᴛʀᴇᴀᴍ ᴇɴᴅᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ.</b>",
