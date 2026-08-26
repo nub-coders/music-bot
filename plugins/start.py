@@ -56,15 +56,10 @@ async def send_log_message(client, log_group_id, message, is_private):
 @Client.on_message(filters.command("start") & filters.private)
 async def user_client_start_handler(client, message):
     user_id = message.chat.id
+    save_chat_type(client.me.id, user_id, message.chat.type)
     user_data = await collection.find_one({"bot_id": client.me.id})
     should_log = False
-    if user_data:
-        users = user_data.get('users', {})
-        if user_id not in users:
-            asyncio.create_task(push_to_array(collection, {"bot_id": client.me.id}, 'users', user_id, upsert=True))
-            should_log = True
-    else:
-        asyncio.create_task(set_fields(collection, {"bot_id": client.me.id}, {'users': [user_id]}, upsert=True))
+    if not user_data or user_id not in (user_data.get('users', []) or []):
         should_log = True
     if should_log and LOGGER_ID:
         try:
@@ -216,9 +211,9 @@ async def bot_added_to_group_handler(client, message):
 
     # Log the group add
     user_id = message.chat.id
+    save_chat_type(client.me.id, user_id, message.chat.type)
     user_data = await collection.find_one({"bot_id": client.me.id})
-    if not user_data or user_id not in user_data.get('users', []):
-        asyncio.create_task(push_to_array(collection, {"bot_id": client.me.id}, 'users', user_id, upsert=True))
+    if not user_data or user_id not in (user_data.get('users', []) or []):
         if LOGGER_ID:
             try:
                 await send_log_message(client=client, log_group_id=LOGGER_ID, message=message, is_private=False)

@@ -129,39 +129,58 @@ class Buttons:
 
     @staticmethod
     def suggestion_markup(suggestions: list, autoplay_enabled: bool = True):
-        """Generates the markup for related video suggestions card."""
-        play_row = []
+        """Generates the markup for related video suggestions card with instant callback buttons."""
+        rows = []
+        # Each suggestion gets its own full callback button with title and duration
         for i, item in enumerate(suggestions[:5], 1):
             vid = item.get("video_id")
             if vid:
-                play_row.append(
+                title = item.get("title", f"Track {i}")
+                if len(title) > 28:
+                    title = title[:25].rstrip() + "…"
+                dur = item.get("duration", "")
+                label = f"{i}️⃣ {title} ({dur})" if dur else f"{i}️⃣ {title}"
+                rows.append([
                     InlineKeyboardButton(
-                        f"▶️ {i}",
+                        label,
                         callback_data=f"sgplay_{vid}",
                         style=ButtonStyle.PRIMARY,
                         icon_custom_emoji_id=Emoji.PLAY,
                     )
-                )
+                ])
 
         autoplay_text = "🔄 ᴀᴜᴛᴏᴘʟᴀʏ: ON" if autoplay_enabled else "⏸ ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
         control_row = [
             InlineKeyboardButton("⏹ sᴛᴏᴘ", callback_data="sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
             InlineKeyboardButton(autoplay_text, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
         ]
-        rows = []
-        if play_row:
-            rows.append(play_row)
         rows.append(control_row)
         return InlineKeyboardMarkup(rows)
 
     @staticmethod
-    def stats_markup() -> InlineKeyboardMarkup:
+    def stats_markup(selected_period: str = "24h") -> InlineKeyboardMarkup:
         """Generates the markup for stats period selection."""
+        period = (selected_period or "24h").lower()
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("📊 24h", callback_data="stats_24h", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.STATS),
-                InlineKeyboardButton("📅 Week", callback_data="stats_week", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.REFRESH),
-                InlineKeyboardButton("📈 Overall", callback_data="stats_overall", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.NEWS_STATS),
+                InlineKeyboardButton(
+                    "📊 24h",
+                    callback_data="stats_24h",
+                    style=ButtonStyle.PRIMARY if period == "24h" else ButtonStyle.DEFAULT,
+                    icon_custom_emoji_id=Emoji.STATS,
+                ),
+                InlineKeyboardButton(
+                    "📅 Week",
+                    callback_data="stats_week",
+                    style=ButtonStyle.PRIMARY if period == "week" else ButtonStyle.DEFAULT,
+                    icon_custom_emoji_id=Emoji.REFRESH,
+                ),
+                InlineKeyboardButton(
+                    "📈 Overall",
+                    callback_data="stats_overall",
+                    style=ButtonStyle.PRIMARY if period == "overall" else ButtonStyle.DEFAULT,
+                    icon_custom_emoji_id=Emoji.NEWS_STATS,
+                ),
             ],
             [
                 InlineKeyboardButton("✖ Close", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),

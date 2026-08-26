@@ -226,11 +226,13 @@ def _plain_fallback(html_text: str) -> str:
         return ""
     text = _normalize_html(html_text)
     # Headings -> bold lines, table/detail structure -> newlines & bullets.
-    text = re.sub(r"<h[1-6]>(.*?)</h[1-6]>", r"<b>\1</b>\n", text, flags=re.I | re.S)
+    text = re.sub(r"<h[1-6]>(.*?)</h[1-6]>", r"\n<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<summary>(.*?)</summary>", r"<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<mark>(.*?)</mark>", r"<b>\1</b>", text, flags=re.I | re.S)
     text = _CELL_BREAK_RE.sub("  ", text)
     text = re.sub(r"</tr>", "\n", text, flags=re.I)
+    text = re.sub(r"</table>", "\n", text, flags=re.I)
+    text = re.sub(r"</blockquote>", "\n", text, flags=re.I)
     text = re.sub(
         r"</?(?:%s)(?:\s[^>]*)?>" % "|".join(_RICH_ONLY_TAGS),
         "",
@@ -299,18 +301,19 @@ async def rich_send(
     # ── standard HTML send ──
     try:
         return await client.send_message(
-            chat_id,
-            _normalize_html(html_text),
+            chat_id=chat_id,
+            text=_plain_fallback(html_text),
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup,
             reply_parameters=reply_parameters,
             message_thread_id=message_thread_id,
             disable_notification=disable_notification,
             protect_content=protect_content,
+            effect_id=effect_id,
             link_preview_options=None,
         )
     except Exception as e:
-        logger.error(f"[rich_send] plain fallback failed for {chat_id}: {e}")
+        logger.debug(f"[rich_send] plain send failed: {e}")
         return None
 
 
@@ -318,34 +321,46 @@ async def rich_reply(
     message,
     html_text: str,
     *,
+    reply_markup=None,
     ephemeral: bool = False,
     quote: bool = True,
-    reply_markup=None,
     client=None,
 ):
-    """Reply to ``message`` with rich HTML.
+    """Reply to an update with rich formatting.
 
-    ``ephemeral=True`` delivers privately to the sender in groups/supergroups;
-    in private chats (where ephemeral is unsupported) it degrades to a normal
-    reply so the user still sees the response.
+    ``message`` may be a :class:`Message` or a :class:`CallbackQuery`.
+    ``ephemeral=True`` makes the reply visible only to the triggering user
+    (groups/supergroups only, ignored in PM).
     """
     if not html_text:
         return None
 
-    app = client or getattr(message, "_client", None)
-    if app is None:
-        logger.debug("[rich_reply] no client bound to message; using message.reply")
-        return await message.reply(
-            _plain_fallback(html_text),
+    # CallbackQuery -> extract inner message and sender.
+    if hasattr(message, "data") and hasattr(message, "message"):
+        app = client or getattr(message, "_client", None)
+        cb_user = getattr(message, "from_user", None)
+        inner_msg = getattr(message, "message", None)
+        chat = getattr(inner_msg, "chat", None)
+        if not chat:
+            return None
+        receiver_user_id = cb_user.id if (ephemeral and cb_user and _is_group(chat.type)) else None
+        return await rich_send(
+            app,
+            chat.id,
+            html_text,
             reply_markup=reply_markup,
-            link_preview_options=None,
+            receiver_user_id=receiver_user_id,
+            reply_to_message_id=getattr(inner_msg, "id", None) if quote else None,
+            message_thread_id=getattr(inner_msg, "message_thread_id", None),
         )
 
+    # Standard Message.
     chat = getattr(message, "chat", None)
+    if not chat:
+        return None
+    app = client or getattr(message, "_client", None)
     from_user = getattr(message, "from_user", None)
-    receiver_user_id = None
-    if ephemeral and from_user and _is_group(getattr(chat, "type", None)):
-        receiver_user_id = from_user.id
+    receiver_user_id = from_user.id if (ephemeral and from_user and _is_group(chat.type)) else None
 
     reply_parameters = None
     if quote and not receiver_user_id:
@@ -386,19 +401,20 @@ async def rich_edit(
     if not html_text:
         return None
 
-    # CallbackQuery — has a rich-aware edit_message_text of its own.
-    if hasattr(target, "edit_message_text") and hasattr(target, "data"):
-        if RICH_AVAILABLE and _has_rich_only_tags(html_text):
-            try:
-                return await target.edit_message_text(
-                    rich_message=_input_rich(html_text),
-                    reply_markup=reply_markup,
-                )
-            except Exception as e:
-                logger.debug(f"[rich_edit] cq rich edit failed, falling back: {e}")
+    # CallbackQuery
+    if hasattr(target, "data") and hasattr(target, "message"):
+        app = client or getattr(target, "_client", None)
+        msg = getattr(target, "message", None)
+        if msg and hasattr(msg, "chat") and hasattr(msg, "id"):
+            chat_id = msg.chat.id
+            message_id = msg.id
+        if app is not None and chat_id and message_id:
+            return await _rich_edit_via_client(
+                app, chat_id, message_id, html_text, reply_markup
+            )
         try:
             return await target.edit_message_text(
-                _normalize_html(html_text), parse_mode=ParseMode.HTML, reply_markup=reply_markup
+                _plain_fallback(html_text), parse_mode=ParseMode.HTML, reply_markup=reply_markup
             )
         except Exception as e:
             logger.debug(f"[rich_edit] cq plain edit failed: {e}")
@@ -415,7 +431,7 @@ async def rich_edit(
             )
         try:
             return await target.edit_text(
-                _normalize_html(html_text),
+                _plain_fallback(html_text),
                 parse_mode=ParseMode.HTML,
                 reply_markup=reply_markup,
                 link_preview_options=None,
@@ -434,21 +450,38 @@ async def _rich_edit_via_client(app, chat_id, message_id, html_text, reply_marku
     if chat_id is None or not message_id:
         logger.debug("[rich_edit] missing chat_id/message_id")
         return None
+
+    plain_text = _plain_fallback(html_text)
+
     if RICH_AVAILABLE and _has_rich_only_tags(html_text):
         try:
-            return await app.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                rich_message=_input_rich(html_text),
-                reply_markup=reply_markup,
+            from pyrogram import raw, utils, types
+            peer = await app.resolve_peer(chat_id)
+            input_rich = _input_rich(html_text).write()
+            parsed = await utils.parse_text_entities(app, plain_text, ParseMode.HTML, None)
+            r = await app.invoke(
+                raw.functions.messages.EditMessage(
+                    peer=peer,
+                    id=message_id,
+                    message=parsed["message"],
+                    entities=parsed["entities"],
+                    rich_message=input_rich,
+                    reply_markup=await reply_markup.write(app) if reply_markup else None,
+                )
             )
+            for i in r.updates:
+                if isinstance(i, (raw.types.UpdateEditMessage, raw.types.UpdateEditChannelMessage)):
+                    return await types.Message._parse(
+                        app, i.message, {i.id: i for i in r.users}, {i.id: i for i in r.chats}
+                    )
         except Exception as e:
-            logger.debug(f"[rich_edit] rich edit failed, falling back: {e}")
+            logger.debug(f"[rich_edit] raw rich edit failed, falling back: {e}")
+
     try:
         return await app.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
-            text=_normalize_html(html_text),
+            text=plain_text,
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup,
             link_preview_options=None,

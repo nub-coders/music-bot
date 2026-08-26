@@ -864,15 +864,55 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         logger.debug(f"[join_call] Calling call_py.play (Assistant {ast_num}); audio_flags={audio_flags}")
 
         _jc_t0 = time.perf_counter()
-        await call_py.play(
-            chat_id,
-            MediaStream(
-                stream_source,
-                AudioQuality.STUDIO,
-                VideoQuality.HD_720p,
-                video_flags=audio_flags,
-            ),
-        )
+        try:
+            await call_py.play(
+                chat_id,
+                MediaStream(
+                    stream_source,
+                    AudioQuality.STUDIO,
+                    VideoQuality.HD_720p,
+                    video_flags=audio_flags,
+                ),
+            )
+        except Exception as play_err:
+            play_err_str = str(play_err).lower()
+            is_gc_err = (
+                isinstance(play_err, NoActiveGroupCall)
+                or any(k in play_err_str for k in (
+                    "noactivegroupcall",
+                    "no active group call",
+                    "groupcall_create_failed",
+                    "groupcall_invalid",
+                    "groupcall_already_discarded",
+                ))
+            )
+            retried = False
+            if is_gc_err:
+                _userbot_client = assistants.get(ast_num) or clients.get("session")
+                if _userbot_client:
+                    try:
+                        from pyrogram.raw.functions.phone import CreateGroupCall
+                        import random
+                        peer = await _userbot_client.resolve_peer(chat_id)
+                        await _userbot_client.invoke(CreateGroupCall(peer=peer, random_id=random.randint(10000, 99999999)))
+                        logger.info(f"[join_call] Auto-started voice chat in {chat_id} via assistant {ast_num}")
+                        await asyncio.sleep(1.5)
+                        await call_py.play(
+                            chat_id,
+                            MediaStream(
+                                stream_source,
+                                AudioQuality.STUDIO,
+                                VideoQuality.HD_720p,
+                                video_flags=audio_flags,
+                            ),
+                        )
+                        retried = True
+                    except Exception as create_err:
+                        logger.debug(f"[join_call] Auto-starting voice chat failed in {chat_id}: {create_err}")
+
+            if not retried:
+                raise play_err
+
         _jc_call_ms = (time.perf_counter() - _jc_t0) * 1000
         logger.info(f"[join_call] ⏱ call_py.play() took {_jc_call_ms:.1f}ms for chat {chat_id} (Assistant {ast_num})")
 
@@ -983,25 +1023,57 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
     except NoActiveGroupCall:
         logger.warning(f"[join_call] No active voice chat in {chat_id}. Cleaning up.")
-        await remove_active_chat(chat_id)
-        if "bot" in clients and clients["bot"]:
-            await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.NO_ACTIVE_VC))
-    except Exception as e:
-        logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
-        # play() is the first thing that actually exercises membership, so this is
-        # where a stale "assistant is a member" cache entry surfaces (kicked,
-        # banned, or left since we cached it). Drop it so the next /play redoes
-        # the full join handshake instead of failing forever on the fast path.
         state.forget_member(None, chat_id)
         await remove_active_chat(chat_id)
-        err_str = str(e).lower()
+        state.queues.pop(chat_id, None)
+        state.playing.pop(chat_id, None)
+        await state.delete_now_playing(chat_id)
         if "bot" in clients and clients["bot"]:
-            if "chat_admin_required" in err_str or "admin" in err_str:
-                await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.NEED_INVITE_PERMISSION))
-            elif "user_already_participant" in err_str:
-                logger.info(f"[join_call] Assistant was already in call for chat {chat_id}")
-            else:
-                await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.ERROR_OCCURRED))
+            is_channel = (ui_chat_id != chat_id) or (getattr(chat, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))
+            msg = Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC
+            await rich_send(clients["bot"], ui_chat_id, rich_note(msg))
+    except Exception as e:
+        err_str = str(e).lower()
+        state.forget_member(None, chat_id)
+        await remove_active_chat(chat_id)
+        state.queues.pop(chat_id, None)
+        state.playing.pop(chat_id, None)
+        await state.delete_now_playing(chat_id)
+
+        is_channel = (ui_chat_id != chat_id) or (getattr(chat, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))
+        is_groupcall_error = (
+            isinstance(e, NoActiveGroupCall)
+            or any(x in err_str for x in (
+                "groupcall_create_failed",
+                "groupcall_invalid",
+                "groupcall_forbidden",
+                "groupcall_already_discarded",
+                "noactivegroupcall",
+                "no active group call",
+                "groupcall_not_modified",
+                "groupcall_join_missing",
+                "groupcall",
+            ))
+        )
+
+        if is_groupcall_error:
+            logger.warning(f"[join_call] Voice chat error in chat {chat_id}: {e}. Cleaned up.")
+            if "bot" in clients and clients["bot"]:
+                if "forbidden" in err_str or "admin" in err_str:
+                    msg = Messages.NEED_INVITE_PERMISSION_CHANNEL.format(getattr(chat, 'title', str(chat_id))) if is_channel else Messages.NEED_INVITE_PERMISSION
+                else:
+                    msg = Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC
+                await rich_send(clients["bot"], ui_chat_id, rich_note(msg))
+        else:
+            logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
+            if "bot" in clients and clients["bot"]:
+                if "chat_admin_required" in err_str or "admin" in err_str:
+                    msg = Messages.NEED_INVITE_PERMISSION_CHANNEL.format(getattr(chat, 'title', str(chat_id))) if is_channel else Messages.NEED_INVITE_PERMISSION
+                    await rich_send(clients["bot"], ui_chat_id, rich_note(msg))
+                elif "user_already_participant" in err_str:
+                    logger.info(f"[join_call] Assistant was already in call for chat {chat_id}")
+                else:
+                    await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.ERROR_OCCURRED))
 
 
 async def _trigger_suggestions(client, chat_id: int, last_song: dict):
@@ -1055,8 +1127,6 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
                 rich_code(s_dur) if s_dur else "",
             ))
-        # Native table replaces the old newline-joined bullet list; it fills the
-        # same `{1}` slot of the SUGGESTION_CARD constants.
         items_text = rich_table(["#", "ᴛɪᴛʟᴇ", "ᴀʀᴛɪsᴛ", "ʟᴇɴɢᴛʜ"], lines)
 
         countdown_sec = 5

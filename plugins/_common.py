@@ -51,7 +51,7 @@ from tools import trim_title, join_call, trigger_suggestions
 from utils.message import Messages
 from utils.lang import get_str, get_lang, set_lang, LANGUAGES, lang_list_text
 from utils.button import Buttons
-from utils.emoji import Emoji, EmojiTag, keycaps
+from utils.emoji import Emoji, EmojiTag, keycaps, custom_digits
 from utils.premium_emoji import position_tag, strip_custom_emoji_text
 from utils.rich_ui import *  # noqa: F403  (rich_send/rich_reply/rich_edit/rich_table/... )
 from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task, remove_chat_assistant as db_remove_chat_assistant, get_top_chats, get_chat_playback
@@ -83,7 +83,7 @@ async def _build_top_groups_table(client) -> str:
             name_str = rich_esc(title)
         except Exception:
             name_str = f"<i>[ID: {rich_code(cid)}]</i>"
-        rows.append((f"<b>#{rank}</b>", name_str, rich_code(count)))
+        rows.append((custom_digits(rank), name_str, rich_code(count)))
 
     if not rows:
         return ""
@@ -319,7 +319,7 @@ async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
 
     chat_type = await get_chat_type(client, chat_id)
     if chat_type:
-        chat_type_value = _chat_type_value(chat_type)
+        chat_type_value = str(_chat_type_value(chat_type)).replace("ChatType.", "").lower()
         chat_type_cache[chat_id_key] = chat_type_value
         db_task(collection.update_one(
             {"bot_id": bot_id},
@@ -327,6 +327,24 @@ async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
             upsert=True,
         ))
     return chat_type
+
+
+def save_chat_type(bot_id: int, chat_id: int, chat_type=None):
+    """Store chat_id in 'users' array and its chat_type in 'chat_type_cache' simultaneously."""
+    if not bot_id or not chat_id:
+        return
+    c_type_val = _chat_type_value(chat_type) if chat_type else None
+    if not c_type_val:
+        c_type_val = "private" if int(chat_id) > 0 else "supergroup"
+    c_type_str = str(c_type_val).replace("ChatType.", "").lower()
+
+    update_doc = {
+        "$addToSet": {"users": int(chat_id)},
+        "$set": {f"chat_type_cache.{chat_id}": c_type_str},
+    }
+    db_task(collection.update_one({"bot_id": bot_id}, update_doc, upsert=True))
+
+
 _STATS_PERIODS = ("24h", "week", "overall")
 
 # Cards rendered by one collection pass, keyed (chat_id, message_id) ->
@@ -421,32 +439,34 @@ async def _build_stats_cards(client, bot_id):
 
     top_groups_table = await _build_top_groups_table(client)
 
-    # The per-chat breakdown enumerates every stored chat, so it is skipped for
-    # large bots to avoid timing the handler out.
-    skip_breakdown = total_users > 500
     u = g = sg = c = a_chat = 0
-    if not skip_breakdown:
-        chat_type_cache = dict(user_data.get('chat_type_cache', {}))
-        for chat_id in users:
-            try:
-                chat_type = await get_cached_chat_type(client, bot_id, chat_id, chat_type_cache)
+    chat_type_cache = dict(user_data.get('chat_type_cache', {}))
+    uncached_lookups = 0
+    max_uncached_lookups = 50
 
-                if chat_type == enums.ChatType.PRIVATE:
-                    u += 1
-                elif chat_type == enums.ChatType.GROUP:
-                    g += 1
-                elif chat_type == enums.ChatType.SUPERGROUP:
-                    sg += 1
-                    try:
-                        user_status = await client.get_chat_member(chat_id, bot_id)
-                        if user_status.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
-                            a_chat += 1
-                    except Exception as e:
-                        logger.info(f"Admin check error: {e}")
-                elif chat_type == enums.ChatType.CHANNEL:
-                    c += 1
-            except Exception as e:
-                logger.info(f"Error processing chat {chat_id}: {e}")
+    for chat_id in users:
+        try:
+            chat_id_key = str(chat_id)
+            cached_type = chat_type_cache.get(chat_id_key)
+            if cached_type is not None:
+                chat_type_str = str(cached_type).lower()
+            elif uncached_lookups < max_uncached_lookups:
+                uncached_lookups += 1
+                chat_type = await get_cached_chat_type(client, bot_id, chat_id, chat_type_cache)
+                chat_type_str = str(_chat_type_value(chat_type)).replace("ChatType.", "").lower() if chat_type else ""
+            else:
+                chat_type_str = "private" if int(chat_id) > 0 else "supergroup"
+
+            if "private" in chat_type_str:
+                u += 1
+            elif "supergroup" in chat_type_str:
+                sg += 1
+            elif "group" in chat_type_str:
+                g += 1
+            elif "channel" in chat_type_str:
+                c += 1
+        except Exception as e:
+            logger.info(f"Error processing chat {chat_id}: {e}")
 
     cards = {}
     for period in _STATS_PERIODS:
@@ -458,25 +478,13 @@ async def _build_stats_cards(client, bot_id):
                 f"{rich_code('5000')} recorded plays.\n"
             )
 
-        if skip_breakdown:
-            extra += (
-                f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
-                f"users to enumerate without timing out.\n"
-            )
-            rows = [
-                (f"{EmojiTag.USER} Stored Users", rich_code(total_users)),
-                (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_counts[period])),
-                (f"{EmojiTag.INFO} Detailed stats", rich_code("Skipped to avoid timeout")),
-            ]
-        else:
-            rows = [
-                (f"{EmojiTag.USER} Private Chats", rich_code(u)),
-                (f"{EmojiTag.USERS} Groups", rich_code(g)),
-                (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
-                (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
-                (f"{EmojiTag.SHIELD} Admin Privileges", rich_code(a_chat)),
-                (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_counts[period])),
-            ]
+        rows = [
+            (f"{EmojiTag.USER} Private Chats", rich_code(u)),
+            (f"{EmojiTag.USERS} Groups", rich_code(g)),
+            (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
+            (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
+            (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_counts[period])),
+        ]
 
         cards[period] = (
             rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)

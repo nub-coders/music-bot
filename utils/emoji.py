@@ -201,3 +201,14 @@ def keycaps(number):
     digit emoji when the bot may send those (see utils/premium_emoji.py)."""
     return "".join(f"{d}️⃣" for d in str(number))
 
+
+def custom_digits(number) -> str:
+    """Format a number into Telegram custom emoji digit tags."""
+    return "".join(
+        f'<tg-emoji emoji-id="{Emoji.DIGITS[d]}">{d}️⃣</tg-emoji>'
+        if d in Emoji.DIGITS
+        else f"{d}️⃣"
+        for d in str(number)
+    )
+
+

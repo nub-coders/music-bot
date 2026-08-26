@@ -966,5 +966,5 @@ async def stats_period_handler(client: Client, callback_query: CallbackQuery):
             return
         stats_cards_put(message.chat.id, message.id, cards)
 
-    await rich_edit(callback_query, cards[period], reply_markup=Buttons.stats_markup())
+    await rich_edit(callback_query, cards[period], reply_markup=Buttons.stats_markup(period))
 

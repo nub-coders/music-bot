@@ -166,6 +166,7 @@ async def play_handler_func(client, message):
     user_dir = f"{ggg}/{session_name}"
     os.makedirs(user_dir, exist_ok=True)
     by = message.from_user
+    save_chat_type(client.me.id, message.chat.id, message.chat.type)
     # Cosmetic: remove the user's "/play ..." command. Fire-and-forget so this
     # Telegram round-trip does not gate track resolution / the voice join.
     _bg(message.delete())
