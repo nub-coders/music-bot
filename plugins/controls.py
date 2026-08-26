@@ -401,7 +401,7 @@ async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
     if not user or user.id in BLOCK:
         await callback_query.answer(Messages.NO_PERM_SKIP, show_alert=True)
         return
-    if user.id != OWNER_ID and user.id not in SUDO and not allow_play(user.id):
+    if user.id != OWNER_ID and user.id not in SUDO and not await allow_play(user.id):
         await callback_query.answer(Messages.RATE_LIMITED, show_alert=True)
         return
 
@@ -730,7 +730,7 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
     if not user or user.id in BLOCK:
         await callback_query.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
         return
-    if user.id != OWNER_ID and user.id not in SUDO and not allow_play(user.id):
+    if user.id != OWNER_ID and user.id not in SUDO and not await allow_play(user.id):
         await callback_query.answer(Messages.RATE_LIMITED, show_alert=True)
         return
 

@@ -176,7 +176,7 @@ async def play_handler_func(client, message):
 
     # Throttle rapid /play spam per user (owner/sudo exempt).
     if message.from_user.id != OWNER_ID and message.from_user.id not in SUDO:
-        if not allow_play(message.from_user.id):
+        if not await allow_play(message.from_user.id):
             await rich_reply(message, rich_note(Messages.RATE_LIMITED), ephemeral=True, client=client)
             return
 

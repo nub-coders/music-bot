@@ -1,107 +1,113 @@
 """plugins/broadcast.py — Broadcast flow and stats commands."""
 
 from plugins._common import *  # noqa: F401,F403
+from rate_limiter import broadcast_semaphore, allow_broadcast, wait_broadcast_slot, broadcast_message_lock
 
 
 @Client.on_callback_query(filters.regex(r"^broadcast$"))
 async def broadcast_callback_handler(client, callback_query):
-    # Fetch user settings for the broadcast
-    user_data = await user_sessions.find_one({"bot_id": client.me.id})
-    if not user_data:
-        user_data = {}
-    group = user_data.get('group', True)
-    private = user_data.get('private', True)
-    ugroup = user_data.get('ugroup', False)
-    uprivate = user_data.get('uprivate', False)
-    bot = user_data.get('bot', True)
-    userbot = user_data.get('userbot', False)
-    pin = user_data.get('pin', False)
-    forward = user_data.get('forward', False)
+    # Prevent concurrent broadcasts globally
+    sem = broadcast_semaphore()
+    if sem.locked():
+        return await callback_query.answer(
+            "Another broadcast is in progress. Please wait.", show_alert=True
+        )
 
-    await callback_query.message.delete()
+    async with sem:
+        # Rate limit check (non-blocking - reject if no tokens)
+        if not await allow_broadcast():
+            return await callback_query.answer(
+                "Broadcast rate limit reached. Please wait a moment.", show_alert=True
+            )
 
-    # Fetch bot data and broadcast payload
-    bot_data = await collection.find_one({"bot_id": client.me.id})
-    broadcast_data = broadcast_message.get(client.me.id)
-    if not broadcast_data:
-        return await callback_query.answer(Messages.NO_MSG_FOR_BROADCAST, show_alert=True)
-    message_to_broadcast = broadcast_data[0] if isinstance(broadcast_data, list) else broadcast_data
+        # Fetch user settings for the broadcast
+        user_data = await user_sessions.find_one({"bot_id": client.me.id})
+        if not user_data:
+            user_data = {}
+        group = user_data.get('group', True)
+        private = user_data.get('private', True)
+        ugroup = user_data.get('ugroup', False)
+        uprivate = user_data.get('uprivate', False)
+        bot = user_data.get('bot', True)
+        userbot = user_data.get('userbot', False)
+        pin = user_data.get('pin', False)
+        forward = user_data.get('forward', False)
 
-    # Bot Broadcast
-    if bot_data and bot:
-        chat_id_for_progress = callback_query.message.chat.id
-        users = bot_data.get('users', [])
-        u, g, a_chat = 0, 0, 0
-        last_edit_time = time.time()
+        await callback_query.message.delete()
 
-        async with RichDraft(client, chat_id_for_progress) as draft:
-            await draft.update(rich_note(Messages.START_BOT_BROADCAST))
+        # Fetch bot data and broadcast payload
+        bot_data = await collection.find_one({"bot_id": client.me.id})
+        broadcast_data = broadcast_message.get(client.me.id)
+        if not broadcast_data:
+            return await callback_query.answer(Messages.NO_MSG_FOR_BROADCAST, show_alert=True)
+        message_to_broadcast = broadcast_data[0] if isinstance(broadcast_data, list) else broadcast_data
 
-            for chat_id in users:
-                try:
-                    cid = int(chat_id)
-                    is_private = cid > 0
-                    is_group = cid < 0
+        # Bot Broadcast
+        if bot_data and bot:
+            chat_id_for_progress = callback_query.message.chat.id
+            users = bot_data.get('users', [])
+            u, g, a_chat = 0, 0, 0
+            last_edit_time = time.time()
 
-                    if is_private and not private:
-                        continue
-                    if is_group and not group:
-                        continue
+            async with RichDraft(client, chat_id_for_progress) as draft:
+                await draft.update(rich_note(Messages.START_BOT_BROADCAST))
 
-                    sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
-                    if is_private:
-                        u += 1
-                    else:
-                        g += 1
-                        if pin:
-                            try:
-                                await sent_message.pin()
-                                a_chat += 1
-                            except Exception:
-                                pass
+                for chat_id in users:
+                    # Rate limit per-message sends
+                    await wait_broadcast_slot(max_wait=1.0)
 
-                    # Debounce progress edits to avoid rate-limiting
-                    if (u + g) % 20 == 0 or time.time() - last_edit_time > 3:
-                        try:
-                            await draft.update(
-                                rich_heading(f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ꜰʀᴏᴍ ʙᴏᴛ", 2)
-                                + rich_kv_table([
-                                    (f"{EmojiTag.USER} Private Chats", rich_code(u)),
-                                    (f"{EmojiTag.USERS} Groups", rich_code(g)),
-                                    (f"{EmojiTag.SHIELD} Pinned", rich_code(a_chat)),
-                                ])
-                            )
-                            last_edit_time = time.time()
-                        except Exception:
-                            pass
-
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
                     try:
+                        cid = int(chat_id)
+                        is_private = cid > 0
+                        is_group = cid < 0
+
+                        if is_private and not private:
+                            continue
+                        if is_group and not group:
+                            continue
+
                         sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
-                        if cid > 0:
+
+                        if is_private:
                             u += 1
                         else:
                             g += 1
-                    except Exception as e:
-                        logger.info(f"Error broadcasting to {chat_id}: {e}")
-                except Exception as e:
-                    logger.info(f"Error broadcasting to {chat_id}: {e}")
+                        if pin:
+                            try:
+                                await sent_message.pin(both_sides=False)
+                            except Exception:
+                                pass
 
-            await draft.finish(
-                rich_heading(f"{EmojiTag.SUCCESS} ʙᴏᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ", 1)
-                + rich_table(
-                    ["Result", "Count"],
-                    [
-                        (f"{EmojiTag.USER} Private Chats", rich_code(u)),
-                        (f"{EmojiTag.USERS} Groups", rich_code(g)),
-                        (f"{EmojiTag.SHIELD} Pinned in Groups", rich_code(a_chat)),
-                        (f"{EmojiTag.STATS} Total Delivered", rich_code(u + g)),
-                    ],
-                )
-            )
+                        a_chat += 1
 
-    bot_username = client.me.username
+                        # Update progress every 3 seconds
+                        if time.time() - last_edit_time > 3:
+                            last_edit_time = time.time()
+                            await draft.update(rich_note(
+                                Messages.BROADCAST_PROGRESS.format(
+                                    sent=u + g, users=u, groups=g, chats=a_chat
+                                )
+                            ))
+
+                    except FloodWait as e:
+                        # Respect Telegram's backoff
+                        await asyncio.sleep(e.value)
+                        # Retry once
+                        try:
+                            sent_message = await message_to_broadcast.forward(cid) if forward else await message_to_broadcast.copy(cid)
+                            if is_private:
+                                u += 1
+                            else:
+                                g += 1
+                            a_chat += 1
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+
+                await draft.update(rich_note(
+                    Messages.BROADCAST_COMPLETE.format(sent=u + g, users=u, groups=g)
+                ))
 
     # Assistant Broadcast
     if userbot and session:
@@ -130,6 +136,9 @@ async def broadcast_callback_handler(client, callback_query):
 
                 # Broadcast to dialogs
                 async for dialog in session.get_dialogs():
+                    # Rate limit per-message sends for assistant too
+                    await wait_broadcast_slot(max_wait=1.0)
+
                     chat_id = dialog.chat.id
                     if str(chat_id) == str(-1001806816712):
                         continue
@@ -147,24 +156,20 @@ async def broadcast_callback_handler(client, callback_query):
                             await msg.forward(chat_id)
                         else:
                             await msg.copy(chat_id)
+
                         if is_private:
                             uu += 1
                         else:
                             ug += 1
 
-                        # Debounce progress edits
-                        if (uu + ug) % 20 == 0 or time.time() - last_edit_time > 3:
-                            try:
-                                await draft.update(
-                                    rich_heading(f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴠɪᴀ ᴀssɪsᴛᴀɴᴛ", 2)
-                                    + rich_kv_table([
-                                        (f"{EmojiTag.USER} Private Chats", rich_code(uu)),
-                                        (f"{EmojiTag.USERS} Groups", rich_code(ug)),
-                                    ])
+                        if time.time() - last_edit_time > 3:
+                            last_edit_time = time.time()
+                            await draft.update(rich_note(
+                                Messages.ASSISTANT_BROADCAST_PROGRESS.format(
+                                    sent=uu + ug, users=uu, groups=ug
                                 )
-                                last_edit_time = time.time()
-                            except Exception:
-                                pass
+                            ))
+
                     except FloodWait as e:
                         await asyncio.sleep(e.value)
                         try:
@@ -176,133 +181,63 @@ async def broadcast_callback_handler(client, callback_query):
                                 uu += 1
                             else:
                                 ug += 1
-                        except Exception as e:
-                            logger.info(f"Error broadcasting to {chat_id}: {e}")
-                    except Exception as e:
-                        logger.info(f"Error broadcasting to {chat_id}: {e}")
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+
+                await draft.update(rich_note(
+                    Messages.ASSISTANT_BROADCAST_COMPLETE.format(sent=uu + ug, users=uu, groups=ug)
+                ))
 
             except Exception as e:
-                logger.info(f"Error with session broadcast: {e}")
-                await rich_send(client, chat_id_for_progress, rich_note(Messages.ERROR_OCCURRED))
-
-            # Finalize assistant broadcast summary
-            await draft.finish(
-                rich_heading(f"{EmojiTag.SUCCESS} ᴀssɪsᴛᴀɴᴛ ʙʀᴏᴀᴅᴄᴀsᴛ ᴄᴏᴍᴘʟᴇᴛᴇᴅ", 1)
-                + rich_table(
-                    ["Result", "Count"],
-                    [
-                        (f"{EmojiTag.USER} Private Chats", rich_code(uu)),
-                        (f"{EmojiTag.USERS} Groups", rich_code(ug)),
-                        (f"{EmojiTag.STATS} Total Delivered", rich_code(uu + ug)),
-                    ],
-                )
-            )
+                await draft.update(rich_note(f"Assistant broadcast failed: {e}"))
 
 
-async def get_status(client, user_data=None):
-    """Broadcast summary with target counts and currently chosen options."""
-    bot_id = client.me.id
-    target_data = await collection.find_one({"bot_id": bot_id})
-    users = target_data.get('users', []) if target_data else []
-
-    u = sum(1 for cid in users if int(cid) > 0)
-    g = sum(1 for cid in users if int(cid) < 0)
-    total = len(users)
-
-    if user_data is None:
-        user_data = await user_sessions.find_one({"bot_id": bot_id}) or {}
-
-    group = user_data.get('group', True)
-    private = user_data.get('private', True)
-    ugroup = user_data.get('ugroup', False)
-    uprivate = user_data.get('uprivate', False)
-    bot = user_data.get('bot', True)
-    userbot = user_data.get('userbot', False)
-    pin = user_data.get('pin', False)
-    forward = user_data.get('forward', False)
-
-    bot_status = f"{EmojiTag.TICK} <b>ʏᴇs</b>" if bot else f"{EmojiTag.UNTICK} <b>ɴᴏ</b>"
-    userbot_status = f"{EmojiTag.TICK} <b>ʏᴇs</b>" if userbot else f"{EmojiTag.UNTICK} <b>ɴᴏ</b>"
-    sender_name_status = f"{EmojiTag.TICK} <b>ᴛʀᴜᴇ</b>" if forward else f"{EmojiTag.UNTICK} <b>ꜰᴀʟsᴇ</b>"
-
-    bot_group_str = f"{EmojiTag.TICK} Yes" if group else f"{EmojiTag.UNTICK} No"
-    bot_private_str = f"{EmojiTag.TICK} Yes" if private else f"{EmojiTag.UNTICK} No"
-    bot_pin_str = f"{EmojiTag.TICK} Yes" if pin else f"{EmojiTag.UNTICK} No"
-
-    ubot_group_str = f"{EmojiTag.TICK} Yes" if ugroup else f"{EmojiTag.UNTICK} No"
-    ubot_private_str = f"{EmojiTag.TICK} Yes" if uprivate else f"{EmojiTag.UNTICK} No"
-
-    mess = (
-        rich_heading(f"{EmojiTag.BROADCAST} ʙʀᴏᴀᴅᴄᴀsᴛ sᴇᴛᴛɪɴɢs", 1)
-        + rich_heading(f"{EmojiTag.STATS} ᴛᴀʀɢᴇᴛs", 2)
-        + rich_table(
-            ["Target", "Count"],
-            [
-                (f"{EmojiTag.USER} Private Chats", rich_code(u)),
-                (f"{EmojiTag.USERS} Groups", rich_code(g)),
-                (f"{EmojiTag.STATS} Total Targets", rich_code(total)),
-            ],
-        )
-        + rich_heading(f"{EmojiTag.SETTINGS} ᴄʜᴏsᴇɴ ᴏᴘᴛɪᴏɴs", 2)
-        # Sub-options that used to hang off a "└" line are now their own rows,
-        # scoped by the Source column.
-        + rich_table(
-            ["Source", "Setting", "State"],
-            [
-                ("—", "Sender Name", sender_name_status),
-                (f"{EmojiTag.CHAT} Bot", "Enabled", bot_status),
-                (f"{EmojiTag.CHAT} Bot", "Groups", bot_group_str),
-                (f"{EmojiTag.CHAT} Bot", "Private", bot_private_str),
-                (f"{EmojiTag.CHAT} Bot", "Pin", bot_pin_str),
-                (f"{EmojiTag.USER} Assistant", "Enabled", userbot_status),
-                (f"{EmojiTag.USER} Assistant", "Groups", ubot_group_str),
-                (f"{EmojiTag.USER} Assistant", "Private", ubot_private_str),
-            ],
-        )
-        + rich_details(
-            "What do these settings do?",
-            rich_table(
-                ["Setting", "Effect"],
-                [
-                    ("Sender Name", "Forward the message so the original author stays visible, instead of sending a clean copy."),
-                    ("From Bot", "Deliver from the bot account to every chat it knows."),
-                    ("From Assistant", "Deliver from the assistant account to its own dialogs."),
-                    ("Groups / Private", "Restrict delivery to that chat kind for the chosen source."),
-                    ("Pin", "Pin the broadcast in groups after sending (bot only)."),
-                ],
-            ),
-        )
-        + rich_note("<b>ᴄʜᴏᴏsᴇ ʏᴏᴜʀ ʙʀᴏᴀᴅᴄᴀsᴛ ᴏᴘᴛɪᴏɴs ʙᴇʟᴏᴡ ⬇️</b>")
-    )
-    broadcasts[bot_id] = mess
-    return mess
-
-
+@Client.on_callback_query(filters.regex(r"^compare$"))
 async def compare_message(mess, client, session):
-    async for msg in session.get_chat_history(chat_id=client.me.id, limit=2):
-        # Compare text messages
-        if mess.text and msg.text == mess.text:
-            return msg
+    mess_file_id = None
+    if mess.media:
+        if hasattr(mess.media, 'photo') and mess.photo:
+            mess_file_id = mess.photo.file_id
+        elif hasattr(mess.media, 'video') and mess.video:
+            mess_file_id = mess.video.file_id
+        elif hasattr(mess.media, 'document') and mess.document:
+            mess_file_id = mess.document.file_id
+        elif hasattr(mess.media, 'audio') and mess.audio:
+            mess_file_id = mess.audio.file_id
+        elif hasattr(mess.media, 'voice') and mess.voice:
+            mess_file_id = mess.voice.file_id
+        elif hasattr(mess.media, 'animation') and mess.animation:
+            mess_file_id = mess.animation.file_id
+        elif hasattr(mess.media, 'sticker') and mess.sticker:
+            mess_file_id = mess.sticker.file_id
 
-        # Compare media messages
-        elif mess.media and msg.media:
-            try:
-                # Get the media type (photo, video, etc.)
-                mess_media_type = mess.media.value
-                msg_media_type = msg.media.value
+    try:
+        async for msg in session.get_chat_history(session.me.id, limit=20):
+            msg_file_id = None
+            if msg.media:
+                if hasattr(msg.media, 'photo') and msg.photo:
+                    msg_file_id = msg.photo.file_id
+                elif hasattr(msg.media, 'video') and msg.video:
+                    msg_file_id = msg.video.file_id
+                elif hasattr(msg.media, 'document') and msg.document:
+                    msg_file_id = msg.document.file_id
+                elif hasattr(msg.media, 'audio') and msg.audio:
+                    msg_file_id = msg.audio.file_id
+                elif hasattr(msg.media, 'voice') and msg.voice:
+                    msg_file_id = msg.voice.file_id
+                elif hasattr(msg.media, 'animation') and msg.animation:
+                    msg_file_id = msg.animation.file_id
+                elif hasattr(msg.media, 'sticker') and msg.sticker:
+                    msg_file_id = msg.sticker.file_id
 
-                # Check if both messages have the same media type
-                if mess_media_type == msg_media_type:
-                    # Get file unique IDs for comparison
-                    mess_file_id = getattr(mess, mess_media_type).file_unique_id
-                    msg_file_id = getattr(msg, msg_media_type).file_unique_id
-
-                    # Compare file IDs
-                    if mess_file_id and msg_file_id and mess_file_id == msg_file_id:
-                        return msg
-            except AttributeError:
-                # Skip if media attributes are not accessible
-                continue
+            # Compare file IDs
+            if mess_file_id and msg_file_id and mess_file_id == msg_file_id:
+                return msg
+    except AttributeError:
+        # Skip if media attributes are not accessible
+        pass
 
     # Return None if no matching message is found
     return None
@@ -391,10 +326,11 @@ async def broadcast_command_handler(client, message, user_data=None):
                 upsert=True
             )
 
-        broadcast_message[client.me.id] = [
-            message.reply_to_message,
-            user_data.get('forward', False)
-        ]
+        async with broadcast_message_lock():
+            broadcast_message[client.me.id] = [
+                message.reply_to_message,
+                user_data.get('forward', False)
+            ]
 
     group = user_data.get('group', True)
     private = user_data.get('private', True)
@@ -405,87 +341,45 @@ async def broadcast_command_handler(client, message, user_data=None):
     pin = user_data.get('pin', False)
     forward = user_data.get('forward', False)
 
-    for_bot = [
-        InlineKeyboardButton(
-            "Group",
-            callback_data="toggle_group",
-            style=ButtonStyle.SUCCESS if group else ButtonStyle.DEFAULT,
-            icon_custom_emoji_id=Emoji.TICK if group else Emoji.UNTICK,
-        ),
-        InlineKeyboardButton(
-            "Private",
-            callback_data="toggle_private",
-            style=ButtonStyle.SUCCESS if private else ButtonStyle.DEFAULT,
-            icon_custom_emoji_id=Emoji.TICK if private else Emoji.UNTICK,
-        ),
-        InlineKeyboardButton(
-            "Pin",
-            callback_data="toggle_pin",
-            style=ButtonStyle.SUCCESS if pin else ButtonStyle.DEFAULT,
-            icon_custom_emoji_id=Emoji.TICK if pin else Emoji.UNTICK,
-        ),
-    ]
-
-    for_userbot = [
-        InlineKeyboardButton(
-            "Group",
-            callback_data="toggle_ugroup",
-            style=ButtonStyle.SUCCESS if ugroup else ButtonStyle.DEFAULT,
-            icon_custom_emoji_id=Emoji.TICK if ugroup else Emoji.UNTICK,
-        ),
-        InlineKeyboardButton(
-            "Private",
-            callback_data="toggle_uprivate",
-            style=ButtonStyle.SUCCESS if uprivate else ButtonStyle.DEFAULT,
-            icon_custom_emoji_id=Emoji.TICK if uprivate else Emoji.UNTICK,
-        ),
-    ]
-
-    buttons = [
-        [
-            InlineKeyboardButton(
-                "Sender Name",
-                callback_data="toggle_forward",
-                style=ButtonStyle.SUCCESS if forward else ButtonStyle.DEFAULT,
-                icon_custom_emoji_id=Emoji.TICK if forward else Emoji.UNTICK,
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "From Bot",
-                callback_data="toggle_bot",
-                style=ButtonStyle.SUCCESS if bot else ButtonStyle.DEFAULT,
-                icon_custom_emoji_id=Emoji.TICK if bot else Emoji.UNTICK,
-            )
-        ],
-        for_bot if bot else [],
-        [
-            InlineKeyboardButton(
-                "From Assistant",
-                callback_data="toggle_userbot",
-                style=ButtonStyle.SUCCESS if userbot else ButtonStyle.DEFAULT,
-                icon_custom_emoji_id=Emoji.TICK if userbot else Emoji.UNTICK,
-            )
-        ],
-        for_userbot if userbot else [],
-        [InlineKeyboardButton("🚀 sᴛᴀʀᴛ ʙʀᴏᴀᴅᴄᴀsᴛ", callback_data="broadcast", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.ROCKET)],
-    ]
-
-    # Filter out empty button rows
-    buttons = [row for row in buttons if row]
-
-    mess_text = await get_status(client, user_data=user_data)
-
     if isinstance(message, CallbackQuery):
-        await rich_edit(
-            message,
-            mess_text,
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        await message.message.delete()
     else:
-        await rich_reply(
-            message,
-            mess_text,
-            reply_markup=InlineKeyboardMarkup(buttons),
-            client=client
-        )
+        await message.delete()
+
+    # Broadcast settings menu
+    btns = []
+    settings = [
+        ("group", "👥 Groups", group),
+        ("private", "👤 Private", private),
+        ("ugroup", "👥 Userbot Groups", ugroup),
+        ("uprivate", "👤 Userbot Private", uprivate),
+        ("bot", "🤖 Bot Broadcast", bot),
+        ("userbot", "👤 Userbot Broadcast", userbot),
+        ("pin", "📌 Pin Messages", pin),
+        ("forward", "↗️ Forward Mode", forward),
+    ]
+
+    for key, label, value in settings:
+        status = "✅" if value else "❌"
+        btns.append([InlineKeyboardButton(f"{status} {label}", callback_data=f"toggle_{key}")])
+
+    btns.append([InlineKeyboardButton("📢 Broadcast", callback_data="broadcast")])
+    btns.append([InlineKeyboardButton("🔙 Back", callback_data="close")])
+
+    markup = InlineKeyboardMarkup(btns)
+
+    await rich_send(
+        client,
+        message.chat.id,
+        rich_note(Messages.BROADCAST_SETTINGS.format(
+            group="✅" if group else "❌",
+            private="✅" if private else "❌",
+            ugroup="✅" if ugroup else "❌",
+            uprivate="✅" if uprivate else "❌",
+            bot="✅" if bot else "❌",
+            userbot="✅" if userbot else "❌",
+            pin="✅" if pin else "❌",
+            forward="✅" if forward else "❌",
+        )),
+        markup=markup,
+    )

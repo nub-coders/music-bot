@@ -211,19 +211,8 @@ ADMIN = []  # owner-tier admin IDs, loaded from DB at startup (seeded via INITIA
 
 # In-memory token bucket for throttling download/render-triggering commands per user.
 # ponytail: single-process in-memory; move to Redis INCR+EXPIRE in Phase 4 for multi-worker.
-_play_buckets = {}  # user_id -> (tokens: float, last_ts: float)
-
-
-def allow_play(user_id: int, capacity: int = 3, refill_per_sec: float = 1 / 3) -> bool:
-    """Token bucket: burst of `capacity`, then one action per ~3s. False = throttled."""
-    now = time.time()
-    tokens, last = _play_buckets.get(user_id, (float(capacity), now))
-    tokens = min(capacity, tokens + (now - last) * refill_per_sec)
-    if tokens < 1:
-        _play_buckets[user_id] = (tokens, now)
-        return False
-    _play_buckets[user_id] = (tokens - 1, now)
-    return True
+# Now delegated to rate_limiter module for consistency
+from rate_limiter import allow_play  # noqa: F401  (re-export for back-compat)
 
 
 def get_admin_ids(admin_file: str = "") -> list:
