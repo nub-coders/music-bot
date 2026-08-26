@@ -137,34 +137,15 @@ class Buttons:
         ]])
 
     @staticmethod
-    def suggestion_markup(suggestions: list, autoplay_enabled: bool = True):
-        """Generates the markup for related video suggestions card with instant callback buttons."""
-        rows = []
-        # Each suggestion gets its own full callback button with title and duration
-        for i, item in enumerate(suggestions[:5], 1):
-            vid = item.get("video_id")
-            if vid:
-                title = item.get("title", f"Track {i}")
-                if len(title) > 28:
-                    title = title[:25].rstrip() + "…"
-                dur = item.get("duration", "")
-                label = f"{i}️⃣ {title} ({dur})" if dur else f"{i}️⃣ {title}"
-                rows.append([
-                    InlineKeyboardButton(
-                        label,
-                        callback_data=f"sgplay_{vid}",
-                        style=ButtonStyle.PRIMARY,
-                        icon_custom_emoji_id=Emoji.PLAY,
-                    )
-                ])
-
+    def suggestion_markup(suggestions: list = None, autoplay_enabled: bool = True):
+        """Generates the markup for related video suggestions card controls."""
         autoplay_text = "🔄 ᴀᴜᴛᴏᴘʟᴀʏ: ON" if autoplay_enabled else "⏸ ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
-        control_row = [
-            InlineKeyboardButton("⏹ sᴛᴏᴘ", callback_data="sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
-            InlineKeyboardButton(autoplay_text, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
-        ]
-        rows.append(control_row)
-        return InlineKeyboardMarkup(rows)
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⏹ sᴛᴏᴘ", callback_data="sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
+                InlineKeyboardButton(autoplay_text, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
+            ],
+        ])
 
     @staticmethod
     def stats_markup(selected_period: str = "24h") -> InlineKeyboardMarkup:

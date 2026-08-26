@@ -573,7 +573,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         return cached
     logger.info("[AUDIO] No cache, extracting fresh stream...")
 
-    # Fast Path: Innertube direct resolution
+    # Fast Path 1: Innertube direct resolution
     innertube_data = await resolve_innertube(url, mode="audio")
     if innertube_data and innertube_data.get("stream_url"):
         stream = innertube_data["stream_url"]
@@ -582,7 +582,30 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         _write_cache(url, stream, prefix="audio_")
         return stream
 
-    logger.warning("[AUDIO] Innertube extraction returned None, falling back to yt-dlp...")
+    # Fast Path 2: ytube API (/info) if configured and breaker is closed
+    if API_TOKEN and BASE_URL and not _api_breaker_open():
+        try:
+            logger.debug(f"[AUDIO] Trying ytube API for stream URL '{url}'")
+            resp = await get_http_client().get(
+                f"{BASE_URL}/info",
+                params={"q": url},
+                headers={"Authorization": f"Bearer {API_TOKEN}"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("stream_url"):
+                    stream = data["stream_url"]
+                    logger.info(f"[AUDIO] ✅ ytube API success — {stream[:100]}...")
+                    _api_record_success()
+                    _mem_cache_set(("audio", url), stream)
+                    _write_cache(url, stream, prefix="audio_")
+                    return stream
+            _api_record_failure()
+        except Exception as e:
+            logger.warning(f"[AUDIO] ytube API extraction failed: {e}")
+            _api_record_failure()
+
+    logger.warning("[AUDIO] Innertube & API extraction returned None, falling back to yt-dlp...")
     stream = await _run_yt_dlp(
         url,
         "bestaudio[ext=m4a]/bestaudio/best",
@@ -607,7 +630,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         return cached
     logger.info("[VIDEO] No cache, extracting fresh stream...")
 
-    # Fast Path: Innertube direct resolution (muxed / video stream)
+    # Fast Path 1: Innertube direct resolution (muxed / video stream)
     innertube_data = await resolve_innertube(url, mode="video")
     if innertube_data and innertube_data.get("stream_url"):
         stream = innertube_data["stream_url"]
@@ -616,7 +639,30 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         _write_cache(url, stream, prefix="video_")
         return stream
 
-    logger.warning("[VIDEO] Innertube extraction returned None, falling back to yt-dlp...")
+    # Fast Path 2: ytube API (/info) if configured and breaker is closed
+    if API_TOKEN and BASE_URL and not _api_breaker_open():
+        try:
+            logger.debug(f"[VIDEO] Trying ytube API for video stream URL '{url}'")
+            resp = await get_http_client().get(
+                f"{BASE_URL}/info",
+                params={"q": url, "mode": "video"},
+                headers={"Authorization": f"Bearer {API_TOKEN}"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("stream_url"):
+                    stream = data["stream_url"]
+                    logger.info(f"[VIDEO] ✅ ytube API video success — {stream[:100]}...")
+                    _api_record_success()
+                    _mem_cache_set(("video", url), stream)
+                    _write_cache(url, stream, prefix="video_")
+                    return stream
+            _api_record_failure()
+        except Exception as e:
+            logger.warning(f"[VIDEO] ytube API video extraction failed: {e}")
+            _api_record_failure()
+
+    logger.warning("[VIDEO] Innertube & API extraction returned None, falling back to yt-dlp...")
     stream = await _run_yt_dlp(
         url,
         "best[ext=mp4][protocol=https]",

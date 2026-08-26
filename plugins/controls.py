@@ -135,18 +135,43 @@ async def seek_handler_func(client, message):
 
             # Seek to specified position
             to_seek = format_duration(total_seek)
-            yt_link = current_song.get('yt_link') or current_song.get('url')
 
-            # Get stream URL (async-safe, thread-pooled)
-            stream_url = await get_stream_url(yt_link)
+            # Priority 1: Use already resolved/active stream URL or media path from current_song
+            stream_url = (
+                current_song.get('stream_url')
+                or current_song.get('media_path')
+                or current_song.get('file_path')
+                or current_song.get('file')
+            )
+
+            # Fallback: Resolve fresh stream URL from yt_link if not already stored
             if not stream_url:
-                stream_url = yt_link  # Fallback to original link
+                yt_link = current_song.get('yt_link') or current_song.get('link') or current_song.get('url')
+                if yt_link:
+                    stream_url = await get_stream_url(yt_link, mode=mode)
+                if not stream_url:
+                    stream_url = yt_link
 
-            # get_stream_url can take seconds (yt-dlp fallback). The track may
+                if stream_url:
+                    if isinstance(current_song, dict):
+                        current_song['stream_url'] = stream_url
+                    elif hasattr(current_song, 'stream_url'):
+                        current_song.stream_url = stream_url
+
+            # get_stream_url can take seconds (if fallback ran). The track may
             # have ended, been skipped, or been replaced meanwhile -- seeking now
             # would restart the *old* song over whatever is currently playing.
             if state.playing.get(chat_id) is not current_song:
-                logger.info(f"[seek] Track changed in chat {chat_id} while resolving stream URL; aborting seek")
+                logger.info(f"[seek] Track changed in chat {chat_id}; aborting seek")
+                return
+
+            if not stream_url:
+                await rich_reply(
+                    message,
+                    rich_note(Messages.NO_STREAM),
+                    ephemeral=True,
+                    client=client,
+                )
                 return
 
             active_cp = get_call_client(chat_id) or clients.get("call_py")

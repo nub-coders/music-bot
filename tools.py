@@ -21,7 +21,7 @@ from pymediainfo import MediaInfo
 
 
 from config import *
-from youtube import extract_video_id, get_stream, get_related_suggestions, handle_youtube
+from youtube import extract_video_id, get_stream, get_video_stream, get_related_suggestions, handle_youtube
 from database import (
     user_sessions, db_task, collection,
     get_chat_assistant as db_get_chat_assistant,
@@ -37,24 +37,24 @@ from utils.message import Messages
 from utils.button import Buttons
 from utils.emoji import keycaps
 from utils.rich_ui import (
-    rich_caption, rich_code, rich_edit, rich_esc, rich_note, rich_send, rich_table,
+    rich_button, rich_caption, rich_code, rich_edit, rich_esc, rich_note, rich_send, rich_table,
 )
 from thumbnails import get_thumb
 
 
-async def get_stream_url(youtube_url: str):
+async def get_stream_url(youtube_url: str, mode: str = "audio"):
     """Direct stream URL for a YouTube link. Non-YouTube URLs are returned as-is.
 
-    Delegates to youtube.get_stream, the single hardened extraction path
-    (exec-arglist, 40s timeout, mem+disk cache, YT_COOKIES_FILE — no silent
-    browser-profile fallback). This used to be a second, inferior yt-dlp
-    Python-API implementation with no timeout or cache.
+    Delegates to youtube.get_stream / get_video_stream, the multi-tier extraction
+    pipeline: Innertube -> ytube API -> yt-dlp fallback (with mem+disk cache).
     """
     youtube_pattern = r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
     if not re.match(youtube_pattern, youtube_url):
         logger.info(f"Not a YouTube URL, returning as-is: {youtube_url[:50]}...")
         return youtube_url
 
+    if mode == "video":
+        return await get_video_stream(youtube_url)
     return await get_stream(youtube_url)
 
 
@@ -829,8 +829,8 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             stream_source = stream_url
             logger.info(f"[join_call] Using provided stream URL: {stream_source[:100]}... (len={len(stream_source)})")
         elif youtube_link:
-            logger.info(f"[join_call] Extracting stream URL from YouTube link: {youtube_link}")
-            stream_source = await get_stream_url(youtube_link)
+            logger.info(f"[join_call] Extracting stream URL from YouTube link: {youtube_link} (mode={mode})")
+            stream_source = await get_stream_url(youtube_link, mode=mode)
             if not stream_source:
                 logger.warning("[join_call] Failed to extract stream URL, falling back to youtube_link")
                 stream_source = youtube_link
@@ -1121,9 +1121,19 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             s_title = trim_title(item.get("title", "Unknown"))
             s_artist = item.get("artist", "")
             s_dur = item.get("duration", "")
+            vid = item.get("video_id")
+            if vid:
+                title_cell = rich_button(
+                    rich_esc(s_title),
+                    callback_data=f"sgplay_{vid}",
+                    style="primary",
+                )
+            else:
+                title_cell = f"<b>{rich_esc(s_title)}</b>"
+
             lines.append((
                 keycaps(idx),
-                f"<b>{rich_esc(s_title)}</b>",
+                title_cell,
                 f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
                 rich_code(s_dur) if s_dur else "",
             ))

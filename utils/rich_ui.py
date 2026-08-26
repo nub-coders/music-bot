@@ -45,6 +45,7 @@ __all__ = [
     "rich_heading",
     "rich_note",
     "rich_table",
+    "rich_button",
     "rich_details",
     "rich_kv_table",
     "rich_code",
@@ -73,6 +74,7 @@ _RICH_ONLY_TAGS = (
     "h1", "h2", "h3", "h4", "h5", "h6",
     "table", "thead", "tbody", "tr", "th", "td",
     "details", "summary", "mark", "sub", "sup",
+    "button",
 )
 _BLOCK_BREAK_RE = re.compile(
     r"</(?:h[1-6]|tr|details|summary|blockquote|table|pre)>", re.I
@@ -86,12 +88,12 @@ _EMOJI_TAG_RE = re.compile(
 )
 _ANY_TAG_RE = re.compile(r"<[^>]+>")
 _RICH_TAGS_RE = re.compile(
-    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|sub|sup)\b", re.I
+    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|sub|sup|button)\b", re.I
 )
 
 
 def _has_rich_only_tags(html_text: str) -> bool:
-    """Check if html_text contains Bot API 10.2 block tags that specifically require InputRichMessage."""
+    """Check if html_text contains Bot API 10.2+ rich tags that specifically require InputRichMessage."""
     if not html_text:
         return False
     return bool(_RICH_TAGS_RE.search(str(html_text)))
@@ -127,6 +129,38 @@ def rich_note(text: str, expandable: bool = False) -> str:
 def rich_code(value) -> str:
     """``<code>`` wrapped, escaped — for commands, IDs and other literals."""
     return f"<code>{rich_esc(value)}</code>"
+
+
+def rich_button(
+    text: str,
+    callback_data: str | None = None,
+    url: str | None = None,
+    copy_text: str | None = None,
+    style: str | None = None,
+    icon: str | None = None,
+    disabled: bool = False,
+) -> str:
+    """Native Rich Message inline button (<button>) for Telegram Bot API 10.3+.
+
+    Embeddable directly inside tables (<td>), paragraphs, lists, and blockquotes.
+    """
+    attrs = []
+    if callback_data:
+        attrs.append(f'data="{rich_esc(callback_data)}"')
+    elif url:
+        attrs.append(f'url="{rich_esc(url)}"')
+    elif copy_text:
+        attrs.append(f'copy_text="{rich_esc(copy_text)}"')
+    elif disabled:
+        attrs.append("disabled")
+
+    if style:
+        attrs.append(f'style="{rich_esc(style)}"')
+    if icon:
+        attrs.append(f'icon="{rich_esc(icon)}"')
+
+    attr_str = f" {' '.join(attrs)}" if attrs else ""
+    return f"<button{attr_str}>{text}</button>"
 
 
 def rich_table(headers, rows, border: int = 1) -> str:
@@ -229,6 +263,7 @@ def _plain_fallback(html_text: str) -> str:
     text = re.sub(r"<h[1-6]>(.*?)</h[1-6]>", r"\n<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<summary>(.*?)</summary>", r"<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<mark>(.*?)</mark>", r"<b>\1</b>", text, flags=re.I | re.S)
+    text = re.sub(r"<button[^>]*>(.*?)</button>", r"<b>\1</b>", text, flags=re.I | re.S)
     text = _CELL_BREAK_RE.sub("  ", text)
     text = re.sub(r"</tr>", "\n", text, flags=re.I)
     text = re.sub(r"</table>", "\n", text, flags=re.I)
