@@ -155,6 +155,20 @@ class Buttons:
         return InlineKeyboardMarkup(rows)
 
     @staticmethod
+    def stats_markup() -> InlineKeyboardMarkup:
+        """Generates the markup for stats period selection."""
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📊 24h", callback_data="stats_24h", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.STATS),
+                InlineKeyboardButton("📅 Week", callback_data="stats_week", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.REFRESH),
+                InlineKeyboardButton("📈 Overall", callback_data="stats_overall", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.NEWS_STATS),
+            ],
+            [
+                InlineKeyboardButton("✖ Close", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),
+            ],
+        ])
+
+    @staticmethod
     def autoleave_markup():
         """Generates the markup for the auto-leave voice chat message."""
         return InlineKeyboardMarkup([

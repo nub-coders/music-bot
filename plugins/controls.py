@@ -936,3 +936,25 @@ async def autoplay_command_handler(client: Client, message):
         else:
             await rich_reply(message, rich_note(Messages.AUTOPLAY_DISABLED), ephemeral=True, client=client)
 
+
+@Client.on_callback_query(filters.regex(r"^stats_(24h|week|overall)$"))
+async def stats_period_handler(client: Client, callback_query: CallbackQuery):
+    """Handle stats period button clicks."""
+    user = callback_query.from_user
+    if not user or user.id in BLOCK:
+        await callback_query.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
+        return
+
+    period = callback_query.data.split("_", 1)[1]
+    await callback_query.answer(f"Loading {period} stats...")
+
+    content = await _build_stats_content(client, client.me.id, period)
+    try:
+        await callback_query.message.edit_text(
+            content,
+            reply_markup=Buttons.stats_markup(),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception as e:
+        logger.warning(f"[stats] Failed to edit message: {e}")
+

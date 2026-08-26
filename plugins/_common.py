@@ -323,6 +323,106 @@ async def get_cached_chat_type(client, bot_id, chat_id, chat_type_cache):
             upsert=True,
         ))
     return chat_type
+async def _build_stats_content(client, bot_id, period: str = "24h"):
+    """Build stats content for a given period.
+
+    Args:
+        client: Pyrogram client
+        bot_id: Bot's user ID
+        period: One of "24h", "week", "overall"
+    """
+    now = datetime.datetime.now()
+    if period == "24h":
+        time_threshold = now - datetime.timedelta(hours=24)
+        period_label = "24h"
+    elif period == "week":
+        time_threshold = now - datetime.timedelta(weeks=1)
+        period_label = "Week"
+    else:  # overall
+        time_threshold = None
+        period_label = "Overall"
+
+    user_data = await collection.find_one({"bot_id": bot_id})
+    if not user_data:
+        return rich_note(Messages.NO_OPERATIONAL_DATA)
+
+    dates = user_data.get('dates', [])
+    if time_threshold:
+        play_count = len([d for d in dates if d >= time_threshold])
+    else:
+        play_count = len(dates)
+
+    users = user_data.get('users', [])
+    total_users = len(users)
+
+    top_groups_table = await _build_top_groups_table(client)
+
+    # For overall stats, we still limit detailed breakdown for large bots
+    if total_users > 500 and period == "overall":
+        return (
+            rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)
+            + rich_table(
+                ["Metric", "Count"],
+                [
+                    (f"{EmojiTag.USER} Stored Users", rich_code(total_users)),
+                    (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_count)),
+                    (f"{EmojiTag.INFO} Detailed stats", rich_code("Skipped to avoid timeout")),
+                ],
+            )
+            + top_groups_table
+            + rich_note(
+                f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code('0s')}\n"
+                f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
+                f"users to enumerate without timing out.\n"
+                f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
+            )
+        )
+
+    # Count chat types
+    u = g = sg = c = a_chat = 0
+    chat_type_cache = dict(user_data.get('chat_type_cache', {}))
+
+    for i, chat_id in enumerate(users):
+        try:
+            chat_type = await get_cached_chat_type(client, bot_id, chat_id, chat_type_cache)
+
+            if chat_type == enums.ChatType.PRIVATE:
+                u += 1
+            elif chat_type == enums.ChatType.GROUP:
+                g += 1
+            elif chat_type == enums.ChatType.SUPERGROUP:
+                sg += 1
+                try:
+                    user_status = await client.get_chat_member(chat_id, bot_id)
+                    if user_status.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
+                        a_chat += 1
+                except Exception as e:
+                    logger.info(f"Admin check error: {e}")
+            elif chat_type == enums.ChatType.CHANNEL:
+                c += 1
+        except Exception as e:
+            logger.info(f"Error processing chat {chat_id}: {e}")
+
+    return (
+        rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)
+        + rich_table(
+            ["Metric", "Count"],
+            [
+                (f"{EmojiTag.USER} Private Chats", rich_code(u)),
+                (f"{EmojiTag.USERS} Groups", rich_code(g)),
+                (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
+                (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
+                (f"{EmojiTag.SHIELD} Admin Privileges", rich_code(a_chat)),
+                (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_count)),
+            ],
+        )
+        + top_groups_table
+        + rich_note(
+            f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
+        )
+    )
+
+
 async def status(client, message):
     """Handles the /status command with song statistics"""
     async with RichDraft(
@@ -418,110 +518,10 @@ async def status(client, message):
             )
             return
 
-        start = datetime.datetime.now()
-        u = g = sg = c = a_chat = play_count = 0
+        # Default to 24h for initial load
         user_data = await collection.find_one({"bot_id": client.me.id})
-
         if user_data:
-            # Clean old song entries and get count
-            time_threshold = datetime.datetime.now() - datetime.timedelta(hours=24)
-            db_task(collection.update_one(
-                {"bot_id": client.me.id},
-                {"$pull": {"dates": {"$lt": time_threshold}}}
-            ))
-            play_count = len([d for d in user_data.get('dates', []) if d >= time_threshold])
-
-            users = user_data.get('users', [])
-            total_users = len(users)
-
-            top_groups_table = await _build_top_groups_table(client)
-
-            if total_users > 500:
-                await draft.finish(
-                    rich_heading(f"{EmojiTag.STATS} Bot Statistics", 1)
-                    + rich_table(
-                        ["Metric", "Count"],
-                        [
-                            (f"{EmojiTag.USER} Stored Users", rich_code(total_users)),
-                            (f"{EmojiTag.MUSIC_NOTE} Songs Played (24h)", rich_code(play_count)),
-                            (f"{EmojiTag.INFO} Detailed stats", rich_code("Skipped to avoid timeout")),
-                        ],
-                    )
-                    + top_groups_table
-                    + rich_note(
-                        f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code('0s')}\n"
-                        f"{EmojiTag.INFO} Per-chat breakdown skipped: too many stored "
-                        f"users to enumerate without timing out.\n"
-                        f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
-                    )
-                )
-                return
-
-            chat_type_cache = dict(user_data.get('chat_type_cache', {}))
-
-            # Process chats in batches for better performance
-            for i, chat_id in enumerate(users):
-                try:
-                    chat_type = await get_cached_chat_type(client, client.me.id, chat_id, chat_type_cache)
-
-                    if chat_type == enums.ChatType.PRIVATE:
-                        u += 1
-                    elif chat_type == enums.ChatType.GROUP:
-                        g += 1
-                    elif chat_type == enums.ChatType.SUPERGROUP:
-                        sg += 1
-                        try:
-                            user_status = await client.get_chat_member(chat_id, client.me.id)
-                            if user_status.status in (enums.ChatMemberStatus.OWNER, enums.ChatMemberStatus.ADMINISTRATOR):
-                                a_chat += 1
-                        except Exception as e:
-                            logger.info(f"Admin check error: {e}")
-                    elif chat_type == enums.ChatType.CHANNEL:
-                        c += 1
-
-                    # Update progress every 10 chats
-                    if i % 10 == 0 or i == total_users - 1:
-                        await draft.update(
-                            rich_heading(f"{EmojiTag.LOADING} Collecting Stats", 2)
-                            + rich_kv_table([
-                                (f"{EmojiTag.USER} Private", rich_code(u)),
-                                (f"{EmojiTag.USERS} Groups", rich_code(g)),
-                                (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
-                                (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
-                                (f"{EmojiTag.SHIELD} Admin Positions", rich_code(a_chat)),
-                                (f"{EmojiTag.MUSIC_NOTE} Songs Played (24h)", rich_code(play_count)),
-                            ])
-                            + rich_note(
-                                f"{EmojiTag.LOADING} <b>Progress:</b> "
-                                f"{rich_code(f'{min(i + 1, total_users)}/{total_users}')}"
-                            )
-                        )
-
-                except Exception as e:
-                    logger.info(f"Error processing chat {chat_id}: {e}")
-
-            end = datetime.datetime.now()
-            ms = (end - start).seconds
-
-            await draft.finish(
-                rich_heading(f"{EmojiTag.STATS} Bot Statistics", 1)
-                + rich_table(
-                    ["Metric", "Count"],
-                    [
-                        (f"{EmojiTag.USER} Private Chats", rich_code(u)),
-                        (f"{EmojiTag.USERS} Groups", rich_code(g)),
-                        (f"{EmojiTag.USERS} Super Groups", rich_code(sg)),
-                        (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
-                        (f"{EmojiTag.SHIELD} Admin Privileges", rich_code(a_chat)),
-                        (f"{EmojiTag.MUSIC_NOTE} Songs Played (24h)", rich_code(play_count)),
-                    ],
-                )
-                + top_groups_table
-                + rich_note(
-                    f"{EmojiTag.BOLT} <b>Processed in:</b> {rich_code(f'{ms}s')}\n"
-                    f"<b>{EmojiTag.MUSIC_NOTE} @{client.me.username} Performance Summary</b>"
-                )
-            )
-
+            content = await _build_stats_content(client, client.me.id, "24h")
+            await draft.finish(content + Buttons.stats_markup())
         else:
             await draft.finish(rich_note(Messages.NO_OPERATIONAL_DATA))
