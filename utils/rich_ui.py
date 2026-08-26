@@ -52,6 +52,7 @@ __all__ = [
     "rich_to_plain",
     "rich_caption",
     "rich_send",
+    "rich_send_blocks",
     "rich_reply",
     "rich_edit",
     "rich_answer",
@@ -74,7 +75,7 @@ _RICH_ONLY_TAGS = (
     "h1", "h2", "h3", "h4", "h5", "h6",
     "table", "thead", "tbody", "tr", "th", "td",
     "details", "summary", "mark", "sub", "sup",
-    "button",
+    "tg-button", "button",
 )
 _BLOCK_BREAK_RE = re.compile(
     r"</(?:h[1-6]|tr|details|summary|blockquote|table|pre)>", re.I
@@ -88,7 +89,7 @@ _EMOJI_TAG_RE = re.compile(
 )
 _ANY_TAG_RE = re.compile(r"<[^>]+>")
 _RICH_TAGS_RE = re.compile(
-    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|sub|sup|button)\b", re.I
+    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|sub|sup|tg-button|button)\b", re.I
 )
 
 
@@ -131,36 +132,12 @@ def rich_code(value) -> str:
     return f"<code>{rich_esc(value)}</code>"
 
 
-def rich_button(
-    text: str,
-    callback_data: str | None = None,
-    url: str | None = None,
-    copy_text: str | None = None,
-    style: str | None = None,
-    icon: str | None = None,
-    disabled: bool = False,
-) -> str:
-    """Native Rich Message inline button (<button>) for Telegram Bot API 10.3+.
+def rich_button(text: str, url: str) -> str:
+    """Native Rich Message inline button (<tg-button url="...">) for Telegram Bot API 10.3+.
 
     Embeddable directly inside tables (<td>), paragraphs, lists, and blockquotes.
     """
-    attrs = []
-    if callback_data:
-        attrs.append(f'data="{rich_esc(callback_data)}"')
-    elif url:
-        attrs.append(f'url="{rich_esc(url)}"')
-    elif copy_text:
-        attrs.append(f'copy_text="{rich_esc(copy_text)}"')
-    elif disabled:
-        attrs.append("disabled")
-
-    if style:
-        attrs.append(f'style="{rich_esc(style)}"')
-    if icon:
-        attrs.append(f'icon="{rich_esc(icon)}"')
-
-    attr_str = f" {' '.join(attrs)}" if attrs else ""
-    return f"<button{attr_str}>{text}</button>"
+    return f'<tg-button url="{rich_esc(url)}">{text}</tg-button>'
 
 
 def rich_table(headers, rows, border: int = 1) -> str:
@@ -263,11 +240,11 @@ def _plain_fallback(html_text: str) -> str:
     text = re.sub(r"<h[1-6]>(.*?)</h[1-6]>", r"\n<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<summary>(.*?)</summary>", r"<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<mark>(.*?)</mark>", r"<b>\1</b>", text, flags=re.I | re.S)
+    text = re.sub(r'<tg-button\s+url="([^"]*)">(.*?)</tg-button>', r'<a href="\1">\2</a>', text, flags=re.I | re.S)
     text = re.sub(r"<button[^>]*>(.*?)</button>", r"<b>\1</b>", text, flags=re.I | re.S)
     text = _CELL_BREAK_RE.sub("  ", text)
     text = re.sub(r"</tr>", "\n", text, flags=re.I)
     text = re.sub(r"</table>", "\n", text, flags=re.I)
-    text = re.sub(r"</blockquote>", "\n", text, flags=re.I)
     text = re.sub(
         r"</?(?:%s)(?:\s[^>]*)?>" % "|".join(_RICH_ONLY_TAGS),
         "",
@@ -350,6 +327,68 @@ async def rich_send(
     except Exception as e:
         logger.debug(f"[rich_send] plain send failed: {e}")
         return None
+
+
+async def rich_send_blocks(
+    client,
+    chat_id: int | str,
+    blocks: list,
+    *,
+    reply_markup=None,
+    reply_parameters=None,
+):
+    """Send a structured Rich Message using Bot API 10.3 Block entities (supporting RichTextButton callbacks)."""
+    try:
+        from config import BOT_TOKEN
+        token = getattr(client, "bot_token", None) or BOT_TOKEN
+        if token:
+            payload = {
+                "chat_id": chat_id,
+                "rich_message": {"blocks": blocks},
+            }
+            if reply_markup and hasattr(reply_markup, "inline_keyboard"):
+                payload["reply_markup"] = {
+                    "inline_keyboard": [
+                        [
+                            {
+                                k: v
+                                for k, v in {
+                                    "text": getattr(btn, "text", ""),
+                                    "callback_data": getattr(btn, "callback_data", None),
+                                    "url": getattr(btn, "url", None),
+                                }.items()
+                                if v is not None
+                            }
+                            for btn in row
+                        ]
+                        for row in reply_markup.inline_keyboard
+                    ]
+                }
+            if reply_parameters and hasattr(reply_parameters, "message_id"):
+                payload["reply_parameters"] = {"message_id": reply_parameters.message_id}
+
+            import httpx
+            from pyrogram import types, enums
+            async with httpx.AsyncClient(timeout=15.0) as http_client:
+                resp = await http_client.post(
+                    f"https://api.telegram.org/bot{token}/sendRichMessage",
+                    json=payload,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("ok"):
+                        msg_id = data["result"]["message_id"]
+                        peer_id = chat_id if isinstance(chat_id, int) else 0
+                        return types.Message(
+                            id=msg_id,
+                            chat=types.Chat(id=peer_id, type=enums.ChatType.SUPERGROUP, client=client),
+                            reply_markup=reply_markup,
+                            client=client,
+                        )
+    except Exception as e:
+        logger.debug(f"[rich_send_blocks] direct Bot API block send failed: {e}")
+
+    return None
 
 
 async def rich_reply(

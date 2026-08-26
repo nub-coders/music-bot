@@ -37,7 +37,7 @@ from utils.message import Messages
 from utils.button import Buttons
 from utils.emoji import keycaps
 from utils.rich_ui import (
-    rich_button, rich_caption, rich_code, rich_edit, rich_esc, rich_note, rich_send, rich_table,
+    rich_button, rich_caption, rich_code, rich_edit, rich_esc, rich_note, rich_send, rich_send_blocks, rich_table,
 )
 from thumbnails import get_thumb
 
@@ -1116,40 +1116,6 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             if vid:
                 state.add_to_history(chat_id, vid)
 
-        lines = []
-        for idx, item in enumerate(suggestions[:5], 1):
-            s_title = trim_title(item.get("title", "Unknown"))
-            s_artist = item.get("artist", "")
-            s_dur = item.get("duration", "")
-            vid = item.get("video_id")
-            if vid:
-                title_cell = rich_button(
-                    rich_esc(s_title),
-                    callback_data=f"sgplay_{vid}",
-                    style="primary",
-                )
-            else:
-                title_cell = f"<b>{rich_esc(s_title)}</b>"
-
-            lines.append((
-                keycaps(idx),
-                title_cell,
-                f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
-                rich_code(s_dur) if s_dur else "",
-            ))
-        items_text = rich_table(["#", "ᴛɪᴛʟᴇ", "ᴀʀᴛɪsᴛ", "ʟᴇɴɢᴛʜ"], lines)
-
-        countdown_sec = 5
-        display_seed = trim_title(seed_title)
-        autoplay_enabled = state.is_autoplay_enabled(chat_id)
-
-        if autoplay_enabled:
-            card_text = Messages.SUGGESTION_CARD.format(display_seed, items_text, countdown_sec)
-        else:
-            card_text = Messages.SUGGESTION_CARD_NO_AUTOPLAY.format(display_seed, items_text)
-
-        keyboard = Buttons.suggestion_markup(suggestions[:5], autoplay_enabled=autoplay_enabled)
-
         bot = clients.get("bot")
         if not bot:
             logger.warning("[Suggest] Bot client not available")
@@ -1157,12 +1123,97 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             await remove_active_chat(chat_id)
             return
 
-        sent_msg = await rich_send(
+        countdown_sec = 5
+        display_seed = trim_title(seed_title)
+        autoplay_enabled = state.is_autoplay_enabled(chat_id)
+
+        # Build Rich Message blocks with embedded callback buttons in each table row
+        table_rows = [
+            [
+                {"text": "#", "is_header": True, "align": "center"},
+                {"text": "ᴛɪᴛʟᴇ", "is_header": True, "align": "left"},
+                {"text": "ᴛɪᴍᴇ", "is_header": True, "align": "center"},
+                {"text": "ᴀᴄᴛɪᴏɴ", "is_header": True, "align": "center"},
+            ]
+        ]
+        plain_lines = []
+        for idx, item in enumerate(suggestions[:5], 1):
+            s_title = trim_title(item.get("title", "Unknown"))
+            s_artist = item.get("artist", "")
+            s_dur = item.get("duration", "")
+            vid = item.get("video_id")
+
+            row = [
+                {"text": keycaps(idx), "align": "center"},
+                {"text": {"type": "bold", "text": s_title}, "align": "left"},
+                {"text": {"type": "code", "text": s_dur} if s_dur else "", "align": "center"},
+            ]
+            if vid:
+                row.append({
+                    "text": {
+                        "type": "button",
+                        "button": {
+                            "text": "▶️ ᴘʟᴀʏ",
+                            "callback_data": f"sgplay_{vid}",
+                        },
+                    },
+                    "align": "center",
+                })
+            else:
+                row.append({"text": "", "align": "center"})
+            table_rows.append(row)
+
+            plain_lines.append((
+                keycaps(idx),
+                f"<b>{rich_esc(s_title)}</b>",
+                f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
+                rich_code(s_dur) if s_dur else "",
+            ))
+
+        blocks = [
+            {
+                "type": "heading",
+                "text": "🎶 Queue Ended • Autoplay Suggestions",
+                "size": 2,
+            },
+            {
+                "type": "paragraph",
+                "text": [
+                    {"type": "bold", "text": "‣ Seed Track: "},
+                    {"type": "code", "text": display_seed},
+                    "\n⏳ " if autoplay_enabled else "\n",
+                    {"type": "italic", "text": f"Autoplaying #1 in {countdown_sec}s…"} if autoplay_enabled else {"type": "italic", "text": "Choose a song to play next:"},
+                ],
+            },
+            {
+                "type": "table",
+                "is_compact": True,
+                "cells": table_rows,
+            },
+        ]
+
+        keyboard = Buttons.suggestion_markup(suggestions[:5], autoplay_enabled=autoplay_enabled)
+
+        sent_msg = await rich_send_blocks(
             bot,
             chat_id,
-            card_text,
+            blocks,
             reply_markup=keyboard,
         )
+
+        if not sent_msg:
+            # Fallback to HTML table
+            items_text = rich_table(["#", "ᴛɪᴛʟᴇ", "ᴀʀᴛɪsᴛ", "ʟᴇɴɢᴛʜ"], plain_lines)
+            if autoplay_enabled:
+                card_text = Messages.SUGGESTION_CARD.format(display_seed, items_text, countdown_sec)
+            else:
+                card_text = Messages.SUGGESTION_CARD_NO_AUTOPLAY.format(display_seed, items_text)
+            sent_msg = await rich_send(
+                bot,
+                chat_id,
+                card_text,
+                reply_markup=keyboard,
+            )
 
         if not autoplay_enabled:
             return
