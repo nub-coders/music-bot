@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 from utils.message import Messages
 from utils.button import Buttons
-from utils.emoji import Emoji, keycaps
+from utils.emoji import Emoji, EmojiTag, keycaps
 from utils.rich_ui import (
     rich_button, rich_caption, rich_code, rich_edit, rich_esc, rich_note, rich_send, rich_send_blocks, rich_table,
 )
@@ -1149,7 +1149,13 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 else keycaps(idx)
             )
 
-            title_cell = (
+            play_icon_entity = (
+                {"type": "custom_emoji", "custom_emoji_id": str(Emoji.PLAY), "alternative_text": "▶️"}
+                if getattr(Emoji, "PLAY", None)
+                else "▶️"
+            )
+
+            title_btn = (
                 {
                     "type": "button",
                     "button": {
@@ -1161,6 +1167,8 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 else {"type": "bold", "text": s_title}
             )
 
+            title_cell = [play_icon_entity, " ", title_btn]
+
             table_rows.append([
                 {"text": num_cell, "align": "center"},
                 {"text": title_cell, "align": "left"},
@@ -1168,9 +1176,10 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 {"text": {"type": "code", "text": s_dur} if s_dur else "", "align": "center"},
             ])
 
+            play_tag = EmojiTag.PLAY if getattr(EmojiTag, "PLAY", None) else "▶️"
             plain_lines.append((
                 keycaps(idx),
-                f"<b>{rich_esc(s_title)}</b>",
+                f"{play_tag} <b>{rich_esc(s_title)}</b>",
                 f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
                 rich_code(s_dur) if s_dur else "",
             ))

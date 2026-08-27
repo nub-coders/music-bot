@@ -52,9 +52,9 @@ class Messages:
     AUTOPLAY_STATUS = f"{EmojiTag.INFO} <b>ᴀᴜᴛᴏᴘʟᴀʏ sᴛᴀᴛᴜs:</b> {{}}"
     AUTOPLAY_USAGE = f"{EmojiTag.INFO} <b>ᴜsᴀɢᴇ:</b> <code>/autoplay [on|off]</code>\n‣ <b>ᴄᴜʀʀᴇɴᴛ sᴛᴀᴛᴜs:</b> {{}}"
     AUTOPLAY_ADMIN_ONLY_SWITCH = f"{EmojiTag.INFO} <b>ᴀᴜᴛᴏᴘʟᴀʏ sᴛᴀᴛᴜs:</b> {{}}\n<i>(Only admins & auth users can switch this setting)</i>"
-    AUTOPLAYING_TITLE = "▶️ <b>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ:</b> <b>{}</b>…"
-    STARTING_PLAYBACK = "▶️ Starting playback…"
-    PLAYING_SUGGESTION = "▶️ <b>ᴘʟᴀʏɪɴɢ sᴜɢɢᴇsᴛɪᴏɴ:</b> <code>{}</code>…"
+    AUTOPLAYING_TITLE = f"{EmojiTag.PLAY} <b>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ:</b> <b>{{}}</b>…"
+    STARTING_PLAYBACK = f"{EmojiTag.PLAY} Starting playback…"
+    PLAYING_SUGGESTION = f"{EmojiTag.PLAY} <b>ᴘʟᴀʏɪɴɢ sᴜɢɢᴇsᴛɪᴏɴ:</b> <code>{{}}</code>…"
 
     # ── Controls Notices & Actions ─────────────────────────────────────────
     SEEKED = f"{EmojiTag.SUCCESS} <b>sᴇᴇᴋᴇᴅ ᴛᴏ {{}}!</b>\n\n<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {{}}"
