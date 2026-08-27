@@ -183,25 +183,15 @@ class Buttons:
         bot_username: str,
         page: int = 1,
         total_pages: int = 1,
-        page_items_count: int = 0,
         has_tracks: bool = True,
     ) -> InlineKeyboardMarkup:
-        """Unified actions & paginated songs markup for a specific playlist."""
+        """Unified actions markup for a specific playlist."""
         rows = []
         if has_tracks:
             rows.append([
                 InlineKeyboardButton("▷ ᴘʟᴀʏ ᴀʟʟ", callback_data=f"pl_play_{playlist_id}", style=ButtonStyle.SUCCESS, icon_custom_emoji_id=Emoji.PLAY),
                 InlineKeyboardButton("🔀 sʜᴜꜰꜰʟᴇ", callback_data=f"pl_shuffle_{playlist_id}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.REFRESH),
             ])
-
-            # Delete buttons for the songs on current page
-            del_btns = [
-                InlineKeyboardButton(f"❌ {i}", callback_data=f"pl_delsong_{playlist_id}_{page}_{i-1}", style=ButtonStyle.DANGER)
-                for i in range(1, page_items_count + 1)
-            ]
-            if del_btns:
-                for chunk_start in range(0, len(del_btns), 5):
-                    rows.append(del_btns[chunk_start:chunk_start + 5])
 
             # Pagination controls
             if total_pages > 1:

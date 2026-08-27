@@ -299,22 +299,22 @@ async def playlist_open_callback(client: Client, callback_query: CallbackQuery):
         song_rows = []
         for idx_on_page, t in enumerate(page_tracks, 1):
             global_num = start_idx + idx_on_page
-            t_title = trim_title(str(t.get("title", "Unknown Track")), max_length=28)
+            t_title = trim_title(str(t.get("title", "Unknown Track")), max_length=24)
             t_dur = str(t.get("duration", "N/A"))
-            song_rows.append((keycaps(global_num), f"<b>{rich_esc(t_title)}</b>", rich_code(t_dur)))
+            del_cb = f"pl_delsong_{playlist_id}_{page}_{idx_on_page-1}"
+            del_btn = rich_button(f"{EmojiTag.CLOSE} ᴅᴇʟ", callback_data=del_cb, style="danger")
+            song_rows.append((keycaps(global_num), f"<b>{rich_esc(t_title)}</b>", rich_code(t_dur), del_btn))
 
         content = (
             rich_heading(f"📁 ᴘʟᴀʏʟɪsᴛ: {rich_esc(pl['name'])} ({len(tracks)}/50)", 1)
-            + rich_table(["#", "ᴛʀᴀᴄᴋ", "ᴛɪᴍᴇ"], song_rows)
-            + (f"<p><i>Page {page} of {total_pages}</i></p>\n\n" if total_pages > 1 else "\n")
-            + rich_note(f"{EmojiTag.INFO} <i>Tap <code>[ ❌ # ]</code> below to remove a track from this page:</i>")
+            + rich_table(["#", "ᴛʀᴀᴄᴋ", "ᴛɪᴍᴇ", "ᴀᴄᴛɪᴏɴ"], song_rows)
+            + (f"<p><i>Page {page} of {total_pages}</i></p>\n\n" if total_pages > 1 else "")
         )
         markup = Buttons.playlist_manage_markup(
             playlist_id,
             client.me.username,
             page=page,
             total_pages=total_pages,
-            page_items_count=len(page_tracks),
             has_tracks=True,
         )
     else:
@@ -327,7 +327,6 @@ async def playlist_open_callback(client: Client, callback_query: CallbackQuery):
             client.me.username,
             page=1,
             total_pages=1,
-            page_items_count=0,
             has_tracks=False,
         )
 

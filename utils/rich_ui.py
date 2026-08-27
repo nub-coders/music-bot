@@ -137,17 +137,18 @@ def rich_code(value) -> str:
     return f"<code>{rich_esc(value)}</code>"
 
 
-def rich_button(text: str, url: str = None, callback_data: str = None) -> str:
+def rich_button(text: str, url: str = None, callback_data: str = None, style: str = None) -> str:
     """Native Rich Message inline button (<tg-button>) for Telegram Bot API 10.3+.
 
     Embeddable directly inside tables (<td>), paragraphs, lists, and blockquotes.
-    Supports both URL buttons and Callback Data buttons.
+    Supports both URL buttons and Callback Data buttons, with optional styling (e.g. style="danger").
     """
+    style_attr = f' style="{rich_esc(style)}"' if style else ''
     if callback_data:
-        return f'<tg-button callback_data="{rich_esc(callback_data)}">{text}</tg-button>'
+        return f'<tg-button callback_data="{rich_esc(callback_data)}"{style_attr}>{text}</tg-button>'
     if url:
-        return f'<tg-button url="{rich_esc(url)}">{text}</tg-button>'
-    return f'<tg-button>{text}</tg-button>'
+        return f'<tg-button url="{rich_esc(url)}"{style_attr}>{text}</tg-button>'
+    return f'<tg-button{style_attr}>{text}</tg-button>'
 
 
 def rich_table(headers, rows, border: int = 1) -> str:
@@ -359,6 +360,7 @@ async def rich_send_blocks(
     *,
     reply_markup=None,
     reply_parameters=None,
+    receiver_user_id=None,
 ):
     """Send a structured Rich Message using Bot API 10.3 Block entities (supporting RichTextButton callbacks)."""
     try:
@@ -369,6 +371,8 @@ async def rich_send_blocks(
                 "chat_id": chat_id,
                 "rich_message": {"blocks": blocks},
             }
+            if receiver_user_id:
+                payload["ephemeral_message_parameters"] = {"receiver_user_id": receiver_user_id}
             if reply_markup and hasattr(reply_markup, "inline_keyboard"):
                 payload["reply_markup"] = {
                     "inline_keyboard": [
