@@ -6,10 +6,12 @@ class Messages:
     PLAY = (
         f"{EmojiTag.PLAY} <b>ɴᴏᴡ ᴘʟᴀʏɪɴɢ</b>\n"
         "{5}"
-        "<b>‣ ᴛɪᴛʟᴇ:</b> {1}\n"
-        "<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{2}</code>\n"
-        "<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {3}\n"
-        "<b>‣ ᴍᴏᴅᴇ:</b> <code>{0}</code>\n\n"
+        "<p>\n"
+        "<b>‣ ᴛɪᴛʟᴇ:</b> {1}<br/>\n"
+        "<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{2}</code><br/>\n"
+        "<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {3}<br/>\n"
+        "<b>‣ ᴍᴏᴅᴇ:</b> <code>{0}</code>\n"
+        "</p>\n\n"
         "{4}"
     )
     NOW_PLAYING = PLAY

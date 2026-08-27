@@ -973,8 +973,8 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         img_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg" if video_id else ""
         img_tag = f'<img src="{img_url}" />\n\n' if img_url else ""
 
-        pl_btn = rich_button("➕ ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", url=f"https://t.me/{bot_user}?start=newpl_{chat_id}") if bot_user else ""
-        pl_quote = rich_note(f'{EmojiTag.ADD} <b>ᴘʟᴀʏʟɪsᴛ:</b> {pl_btn}') if pl_btn else ""
+        pl_btn = rich_button("➕ ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", callback_data=f"{prefix}add_to_pl")
+        pl_quote = rich_note(f'{EmojiTag.ADD} <b>ᴘʟᴀʏʟɪsᴛ:</b> {pl_btn}')
 
         text = Messages.PLAY.format(
             mode_formatted.capitalize(),
