@@ -132,12 +132,17 @@ def rich_code(value) -> str:
     return f"<code>{rich_esc(value)}</code>"
 
 
-def rich_button(text: str, url: str) -> str:
-    """Native Rich Message inline button (<tg-button url="...">) for Telegram Bot API 10.3+.
+def rich_button(text: str, url: str = None, callback_data: str = None) -> str:
+    """Native Rich Message inline button (<tg-button>) for Telegram Bot API 10.3+.
 
     Embeddable directly inside tables (<td>), paragraphs, lists, and blockquotes.
+    Supports both URL buttons and Callback Data buttons.
     """
-    return f'<tg-button url="{rich_esc(url)}">{text}</tg-button>'
+    if callback_data:
+        return f'<tg-button callback_data="{rich_esc(callback_data)}">{text}</tg-button>'
+    if url:
+        return f'<tg-button url="{rich_esc(url)}">{text}</tg-button>'
+    return f'<tg-button>{text}</tg-button>'
 
 
 def rich_table(headers, rows, border: int = 1) -> str:
@@ -241,6 +246,8 @@ def _plain_fallback(html_text: str) -> str:
     text = re.sub(r"<summary>(.*?)</summary>", r"<b>\1</b>\n", text, flags=re.I | re.S)
     text = re.sub(r"<mark>(.*?)</mark>", r"<b>\1</b>", text, flags=re.I | re.S)
     text = re.sub(r'<tg-button\s+url="([^"]*)">(.*?)</tg-button>', r'<a href="\1">\2</a>', text, flags=re.I | re.S)
+    text = re.sub(r'<tg-button\s+callback_data="[^"]*">(.*?)</tg-button>', r'<b>\1</b>', text, flags=re.I | re.S)
+    text = re.sub(r'<tg-button>(.*?)</tg-button>', r'<b>\1</b>', text, flags=re.I | re.S)
     text = re.sub(r"<button[^>]*>(.*?)</button>", r"<b>\1</b>", text, flags=re.I | re.S)
     text = _CELL_BREAK_RE.sub("  ", text)
     text = re.sub(r"</tr>", "\n", text, flags=re.I)

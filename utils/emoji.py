@@ -75,7 +75,7 @@ class Emoji:
     REFRESH        = 5877410604225924969   # 🔄  TgAndroidIcons
     REPO           = 5877465816030515018   # 🔗  TgAndroidIcons
     NEXT           = 5877468380125990242   # ➡️  TgAndroidIcons
-    ADD            = 5877219383691972108   # ➕  TgAndroidIcons
+    ADD            = 5775937998948404844   # ➕  Custom Emoji
     PIN            = 5908961403917570106   # 📌  TgAndroidIcons
 
     # ── Message types ─────────────────────────────────────────────────────────

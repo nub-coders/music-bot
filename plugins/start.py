@@ -86,6 +86,46 @@ async def user_client_start_handler(client, message):
             client=client,
         )
 
+    # Handle deep link for creating a new playlist
+    if len(command_args) > 1 and command_args[1].startswith("newpl_"):
+        chat_id_str = command_args[1].split("newpl_", 1)[1]
+        try:
+            target_chat_id = int(chat_id_str)
+        except (ValueError, TypeError):
+            target_chat_id = 0
+
+        user_id = message.chat.id
+        playlists = await get_user_playlists(user_id)
+        if len(playlists) >= 5:
+            return await rich_reply(message, Messages.PLAYLIST_MAX_REACHED, client=client)
+
+        pending_track = None
+        if target_chat_id and target_chat_id in state.playing:
+            active_song = state.playing[target_chat_id]
+            pending_track = {
+                "title": active_song.get("title", "Unknown Track"),
+                "duration": active_song.get("duration", "N/A"),
+                "yt_link": active_song.get("yt_link", ""),
+                "video_id": extract_video_id(active_song.get("yt_link", "")) or active_song.get("video_id", ""),
+                "mode": active_song.get("mode", "audio"),
+            }
+
+        from plugins.playlist import pending_create_pl
+        pending_create_pl[user_id] = {"chat_id": target_chat_id, "track": pending_track}
+        return await rich_reply(message, Messages.PLAYLIST_ASK_NAME, client=client)
+
+    # Handle deep link for renaming a playlist
+    if len(command_args) > 1 and command_args[1].startswith("renamepl_"):
+        playlist_id = command_args[1].split("renamepl_", 1)[1]
+        user_id = message.chat.id
+        pl = await get_playlist(user_id, playlist_id)
+        if not pl:
+            return await rich_reply(message, Messages.PLAYLIST_NOT_FOUND, client=client)
+
+        from plugins.playlist import pending_rename_pl
+        pending_rename_pl[user_id] = {"playlist_id": playlist_id, "old_name": pl.get("name", "")}
+        return await rich_reply(message, Messages.PLAYLIST_ASK_RENAME.format(rich_esc(pl.get("name", ""))), client=client)
+
     # Process video ID if provided in start command
     if len(command_args) > 1 and '_' in command_args[1]:
         try:
@@ -280,6 +320,8 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         [
             (f"{EmojiTag.PLAY} <mark><code>/play</code></mark> <code>/vplay</code>", "ǫᴜᴇᴜᴇ ʏᴏᴜᴛᴜʙᴇ ᴀᴜᴅɪᴏ/ᴠɪᴅᴇᴏ"),
             (f"{EmojiTag.QUEUE_ICON} <mark><code>/queue</code></mark> <code>/cqueue</code>", "sʜᴏᴡ ᴄᴜʀʀᴇɴᴛ ǫᴜᴇᴜᴇ (ᴜᴘ ᴛᴏ 20)"),
+            (f"{EmojiTag.MUSIC_NOTE} <mark><code>/playlist</code></mark> <code>/myplaylist</code>", "ᴍᴀɴᴀɢᴇ ʏᴏᴜʀ sᴀᴠᴇᴅ ᴘʟᴀʏʟɪsᴛs"),
+            (f"{EmojiTag.PLAY} <mark><code>/playplaylist [name]</code></mark>", "ᴘʟᴀʏ ʏᴏᴜʀ ᴘʟᴀʏʟɪsᴛ ɪɴ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ"),
             (f"{EmojiTag.ROCKET} <mark><code>/playforce</code></mark> <code>/cplayforce</code>", "꩖ᴏʀᴄᴇ ᴘʟᴀʏ (sᴋɪᴘ ᴄᴜʀʀᴇɴᴛ)"),
             (f"{EmojiTag.GLOBE} <mark><code>/cplay</code></mark> <code>/cvplay</code>", "ᴘʟᴀʏ ɪɴ ʟɪɴᴋᴇᴅ ᴄʜᴀɴɴᴇʟ"),
             (f"{EmojiTag.MUSIC_NOTE} <mark><code>/np</code></mark> <code>/nowplaying</code>", "sʜᴏᴡ ᴄᴜʀʀᴇɴᴛʟʏ ᴘʟᴀʏɪɴɢ ᴛʀᴀᴄᴋ"),

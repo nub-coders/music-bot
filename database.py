@@ -4,6 +4,8 @@ Async MongoDB database handler for nub-music-bot
 import asyncio
 import inspect
 import logging
+import time
+import uuid
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from motor.core import AgnosticCollection, AgnosticDatabase, AgnosticClient
@@ -35,6 +37,7 @@ user_sessions = db["user_sessions"]
 collection = db["collection"]
 chat_assistants = db["chat_assistants"]
 chat_playback = db["chat_playback"]
+user_playlists = db["user_playlists"]
 
 
 async def ensure_indexes():
@@ -45,7 +48,8 @@ async def ensure_indexes():
         await collection.create_index("bot_id")
         await chat_assistants.create_index("chat_id", unique=True)
         await chat_playback.create_index("chat_id", unique=True)
-        logger.info("[db] Indexes ensured on user_sessions(bot_id, user_id), collection(bot_id), chat_assistants(chat_id), and chat_playback(chat_id)")
+        await user_playlists.create_index("user_id", unique=True)
+        logger.info("[db] Indexes ensured on user_sessions(bot_id, user_id), collection(bot_id), chat_assistants(chat_id), chat_playback(chat_id), and user_playlists(user_id)")
     except Exception as e:
         logger.warning(f"[db] Failed to ensure indexes: {e}")
 
@@ -168,4 +172,187 @@ async def pull_from_array(collection, filter, field, value, upsert=False):
 
 async def set_fields(collection, filter, fields, upsert=False):
     return await collection.update_one(filter, {"$set": fields}, upsert=upsert)
+
+
+# ── User Playlists ─────────────────────────────────────────────────────────────
+
+async def get_user_playlists(user_id: int) -> list[dict]:
+    """Retrieve all playlists for a user, returning a list of playlist dicts."""
+    try:
+        doc = await user_playlists.find_one({"user_id": int(user_id)})
+        return (doc.get("playlists") or []) if doc else []
+    except Exception as e:
+        logger.warning(f"[db] get_user_playlists error for {user_id}: {e}")
+        return []
+
+
+async def get_playlist(user_id: int, playlist_id: str) -> dict | None:
+    """Retrieve a specific playlist by its id for a user."""
+    try:
+        doc = await user_playlists.find_one({"user_id": int(user_id)})
+        if not doc:
+            return None
+        for pl in doc.get("playlists", []):
+            if pl.get("id") == str(playlist_id):
+                return pl
+    except Exception as e:
+        logger.warning(f"[db] get_playlist error for user {user_id}, pl {playlist_id}: {e}")
+    return None
+
+
+async def get_playlist_by_name(user_id: int, name: str) -> dict | None:
+    """Retrieve a specific playlist by its name (case-insensitive) for a user."""
+    try:
+        doc = await user_playlists.find_one({"user_id": int(user_id)})
+        if not doc:
+            return None
+        target = str(name).strip().lower()
+        for pl in doc.get("playlists", []):
+            if str(pl.get("name", "")).strip().lower() == target:
+                return pl
+    except Exception as e:
+        logger.warning(f"[db] get_playlist_by_name error for user {user_id}, name {name}: {e}")
+    return None
+
+
+async def create_playlist(user_id: int, name: str, max_playlists: int = 5) -> tuple[bool, str, dict | None]:
+    """Create a new playlist for a user. Returns (success, message, playlist_dict)."""
+    try:
+        clean_name = str(name).strip()
+        uid = int(user_id)
+        doc = await user_playlists.find_one({"user_id": uid})
+        existing = (doc.get("playlists") or []) if doc else []
+        if len(existing) >= max_playlists:
+            return False, "MAX_PLAYLISTS", None
+
+        # Check if name already exists
+        if any(pl.get("name", "").lower() == clean_name.lower() for pl in existing):
+            return False, "NAME_EXISTS", None
+
+        new_pl = {
+            "id": uuid.uuid4().hex[:8],
+            "name": clean_name,
+            "tracks": [],
+            "created_at": int(time.time()),
+        }
+        await user_playlists.update_one(
+            {"user_id": uid},
+            {"$push": {"playlists": new_pl}},
+            upsert=True,
+        )
+        return True, "CREATED", new_pl
+    except Exception as e:
+        logger.warning(f"[db] create_playlist error for user {user_id}: {e}")
+        return False, str(e), None
+
+
+async def rename_playlist(user_id: int, playlist_id: str, new_name: str) -> tuple[bool, str]:
+    """Rename a playlist for a user. Returns (success, message)."""
+    try:
+        clean_name = str(new_name).strip()
+        uid = int(user_id)
+        doc = await user_playlists.find_one({"user_id": uid})
+        if not doc:
+            return False, "NOT_FOUND"
+        existing = doc.get("playlists", [])
+        if any(pl.get("name", "").lower() == clean_name.lower() and pl.get("id") != str(playlist_id) for pl in existing):
+            return False, "NAME_EXISTS"
+
+        res = await user_playlists.update_one(
+            {"user_id": uid, "playlists.id": str(playlist_id)},
+            {"$set": {"playlists.$.name": clean_name}},
+        )
+        return (res.modified_count > 0), "RENAMED" if res.modified_count > 0 else "NOT_FOUND"
+    except Exception as e:
+        logger.warning(f"[db] rename_playlist error for user {user_id}, pl {playlist_id}: {e}")
+        return False, str(e)
+
+
+async def delete_playlist(user_id: int, playlist_id: str) -> bool:
+    """Delete an entire playlist for a user."""
+    try:
+        uid = int(user_id)
+        res = await user_playlists.update_one(
+            {"user_id": uid},
+            {"$pull": {"playlists": {"id": str(playlist_id)}}},
+        )
+        return res.modified_count > 0
+    except Exception as e:
+        logger.warning(f"[db] delete_playlist error for user {user_id}, pl {playlist_id}: {e}")
+        return False
+
+
+async def add_track_to_playlist(user_id: int, playlist_id: str, track: dict, max_tracks: int = 50) -> tuple[bool, str]:
+    """Add a track dict to a user's playlist. Returns (success, message_code)."""
+    try:
+        uid = int(user_id)
+        doc = await user_playlists.find_one({"user_id": uid})
+        if not doc:
+            return False, "NOT_FOUND"
+        target_pl = None
+        for pl in doc.get("playlists", []):
+            if pl.get("id") == str(playlist_id):
+                target_pl = pl
+                break
+        if not target_pl:
+            return False, "NOT_FOUND"
+
+        tracks = target_pl.get("tracks", [])
+        if len(tracks) >= max_tracks:
+            return False, "MAX_TRACKS"
+
+        # Duplicate check by video_id or yt_link or title
+        track_vid = track.get("video_id")
+        track_link = track.get("yt_link")
+        track_title = track.get("title")
+
+        for existing_t in tracks:
+            if track_vid and existing_t.get("video_id") and existing_t.get("video_id") == track_vid:
+                return False, "ALREADY_EXISTS"
+            if track_link and existing_t.get("yt_link") and existing_t.get("yt_link") == track_link:
+                return False, "ALREADY_EXISTS"
+            if track_title and existing_t.get("title") and existing_t.get("title").lower() == track_title.lower():
+                return False, "ALREADY_EXISTS"
+
+        track_entry = {
+            "id": uuid.uuid4().hex[:8],
+            "title": track.get("title", "Unknown Track"),
+            "duration": track.get("duration", "N/A"),
+            "yt_link": track.get("yt_link", ""),
+            "video_id": track.get("video_id", ""),
+            "mode": track.get("mode", "audio"),
+        }
+
+        res = await user_playlists.update_one(
+            {"user_id": uid, "playlists.id": str(playlist_id)},
+            {"$push": {"playlists.$.tracks": track_entry}},
+        )
+        return (res.modified_count > 0), "ADDED" if res.modified_count > 0 else "ERROR"
+    except Exception as e:
+        logger.warning(f"[db] add_track_to_playlist error: {e}")
+        return False, str(e)
+
+
+async def remove_track_from_playlist(user_id: int, playlist_id: str, track_index: int) -> bool:
+    """Remove a track by 0-based index from a user's playlist."""
+    try:
+        uid = int(user_id)
+        doc = await user_playlists.find_one({"user_id": uid})
+        if not doc:
+            return False
+        for pl in doc.get("playlists", []):
+            if pl.get("id") == str(playlist_id):
+                tracks = pl.get("tracks", [])
+                if 0 <= track_index < len(tracks):
+                    tracks.pop(track_index)
+                    await user_playlists.update_one(
+                        {"user_id": uid, "playlists.id": str(playlist_id)},
+                        {"$set": {"playlists.$.tracks": tracks}},
+                    )
+                    return True
+        return False
+    except Exception as e:
+        logger.warning(f"[db] remove_track_from_playlist error: {e}")
+        return False
+
 

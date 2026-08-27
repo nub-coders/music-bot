@@ -8,7 +8,8 @@ class Messages:
         "<b>‣ ᴛɪᴛʟᴇ:</b> {1}\n"
         "<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{2}</code>\n"
         "<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {3}\n"
-        "<b>‣ ᴍᴏᴅᴇ:</b> <code>{0}</code>"
+        "<b>‣ ᴍᴏᴅᴇ:</b> <code>{0}</code>\n\n"
+        "{4}"
     )
     NOW_PLAYING = PLAY
 
@@ -38,12 +39,14 @@ class Messages:
     SUGGESTION_CARD = (
         f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
         "⏳ <i>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ #1 ɪɴ <b>{1}</b>s…</i>\n\n"
-        "{0}"
+        "{0}\n\n"
+        f"{EmojiTag.INFO} <i>ᴛᴀᴘ ᴀɴʏ sᴏɴɢ ᴛɪᴛʟᴇ ᴛᴏ ᴘʟᴀʏ ɪᴍᴍᴇᴅɪᴀᴛᴇʟʏ.</i>"
     )
     SUGGESTION_CARD_NO_AUTOPLAY = (
         f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
         "<i>ᴄʜᴏᴏsᴇ ᴀ sᴏɴɢ ᴛᴏ ᴘʟᴀʏ ɴᴇxᴛ:</i>\n\n"
-        "{0}"
+        "{0}\n\n"
+        f"{EmojiTag.INFO} <i>ᴛᴀᴘ ᴀɴʏ sᴏɴɢ ᴛɪᴛʟᴇ ᴛᴏ ᴘʟᴀʏ ɪᴍᴍᴇᴅɪᴀᴛᴇʟʏ.</i>"
     )
     AUTOPLAY_ENABLED = f"{EmojiTag.SUCCESS} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴇɴᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
     AUTOPLAY_DISABLED = f"{EmojiTag.WARNING} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴅɪsᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
@@ -264,4 +267,53 @@ class Messages:
         f"{EmojiTag.GLOBE} ʏᴏᴜᴛᴜʙᴇ, sᴘᴏᴛɪꜰʏ &amp; ᴍᴏʀᴇ\n\n"
         f"<i>ᴜsᴇ <code>/play [song]</code> ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</i>"
     )
+
+    # ── Playlist Messages ───────────────────────────────────────────────────
+    PLAYLIST_SELECT_PROMPT = (
+        f"{EmojiTag.MUSIC_NOTES} <b>ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ</b>\n\n"
+        "<b>‣ ᴛʀᴀᴄᴋ:</b> <b>{0}</b>\n\n"
+        "<i>ᴄʜᴏᴏsᴇ ᴀ ᴘʟᴀʏʟɪsᴛ ʙᴇʟᴏᴡ ᴛᴏ sᴀᴠᴇ ᴛʜɪs sᴏɴɢ:</i>"
+    )
+    PLAYLIST_NO_PLAYLISTS_PROMPT = (
+        f"{EmojiTag.MUSIC_NOTES} <b>ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ</b>\n\n"
+        "<b>‣ ᴛʀᴀᴄᴋ:</b> <b>{0}</b>\n\n"
+        f"{EmojiTag.INFO} <i>ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴀɴʏ ᴘʟᴀʏʟɪsᴛs ʏᴇᴛ. ᴛᴀᴘ ʙᴇʟᴏᴡ ᴛᴏ ᴄʀᴇᴀᴛᴇ ᴏɴᴇ:</i>"
+    )
+    PLAYLIST_ADDED_SUCCESS = "✅ Added '{}' to '{}'!"
+    PLAYLIST_TRACK_EXISTS = "⚠️ This song is already in '{}'!"
+    PLAYLIST_MAX_TRACKS = "❌ '{}' has reached the limit of 50 tracks!"
+    PLAYLIST_MAX_REACHED = f"{EmojiTag.WARNING} <b>ʏᴏᴜ ʜᴀᴠᴇ ʀᴇᴀᴄʜᴇᴅ ᴛʜᴇ ᴍᴀxɪᴍᴜᴍ ᴏꜰ 5 ᴘʟᴀʏʟɪsᴛs.</b>\n<i>ᴘʟᴇᴀsᴇ ᴅᴇʟᴇᴛᴇ ᴀ ᴘʟᴀʏʟɪsᴛ ʙᴇꜰᴏʀᴇ ᴄʀᴇᴀᴛɪɴɢ ᴀ ɴᴇᴡ ᴏɴᴇ.</i>"
+    PLAYLIST_ASK_NAME = (
+        f"{EmojiTag.ADD} <b>ᴄʀᴇᴀᴛᴇ ᴀ ɴᴇᴡ ᴘʟᴀʏʟɪsᴛ</b>\n\n"
+        f"{EmojiTag.INFO} <b>ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴀ ɴᴀᴍᴇ ꜰᴏʀ ʏᴏᴜʀ ɴᴇᴡ ᴘʟᴀʏʟɪsᴛ:</b>\n\n"
+        "<b>‣ ʀᴜʟᴇs:</b>\n"
+        "• <i>ᴍᴀxɪᴍᴜᴍ 10 ᴄʜᴀʀᴀᴄᴛᴇʀs</i>\n"
+        "• <i>ʟᴇᴛᴛᴇʀs &amp; ɴᴜᴍʙᴇʀs ᴏɴʟʏ (<code>a-z, A-Z, 0-9</code>)</i>\n"
+        "• <i>ɴᴏ sᴘᴀᴄᴇs, sʏᴍʙᴏʟs, ᴏʀ sᴘᴇᴄɪᴀʟ ᴄʜᴀʀᴀᴄᴛᴇʀs</i>"
+    )
+    PLAYLIST_ASK_RENAME = (
+        f"{EmojiTag.TOOLS} <b>ʀᴇɴᴀᴍᴇ ᴘʟᴀʏʟɪsᴛ: <code>{0}</code></b>\n\n"
+        f"{EmojiTag.INFO} <b>ᴘʟᴇᴀsᴇ sᴇɴᴅ ᴛʜᴇ ɴᴇᴡ ɴᴀᴍᴇ:</b>\n\n"
+        "<b>‣ ʀᴜʟᴇs:</b>\n"
+        "• <i>ᴍᴀxɪᴍᴜᴍ 10 ᴄʜᴀʀᴀᴄᴛᴇʀs</i>\n"
+        "• <i>ʟᴇᴛᴛᴇʀs &amp; ɴᴜᴍʙᴇʀs ᴏɴʟʏ (<code>a-z, A-Z, 0-9</code>)</i>\n"
+        "• <i>ɴᴏ sᴘᴀᴄᴇs, sʏᴍʙᴏʟs, ᴏʀ sᴘᴇᴄɪᴀʟ ᴄʜᴀʀᴀᴄᴛᴇʀs</i>"
+    )
+    PLAYLIST_INVALID_NAME = (
+        f"{EmojiTag.ERROR} <b>ɪɴᴠᴀʟɪᴅ ᴘʟᴀʏʟɪsᴛ ɴᴀᴍᴇ!</b>\n\n"
+        "<b>‣ ᴍᴜsᴛ ʙᴇ 1–10 ᴀʟᴘʜᴀɴᴜᴍᴇʀɪᴄ ᴄʜᴀʀᴀᴄᴛᴇʀs ᴏɴʟʏ (ɴᴏ sᴘᴀᴄᴇs ᴏʀ sʏᴍʙᴏʟs).</b>\n"
+        "<i>ᴘʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ:</i>"
+    )
+    PLAYLIST_NAME_EXISTS = f"{EmojiTag.WARNING} <b>ᴀ ᴘʟᴀʏʟɪsᴛ ᴡɪᴛʜ ᴛʜɪs ɴᴀᴍᴇ ᴀʟʀᴇᴀᴅʏ ᴇxɪsᴛs!</b>\n<i>ᴘʟᴇᴀsᴇ ᴄʜᴏᴏsᴇ ᴀ ᴅɪꜰꜰᴇʀᴇɴᴛ ɴᴀᴍᴇ:</i>"
+    PLAYLIST_CREATED = f"{EmojiTag.SUCCESS} <b>ᴘʟᴀʏʟɪsᴛ <code>{{0}}</code> ᴄʀᴇᴀᴛᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ!</b>"
+    PLAYLIST_CREATED_AND_ADDED = f"{EmojiTag.SUCCESS} <b>ᴘʟᴀʏʟɪsᴛ <code>{{0}}</code> ᴄʀᴇᴀᴛᴇᴅ ᴀɴᴅ <code>{{1}}</code> ᴀᴅᴅᴇᴅ!</b>"
+    PLAYLIST_RENAMED = f"{EmojiTag.SUCCESS} <b>ᴘʟᴀʏʟɪsᴛ ʀᴇɴᴀᴍᴇᴅ ᴛᴏ <code>{{0}}</code>!</b>"
+    PLAYLIST_DELETED = f"{EmojiTag.SUCCESS} <b>ᴘʟᴀʏʟɪsᴛ <code>{{0}}</code> ᴅᴇʟᴇᴛᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ!</b>"
+    PLAYLIST_SONG_DELETED = f"{EmojiTag.SUCCESS} <b>ᴛʀᴀᴄᴋ ʀᴇᴍᴏᴠᴇᴅ ꜰʀᴏᴍ ᴘʟᴀʏʟɪsᴛ.</b>"
+    PLAYLIST_EMPTY = f"{EmojiTag.QUEUE_ICON} <b>ʏᴏᴜ ᴅᴏ ɴᴏᴛ ʜᴀᴠᴇ ᴀɴʏ ᴘʟᴀʏʟɪsᴛs ʏᴇᴛ.</b>\n<i>ᴛᴀᴘ ʙᴇʟᴏᴡ ᴛᴏ ᴄʀᴇᴀᴛᴇ ʏᴏᴜʀ ꜰɪʀsᴛ ᴘʟᴀʏʟɪsᴛ!</i>"
+    PLAYLIST_TRACKS_EMPTY = f"{EmojiTag.QUEUE_ICON} <b>ᴛʜɪs ᴘʟᴀʏʟɪsᴛ ʜᴀs ɴᴏ sᴏɴɢs ʏᴇᴛ.</b>\n<i>ᴛᴀᴘ '➕ ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ' ᴏɴ ᴀɴʏ ɴᴏᴡ ᴘʟᴀʏɪɴɢ ᴄᴀʀᴅ ᴛᴏ ᴀᴅᴅ sᴏɴɢs!</i>"
+    PLAYLIST_NOT_FOUND = f"{EmojiTag.ERROR} <b>ᴘʟᴀʏʟɪsᴛ ɴᴏᴛ ꜰᴏᴜɴᴅ.</b>"
+    PLAYLIST_NO_ACTIVE_SONG = f"{EmojiTag.WARNING} <b>ɴᴏ sᴏɴɢ ɪs ᴄᴜʀʀᴇɴᴛʟʏ ᴘʟᴀʏɪɴɢ ɪɴ ᴛʜɪs ᴄʜᴀᴛ.</b>"
+    PLAYLIST_PLAYING = f"{EmojiTag.PLAY} <b>ǫᴜᴇᴜᴇᴅ {{0}} ᴛʀᴀᴄᴋs ꜰʀᴏᴍ ᴘʟᴀʏʟɪsᴛ '{{1}}' ᴛᴏ ᴠᴏɪᴄᴇ ᴄʜᴀᴛ!</b>"
+
 

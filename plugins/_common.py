@@ -54,7 +54,12 @@ from utils.button import Buttons
 from utils.emoji import Emoji, EmojiTag, keycaps, custom_digits
 from utils.premium_emoji import position_tag, strip_custom_emoji_text
 from utils.rich_ui import *  # noqa: F403  (rich_send/rich_reply/rich_edit/rich_table/... )
-from database import push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task, remove_chat_assistant as db_remove_chat_assistant, get_top_chats, get_chat_playback
+from database import (
+    push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task,
+    remove_chat_assistant as db_remove_chat_assistant, get_top_chats, get_chat_playback,
+    get_user_playlists, get_playlist, get_playlist_by_name, create_playlist, rename_playlist,
+    delete_playlist, add_track_to_playlist, remove_track_from_playlist,
+)
 from thumbnails import get_thumb
 from PIL import Image
 import imageio
@@ -428,7 +433,6 @@ async def _build_stats_cards(client, bot_id):
 
     dates = user_data.get('dates', [])
     users = user_data.get('users', [])
-    total_users = len(users)
 
     play_counts = {}
     for period in _STATS_PERIODS:
@@ -439,7 +443,7 @@ async def _build_stats_cards(client, bot_id):
 
     top_groups_table = await _build_top_groups_table(client)
 
-    u = g = sg = c = a_chat = 0
+    u = g = sg = c = 0
     chat_type_cache = dict(user_data.get('chat_type_cache', {}))
     uncached_lookups = 0
     max_uncached_lookups = 50
