@@ -59,19 +59,106 @@ async def add_to_playlist_callback(client: Client, callback_query: CallbackQuery
     track_title = trim_title(str(current_song.get("title", "Unknown Track")))
     playlists = await get_user_playlists(user.id)
 
-    markup = Buttons.playlist_select_markup(playlists, client.me.username, chat_id)
+    bot_username = getattr(client.me, "username", "")
+
     if playlists:
-        text = Messages.PLAYLIST_SELECT_PROMPT.format(rich_esc(track_title))
+        lines = []
+        for idx, pl in enumerate(playlists, 1):
+            pl_name = pl.get("name", "Playlist")
+            if len(pl_name) > 15:
+                pl_name = pl_name[:14] + "…"
+            count = len(pl.get("tracks", []))
+            add_btn = f'<tg-button url="https://t.me/{bot_username}?start=pladd_{pl.get("id")}_{chat_id}">➕ ᴀᴅᴅ</tg-button>' if bot_username else ""
+            lines.append((
+                keycaps(idx),
+                f"<b>{rich_esc(pl_name)}</b>",
+                rich_code(f"{count}/50"),
+                add_btn
+            ))
+        table_html = rich_table(["#", "ᴘʟᴀʏʟɪsᴛ", "ᴛʀᴀᴄᴋs", "ᴀᴄᴛɪᴏɴ"], lines)
+        text = (
+            rich_heading("📁 ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", 2)
+            + f"<p><b>‣ ᴛʀᴀᴄᴋ:</b> <code>{rich_esc(track_title)}</code><br/>"
+            + "<i>Tap any playlist button below to save this song:</i></p>\n\n"
+            + table_html
+        )
     else:
         text = Messages.PLAYLIST_NO_PLAYLISTS_PROMPT.format(rich_esc(track_title))
 
-    await rich_reply(
-        callback_query,
-        text,
-        reply_markup=markup,
-        ephemeral=True,
-        client=client,
-    )
+    markup = Buttons.playlist_select_markup(playlists, bot_username, chat_id)
+
+    if playlists:
+        table_cells = [
+            [
+                {"text": "#", "is_header": True, "align": "center"},
+                {"text": "ᴘʟᴀʏʟɪsᴛ", "is_header": True, "align": "left"},
+                {"text": "ᴛʀᴀᴄᴋs", "is_header": True, "align": "center"},
+                {"text": "ᴀᴄᴛɪᴏɴ", "is_header": True, "align": "center"},
+            ]
+        ]
+        for idx, pl in enumerate(playlists, 1):
+            pl_name = pl.get("name", "Playlist")
+            if len(pl_name) > 15:
+                pl_name = pl_name[:14] + "…"
+            count = len(pl.get("tracks", []))
+            table_cells.append([
+                {"text": keycaps(idx), "align": "center"},
+                {"text": {"type": "bold", "text": pl_name}, "align": "left"},
+                {"text": {"type": "code", "text": f"{count}/50"}, "align": "center"},
+                {
+                    "text": {
+                        "type": "button",
+                        "button": {
+                            "text": "➕ ᴀᴅᴅ",
+                            "callback_data": f"pl_add_{pl.get('id')}_{chat_id}",
+                        },
+                    },
+                    "align": "center",
+                },
+            ])
+
+        blocks = [
+            {
+                "type": "heading",
+                "text": "📁 ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ",
+                "size": 2,
+            },
+            {
+                "type": "paragraph",
+                "text": [
+                    {"type": "bold", "text": "‣ ᴛʀᴀᴄᴋ: "},
+                    {"type": "code", "text": track_title},
+                    "\n",
+                    {"type": "italic", "text": "Tap any playlist button below to save this song:"},
+                ],
+            },
+            {
+                "type": "table",
+                "is_compact": True,
+                "cells": table_cells,
+            },
+        ]
+
+        from pyrogram.types import ReplyParameters
+        inner_msg = getattr(callback_query, "message", None)
+        reply_params = ReplyParameters(message_id=inner_msg.id) if inner_msg else None
+        
+        await rich_send_blocks(
+            client,
+            chat_id,
+            blocks,
+            reply_markup=markup,
+            reply_parameters=reply_params,
+            receiver_user_id=user.id,
+        )
+    else:
+        await rich_reply(
+            callback_query,
+            text,
+            reply_markup=markup,
+            ephemeral=True,
+            client=client,
+        )
     await callback_query.answer()
 
 
@@ -175,16 +262,20 @@ async def playlist_hub_callback(client: Client, callback_query: CallbackQuery):
     await callback_query.answer()
 
 
-# ─── Screen B: Playlist Details & Management ──────────────────────────────────
+# ─── Screen B: Unified Playlist Details & Songs Viewer with Pagination ────────
 
-@Client.on_callback_query(filters.regex(r"^pl_open_([a-zA-Z0-9]+)$"))
+PAGE_SIZE = 6
+
+
+@Client.on_callback_query(filters.regex(r"^(?:pl_open|pl_songs)_([a-zA-Z0-9]+)(?:_(\d+))?$"))
 async def playlist_open_callback(client: Client, callback_query: CallbackQuery):
-    """Opens Screen B: Specific playlist details and actions."""
-    match = re.match(r"^pl_open_([a-zA-Z0-9]+)$", callback_query.data)
+    """Opens specific playlist with songs table and pagination directly."""
+    match = re.match(r"^(?:pl_open|pl_songs)_([a-zA-Z0-9]+)(?:_(\d+))?$", callback_query.data)
     if not match:
         return
 
     playlist_id = match.group(1)
+    page = int(match.group(2)) if match.group(2) else 1
     user_id = callback_query.from_user.id
     pl = await get_playlist(user_id, playlist_id)
 
@@ -197,76 +288,56 @@ async def playlist_open_callback(client: Client, callback_query: CallbackQuery):
         return await rich_edit(callback_query, text, reply_markup=markup, client=client)
 
     tracks = pl.get("tracks", [])
-    created_str = datetime.datetime.fromtimestamp(pl.get("created_at", time.time())).strftime("%Y-%m-%d %H:%M")
     has_tracks = bool(len(tracks) > 0)
 
-    content = (
-        rich_heading(f"📁 ᴘʟᴀʏʟɪsᴛ: {rich_esc(pl['name'])}", 1)
-        + rich_kv_table([
-            ("🏷 ɴᴀᴍᴇ", rich_code(pl['name'])),
-            ("🎵 ᴛʀᴀᴄᴋs", rich_code(f"{len(tracks)} / 50")),
-            ("📅 ᴄʀᴇᴀᴛᴇᴅ", rich_code(created_str)),
-        ])
-        + (rich_note(f"{EmojiTag.INFO} <i>Choose an action below:</i>") if has_tracks else rich_note(Messages.PLAYLIST_TRACKS_EMPTY))
-    )
+    if has_tracks:
+        total_pages = max(1, (len(tracks) + PAGE_SIZE - 1) // PAGE_SIZE)
+        page = max(1, min(page, total_pages))
+        start_idx = (page - 1) * PAGE_SIZE
+        page_tracks = tracks[start_idx:start_idx + PAGE_SIZE]
 
-    markup = Buttons.playlist_manage_markup(playlist_id, client.me.username, has_tracks=has_tracks)
-    await rich_edit(callback_query, content, reply_markup=markup, client=client)
-    await callback_query.answer()
+        song_rows = []
+        for idx_on_page, t in enumerate(page_tracks, 1):
+            global_num = start_idx + idx_on_page
+            t_title = trim_title(str(t.get("title", "Unknown Track")), max_length=28)
+            t_dur = str(t.get("duration", "N/A"))
+            song_rows.append((keycaps(global_num), f"<b>{rich_esc(t_title)}</b>", rich_code(t_dur)))
 
+        content = (
+            rich_heading(f"📁 ᴘʟᴀʏʟɪsᴛ: {rich_esc(pl['name'])} ({len(tracks)}/50)", 1)
+            + rich_table(["#", "ᴛʀᴀᴄᴋ", "ᴛɪᴍᴇ"], song_rows)
+            + (f"<p><i>Page {page} of {total_pages}</i></p>\n\n" if total_pages > 1 else "\n")
+            + rich_note(f"{EmojiTag.INFO} <i>Tap <code>[ ❌ # ]</code> below to remove a track from this page:</i>")
+        )
+        markup = Buttons.playlist_manage_markup(
+            playlist_id,
+            client.me.username,
+            page=page,
+            total_pages=total_pages,
+            page_items_count=len(page_tracks),
+            has_tracks=True,
+        )
+    else:
+        content = (
+            rich_heading(f"📁 ᴘʟᴀʏʟɪsᴛ: {rich_esc(pl['name'])} (0/50)", 1)
+            + rich_note(Messages.PLAYLIST_TRACKS_EMPTY)
+        )
+        markup = Buttons.playlist_manage_markup(
+            playlist_id,
+            client.me.username,
+            page=1,
+            total_pages=1,
+            page_items_count=0,
+            has_tracks=False,
+        )
 
-# ─── Screen C: Paginated Songs Viewer with Delete Buttons ─────────────────────
-
-PAGE_SIZE = 10
-
-
-@Client.on_callback_query(filters.regex(r"^pl_songs_([a-zA-Z0-9]+)_(\d+)$"))
-async def playlist_songs_callback(client: Client, callback_query: CallbackQuery):
-    """Opens Screen C: Paginated song list with per-track delete buttons."""
-    match = re.match(r"^pl_songs_([a-zA-Z0-9]+)_(\d+)$", callback_query.data)
-    if not match:
-        return
-
-    playlist_id, page = match.group(1), int(match.group(2))
-    user_id = callback_query.from_user.id
-    pl = await get_playlist(user_id, playlist_id)
-
-    if not pl:
-        await callback_query.answer(clean_alert(Messages.PLAYLIST_NOT_FOUND), show_alert=True)
-        return
-
-    tracks = pl.get("tracks", [])
-    if not tracks:
-        # Redirect back to Screen B if all songs were deleted
-        return await playlist_open_callback(client, callback_query)
-
-    total_pages = max(1, (len(tracks) + PAGE_SIZE - 1) // PAGE_SIZE)
-    page = max(1, min(page, total_pages))
-
-    start_idx = (page - 1) * PAGE_SIZE
-    page_tracks = tracks[start_idx:start_idx + PAGE_SIZE]
-
-    song_rows = []
-    for idx_on_page, t in enumerate(page_tracks, 1):
-        global_num = start_idx + idx_on_page
-        t_title = trim_title(str(t.get("title", "Unknown Track")), max_length=35)
-        t_dur = str(t.get("duration", "N/A"))
-        song_rows.append((custom_digits(global_num), f"<b>{rich_esc(t_title)}</b>", rich_code(t_dur)))
-
-    content = (
-        rich_heading(f"📋 {rich_esc(pl['name'])} — ᴛʀᴀᴄᴋs (ᴘᴀɢᴇ {page}/{total_pages})", 1)
-        + rich_table(["#", "ᴛʀᴀᴄᴋ", "ᴅᴜʀᴀᴛɪᴏɴ"], song_rows)
-        + rich_note(f"{EmojiTag.INFO} <i>Tap <code>[ ❌ # ]</code> below to remove a track from this page:</i>")
-    )
-
-    markup = Buttons.playlist_songs_markup(playlist_id, page, total_pages, len(page_tracks))
     await rich_edit(callback_query, content, reply_markup=markup, client=client)
     await callback_query.answer()
 
 
 @Client.on_callback_query(filters.regex(r"^pl_delsong_([a-zA-Z0-9]+)_(\d+)_(\d+)$"))
 async def playlist_delete_song_callback(client: Client, callback_query: CallbackQuery):
-    """Deletes an individual song from a playlist and refreshes Screen C."""
+    """Deletes an individual song from a playlist and refreshes the view."""
     match = re.match(r"^pl_delsong_([a-zA-Z0-9]+)_(\d+)_(\d+)$", callback_query.data)
     if not match:
         return
@@ -281,18 +352,17 @@ async def playlist_delete_song_callback(client: Client, callback_query: Callback
 
     if ok:
         await callback_query.answer(clean_alert(Messages.PLAYLIST_SONG_DELETED), show_alert=False)
-        # Fetch updated playlist to check remaining tracks
         pl = await get_playlist(user_id, playlist_id)
         if not pl or not pl.get("tracks"):
+            callback_query.data = f"pl_open_{playlist_id}_1"
             return await playlist_open_callback(client, callback_query)
 
-        # Check if page is still valid after deletion
         total_pages = max(1, (len(pl.get("tracks", [])) + PAGE_SIZE - 1) // PAGE_SIZE)
         if page > total_pages:
             page = total_pages
-        # Refresh Screen C
-        callback_query.data = f"pl_songs_{playlist_id}_{page}"
-        await playlist_songs_callback(client, callback_query)
+        # Refresh playlist view
+        callback_query.data = f"pl_open_{playlist_id}_{page}"
+        return await playlist_open_callback(client, callback_query)
     else:
         await callback_query.answer(clean_alert(Messages.ERROR_OCCURRED), show_alert=True)
 

@@ -131,20 +131,8 @@ class Buttons:
 
     @staticmethod
     def playlist_select_markup(playlists: list, bot_username: str, chat_id: int) -> InlineKeyboardMarkup:
-        """Ephemeral selector shown when tapping 'Add to Playlist' on Now Playing card."""
+        """Ephemeral selector markup for Now Playing Add to Playlist card."""
         rows = []
-        # List user's existing playlists
-        for pl in playlists:
-            name = pl.get("name", "Playlist")
-            count = len(pl.get("tracks", []))
-            rows.append([
-                InlineKeyboardButton(
-                    f"📁 {name} ({count})",
-                    callback_data=f"pl_add_{pl['id']}_{chat_id}",
-                    style=ButtonStyle.DEFAULT,
-                    icon_custom_emoji_id=Emoji.MUSIC_NOTE,
-                )
-            ])
         # If user has less than 5 playlists, allow creating a new one via DM
         if len(playlists) < 5:
             rows.append([
@@ -190,52 +178,47 @@ class Buttons:
         return InlineKeyboardMarkup(rows)
 
     @staticmethod
-    def playlist_manage_markup(playlist_id: str, bot_username: str, has_tracks: bool = True) -> InlineKeyboardMarkup:
-        """Actions markup for a specific playlist."""
+    def playlist_manage_markup(
+        playlist_id: str,
+        bot_username: str,
+        page: int = 1,
+        total_pages: int = 1,
+        page_items_count: int = 0,
+        has_tracks: bool = True,
+    ) -> InlineKeyboardMarkup:
+        """Unified actions & paginated songs markup for a specific playlist."""
         rows = []
         if has_tracks:
             rows.append([
                 InlineKeyboardButton("▷ ᴘʟᴀʏ ᴀʟʟ", callback_data=f"pl_play_{playlist_id}", style=ButtonStyle.SUCCESS, icon_custom_emoji_id=Emoji.PLAY),
                 InlineKeyboardButton("🔀 sʜᴜꜰꜰʟᴇ", callback_data=f"pl_shuffle_{playlist_id}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.REFRESH),
             ])
-            rows.append([
-                InlineKeyboardButton("📋 sᴇᴇ ᴀʟʟ sᴏɴɢs", callback_data=f"pl_songs_{playlist_id}_1", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.QUEUE_ICON),
-            ])
+
+            # Delete buttons for the songs on current page
+            del_btns = [
+                InlineKeyboardButton(f"❌ {i}", callback_data=f"pl_delsong_{playlist_id}_{page}_{i-1}", style=ButtonStyle.DANGER)
+                for i in range(1, page_items_count + 1)
+            ]
+            if del_btns:
+                for chunk_start in range(0, len(del_btns), 5):
+                    rows.append(del_btns[chunk_start:chunk_start + 5])
+
+            # Pagination controls
+            if total_pages > 1:
+                nav_row = []
+                if page > 1:
+                    nav_row.append(InlineKeyboardButton("◀️", callback_data=f"pl_open_{playlist_id}_{page-1}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.BACK))
+                nav_row.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="pl_noop", disabled=True))
+                if page < total_pages:
+                    nav_row.append(InlineKeyboardButton("▶️", callback_data=f"pl_open_{playlist_id}_{page+1}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.NEXT))
+                rows.append(nav_row)
+
         rows.append([
             InlineKeyboardButton("✏️ ʀᴇɴᴀᴍᴇ", url=f"https://t.me/{bot_username}?start=renamepl_{playlist_id}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
             InlineKeyboardButton("🗑 ᴅᴇʟᴇᴛᴇ", callback_data=f"pl_delpl_{playlist_id}", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
         ])
         rows.append([
             InlineKeyboardButton("◀️ ʙᴀᴄᴋ ᴛᴏ ᴘʟᴀʏʟɪsᴛs", callback_data="pl_hub", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.BACK),
-        ])
-        return InlineKeyboardMarkup(rows)
-
-    @staticmethod
-    def playlist_songs_markup(playlist_id: str, page: int, total_pages: int, page_items_count: int) -> InlineKeyboardMarkup:
-        """Paginated songs viewer with individual track delete buttons."""
-        rows = []
-        # Row 1 & 2: Delete buttons for the songs on current page
-        del_btns = [
-            InlineKeyboardButton(f"❌ {i}", callback_data=f"pl_delsong_{playlist_id}_{page}_{i-1}", style=ButtonStyle.DANGER)
-            for i in range(1, page_items_count + 1)
-        ]
-        if del_btns:
-            # Chunk delete buttons into rows of up to 5
-            for chunk_start in range(0, len(del_btns), 5):
-                rows.append(del_btns[chunk_start:chunk_start + 5])
-
-        # Pagination controls
-        nav_row = []
-        if page > 1:
-            nav_row.append(InlineKeyboardButton("◀️", callback_data=f"pl_songs_{playlist_id}_{page-1}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.BACK))
-        nav_row.append(InlineKeyboardButton(f"{page}/{max(1, total_pages)}", callback_data="pl_noop", disabled=True))
-        if page < total_pages:
-            nav_row.append(InlineKeyboardButton("▶️", callback_data=f"pl_songs_{playlist_id}_{page+1}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.NEXT))
-        if nav_row:
-            rows.append(nav_row)
-
-        rows.append([
-            InlineKeyboardButton("◀️ ʙᴀᴄᴋ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", callback_data=f"pl_open_{playlist_id}", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.BACK),
         ])
         return InlineKeyboardMarkup(rows)
 
