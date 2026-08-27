@@ -1150,25 +1150,26 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             )
 
             play_emoji_id = getattr(Emoji, "PLAY", None)
-            play_icon_entity = (
-                {"type": "custom_emoji", "custom_emoji_id": str(play_emoji_id), "alternative_text": "▶️"}
+            btn_text = (
+                [
+                    {"type": "custom_emoji", "custom_emoji_id": str(play_emoji_id), "alternative_text": "▶️"},
+                    f" {s_title}",
+                ]
                 if play_emoji_id
-                else "▶️"
+                else f"▶️ {s_title}"
             )
-            if vid:
-                btn_dict = {
-                    "text": s_title,
-                    "callback_data": f"sgplay_{vid}",
-                }
-                if play_emoji_id:
-                    btn_dict["icon_custom_emoji_id"] = str(play_emoji_id)
-                title_btn = {
+
+            title_cell = (
+                {
                     "type": "button",
-                    "button": btn_dict,
+                    "button": {
+                        "text": btn_text,
+                        "callback_data": f"sgplay_{vid}",
+                    },
                 }
-                title_cell = [play_icon_entity, " ", title_btn]
-            else:
-                title_cell = [play_icon_entity, f" {s_title}"]
+                if vid
+                else {"type": "bold", "text": btn_text}
+            )
 
             table_rows.append([
                 {"text": num_cell, "align": "center"},
@@ -1193,9 +1194,6 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             else "🎶 Queue Ended • Autoplay Suggestions"
         )
         paragraph_text = [
-            {"type": "bold", "text": "‣ Seed Track: "},
-            {"type": "code", "text": display_seed},
-            "\n",
             {"type": "custom_emoji", "custom_emoji_id": str(Emoji.LOADING), "alternative_text": "⏳"} if getattr(Emoji, "LOADING", None) else "⏳",
             " ",
             {"type": "italic", "text": f"Autoplaying #1 in {countdown_sec}s…"} if autoplay_enabled else {"type": "italic", "text": "Choose a song to play next:"},
@@ -1235,9 +1233,9 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             # Fallback to HTML table
             items_text = rich_table(["#", "ᴛɪᴛʟᴇ", "ᴀʀᴛɪsᴛ", "ʟᴇɴɢᴛʜ"], plain_lines)
             if autoplay_enabled:
-                card_text = Messages.SUGGESTION_CARD.format(display_seed, items_text, countdown_sec)
+                card_text = Messages.SUGGESTION_CARD.format(items_text, countdown_sec)
             else:
-                card_text = Messages.SUGGESTION_CARD_NO_AUTOPLAY.format(display_seed, items_text)
+                card_text = Messages.SUGGESTION_CARD_NO_AUTOPLAY.format(items_text)
             sent_msg = await rich_send(
                 bot,
                 chat_id,

@@ -37,15 +37,13 @@ class Messages:
     # ── Autoplay & Suggestions ─────────────────────────────────────────────
     SUGGESTION_CARD = (
         f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
-        "<b>‣ sᴇᴇᴅ:</b> {0}\n"
-        "⏳ <i>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ #1 ɪɴ <b>{2}</b>s…</i>\n\n"
-        "{1}"
+        "⏳ <i>ᴀᴜᴛᴏᴘʟᴀʏɪɴɢ #1 ɪɴ <b>{1}</b>s…</i>\n\n"
+        "{0}"
     )
     SUGGESTION_CARD_NO_AUTOPLAY = (
         f"{EmojiTag.MUSIC_NOTES} <b>ǫᴜᴇᴜᴇ ᴇɴᴅᴇᴅ • ʀᴇʟᴀᴛᴇᴅ sᴜɢɢᴇsᴛɪᴏɴs</b>\n\n"
-        "<b>‣ sᴇᴇᴅ:</b> {0}\n"
         "<i>ᴄʜᴏᴏsᴇ ᴀ sᴏɴɢ ᴛᴏ ᴘʟᴀʏ ɴᴇxᴛ:</i>\n\n"
-        "{1}"
+        "{0}"
     )
     AUTOPLAY_ENABLED = f"{EmojiTag.SUCCESS} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴇɴᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
     AUTOPLAY_DISABLED = f"{EmojiTag.WARNING} <b>ᴀᴜᴛᴏᴘʟᴀʏ ᴅɪsᴀʙʟᴇᴅ ꜰᴏʀ ᴛʜɪs ᴄʜᴀᴛ.</b>"
