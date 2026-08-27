@@ -303,7 +303,7 @@ async def update_progress_button(message, duration_str, chat, markup):
             # and the emoji vanishing on the first edit says it does not.
             keyboard = markup.inline_keyboard
             progress_row = [Buttons.progress_button(progress_text)]
-            updated_keyboard = keyboard[:-1] + [progress_row] + keyboard[-1:]
+            updated_keyboard = keyboard[:1] + [progress_row] + keyboard[1:]
 
             try:
                 await message.edit_reply_markup(InlineKeyboardMarkup(updated_keyboard))
@@ -967,52 +967,76 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             display_title = f'<a href="{youtube_link}"><b>{title_formatted}</b></a>'
         else:
             display_title = f'<b>{title_formatted}</b>'
+
+        prefix = 'c' if is_channel else ''
         requester_mention = by.mention() if hasattr(by, 'mention') else (by if by else "User")
+        pl_btn = rich_button("➕ ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", callback_data=f"{prefix}add_to_pl")
 
         text = Messages.PLAY.format(
             mode_formatted.capitalize(),
             display_title,
             duration,
             requester_mention,
+            pl_btn,
         )
+
+        # Structured blocks for rich_send_blocks with native Rich Message Button
+        req_text = getattr(by, "first_name", None) or getattr(by, "title", None) or (by if by else "User")
+        req_id = getattr(by, "id", None)
+        if req_id and isinstance(req_id, int):
+            req_block = {"type": "text_mention", "text": str(req_text), "user": {"id": req_id, "first_name": str(req_text), "is_bot": False}}
+        else:
+            req_block = str(req_text)
+
+        play_blocks = [
+            {
+                "type": "heading",
+                "text": [
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.PLAY), "alternative_text": "▶️"} if getattr(Emoji, "PLAY", None) else "▶️",
+                    " ɴᴏᴡ ᴘʟᴀʏɪɴɢ",
+                ],
+                "size": 2,
+            },
+            {
+                "type": "paragraph",
+                "text": [
+                    "‣ ᴛɪᴛʟᴇ: ",
+                    {"type": "bold", "text": title_formatted},
+                    "\n‣ ᴅᴜʀᴀᴛɪᴏɴ: ",
+                    {"type": "code", "text": duration},
+                    "\n‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ: ",
+                    req_block,
+                    "\n‣ ᴍᴏᴅᴇ: ",
+                    {"type": "code", "text": mode_formatted.capitalize()},
+                    "\n\n",
+                    {
+                        "type": "button",
+                        "button": {
+                            "text": [
+                                {"type": "custom_emoji", "custom_emoji_id": str(Emoji.ADD), "alternative_text": "➕"} if getattr(Emoji, "ADD", None) else "➕",
+                                " ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ",
+                            ],
+                            "callback_data": f"{prefix}add_to_pl",
+                        },
+                    },
+                ],
+            },
+        ]
 
         logger.debug(f"[join_call] Sending now playing message to ui_chat_id {ui_chat_id}")
         sent_message = None
 
-        # ── Fast-path: thumbnail already cached ──
-        # If get_thumb returned immediately (cached file on disk), we already
-        # have a finished Task with the path: send the photo card directly.
-        # No intermediate text message, no photo-replace jump.
-        if thumb and thumb.done() and not thumb.cancelled():
-            try:
-                path = thumb.result()
-                if path and os.path.exists(path):
-                    # Captions can't be rich; `text` is inline-tag only already.
-                    sent_message = await clients["bot"].send_photo(
-                        ui_chat_id, path, caption=rich_caption(text), reply_markup=keyboard,
-                    )
-            except Exception as e:
-                logger.warning(f"[join_call] Cached photo send failed, falling back to text: {e}")
-                sent_message = None
-
-        if not sent_message and "bot" in clients and clients["bot"]:
-            sent_message = await rich_send(
-                clients["bot"], ui_chat_id, text, reply_markup=keyboard
+        if "bot" in clients and clients["bot"]:
+            sent_message = await rich_send_blocks(
+                clients["bot"], ui_chat_id, play_blocks, reply_markup=keyboard
             )
+            if not sent_message:
+                sent_message = await rich_send(
+                    clients["bot"], ui_chat_id, text, reply_markup=keyboard
+                )
 
         if sent_message:
             state.set_now_playing(chat_id, sent_message)
-
-        # ── Slow-path: thumbnail is still downloading / rendering ──
-        # We sent a text message above; once the thumb task finishes, swap in
-        # the photo card so the chat gets the full artwork without delay on voice join.
-        if thumb and not thumb.done():
-            asyncio.create_task(
-                _swap_in_photo(
-                    thumb, ui_chat_id, chat_id, text, keyboard,
-                    sent_message, chat, duration,
-                )
-            )
 
         logger.info(f"[join_call] Successfully started playing: {title} in chat {chat_id} (Assistant {ast_num})")
 
