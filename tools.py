@@ -1149,25 +1149,27 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 else keycaps(idx)
             )
 
-            play_icon_entity = (
-                {"type": "custom_emoji", "custom_emoji_id": str(Emoji.PLAY), "alternative_text": "▶️"}
-                if getattr(Emoji, "PLAY", None)
-                else "▶️"
-            )
-
-            title_btn = (
-                {
-                    "type": "button",
-                    "button": {
-                        "text": s_title,
-                        "callback_data": f"sgplay_{vid}",
-                    },
+            play_emoji_id = getattr(Emoji, "PLAY", None)
+            if vid:
+                btn_dict = {
+                    "text": s_title,
+                    "callback_data": f"sgplay_{vid}",
                 }
-                if vid
-                else {"type": "bold", "text": s_title}
-            )
-
-            title_cell = [play_icon_entity, " ", title_btn]
+                if play_emoji_id:
+                    btn_dict["icon_custom_emoji_id"] = str(play_emoji_id)
+                title_cell = {
+                    "type": "button",
+                    "button": btn_dict,
+                }
+            else:
+                title_cell = (
+                    [
+                        {"type": "custom_emoji", "custom_emoji_id": str(play_emoji_id), "alternative_text": "▶️"},
+                        f" {s_title}",
+                    ]
+                    if play_emoji_id
+                    else {"type": "bold", "text": f"▶️ {s_title}"}
+                )
 
             table_rows.append([
                 {"text": num_cell, "align": "center"},
@@ -1176,10 +1178,9 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 {"text": {"type": "code", "text": s_dur} if s_dur else "", "align": "center"},
             ])
 
-            play_tag = EmojiTag.PLAY if getattr(EmojiTag, "PLAY", None) else "▶️"
             plain_lines.append((
                 keycaps(idx),
-                f"{play_tag} <b>{rich_esc(s_title)}</b>",
+                f"{EmojiTag.PLAY} <b>{rich_esc(s_title)}</b>",
                 f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
                 rich_code(s_dur) if s_dur else "",
             ))
