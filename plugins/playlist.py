@@ -101,15 +101,23 @@ async def add_to_playlist_callback(client: Client, callback_query: CallbackQuery
             if len(pl_name) > 15:
                 pl_name = pl_name[:14] + "…"
             count = len(pl.get("tracks", []))
+            
+            digit_block = [
+                {"type": "custom_emoji", "custom_emoji_id": str(Emoji.DIGITS[str(idx)]), "alternative_text": f"{idx}️⃣"}
+            ] if str(idx) in Emoji.DIGITS else keycaps(idx)
+
             table_cells.append([
-                {"text": keycaps(idx), "align": "center"},
+                {"text": digit_block, "align": "center"},
                 {"text": {"type": "bold", "text": pl_name}, "align": "left"},
                 {"text": {"type": "code", "text": f"{count}/50"}, "align": "center"},
                 {
                     "text": {
                         "type": "button",
                         "button": {
-                            "text": "➕ ᴀᴅᴅ",
+                            "text": [
+                                {"type": "custom_emoji", "custom_emoji_id": str(Emoji.ADD), "alternative_text": "➕"} if getattr(Emoji, "ADD", None) else "➕",
+                                " ᴀᴅᴅ",
+                            ],
                             "callback_data": f"pl_add_{pl.get('id')}_{chat_id}",
                         },
                     },
@@ -120,13 +128,18 @@ async def add_to_playlist_callback(client: Client, callback_query: CallbackQuery
         blocks = [
             {
                 "type": "heading",
-                "text": "📁 ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ",
+                "text": [
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.QUEUE_ICON), "alternative_text": "📁"} if getattr(Emoji, "QUEUE_ICON", None) else "📁",
+                    " ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ",
+                ],
                 "size": 2,
             },
             {
                 "type": "paragraph",
                 "text": [
-                    {"type": "bold", "text": "‣ ᴛʀᴀᴄᴋ: "},
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.MUSIC_NOTE), "alternative_text": "🎵"} if getattr(Emoji, "MUSIC_NOTE", None) else "🎵",
+                    " ",
+                    {"type": "bold", "text": "ᴛʀᴀᴄᴋ: "},
                     {"type": "code", "text": track_title},
                     "\n",
                     {"type": "italic", "text": "Tap any playlist button below to save this song:"},

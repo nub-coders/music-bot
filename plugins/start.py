@@ -86,6 +86,46 @@ async def user_client_start_handler(client, message):
             client=client,
         )
 
+    # Handle deep link for adding track to playlist via text button
+    if len(command_args) > 1 and command_args[1].startswith("pladd_"):
+        parts = command_args[1].split("_")
+        if len(parts) >= 3:
+            playlist_id, target_chat_id = parts[1], int(parts[2])
+            user_id = message.chat.id
+            target_pl = await get_playlist(user_id, playlist_id)
+            if not target_pl:
+                return await rich_reply(message, Messages.PLAYLIST_NOT_FOUND, client=client)
+
+            active_song = state.playing.get(target_chat_id)
+            if not active_song:
+                return await rich_reply(message, Messages.PLAYLIST_NO_ACTIVE_SONG, client=client)
+
+            track_info = {
+                "title": active_song.get("title", "Unknown Track"),
+                "duration": active_song.get("duration", "N/A"),
+                "yt_link": active_song.get("yt_link", ""),
+                "video_id": extract_video_id(active_song.get("yt_link", "")) or active_song.get("video_id", ""),
+                "mode": active_song.get("mode", "audio"),
+            }
+            ok, msg_code = await add_track_to_playlist(user_id, playlist_id, track_info, max_tracks=50)
+            pl_name = target_pl.get("name", "Playlist")
+            trimmed_title = trim_title(track_info["title"])
+            if ok:
+                success_card = (
+                    rich_heading(f"{EmojiTag.SUCCESS} ᴀᴅᴅᴇᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", 2)
+                    + rich_kv_table([
+                        (f"{EmojiTag.MUSIC_NOTE} ᴛʀᴀᴄᴋ", rich_esc(trimmed_title)),
+                        ("📁 ᴘʟᴀʏʟɪsᴛ", rich_code(pl_name)),
+                    ])
+                )
+                return await rich_reply(message, success_card, client=client)
+            elif msg_code == "ALREADY_EXISTS":
+                return await rich_reply(message, Messages.PLAYLIST_TRACK_EXISTS.format(pl_name), client=client)
+            elif msg_code == "MAX_TRACKS":
+                return await rich_reply(message, Messages.PLAYLIST_MAX_TRACKS.format(pl_name), client=client)
+            else:
+                return await rich_reply(message, Messages.ERROR_OCCURRED, client=client)
+
     # Handle deep link for creating a new playlist
     if len(command_args) > 1 and command_args[1].startswith("newpl_"):
         chat_id_str = command_args[1].split("newpl_", 1)[1]
