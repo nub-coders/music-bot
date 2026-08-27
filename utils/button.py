@@ -157,7 +157,7 @@ class Buttons:
             count = len(pl.get("tracks", []))
             rows.append([
                 InlineKeyboardButton(
-                    f"📁 {name} ({count} tracks)",
+                    f"📁 {name} ({count}/50)",
                     callback_data=f"pl_open_{pl['id']}",
                     style=ButtonStyle.DEFAULT,
                     icon_custom_emoji_id=Emoji.MUSIC_NOTE,
