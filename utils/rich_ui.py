@@ -228,6 +228,7 @@ def _normalize_html(html_text: str) -> str:
     Fixes unquoted attributes like href=tg://user?id=123 -> href="tg://user?id=123"
     which Kurigram's User.mention() generates and Telegram's HTML parser rejects.
     Upgrades unicode emoji (such as keycap digits in tables) to custom emoji tags if PREMIUM_EMOJI is enabled.
+    Preserves line breaks so text in Rich Messages does not collapse into a single line.
     """
     if not html_text:
         return ""
@@ -237,7 +238,12 @@ def _normalize_html(html_text: str) -> str:
         text = _upgrade_unicode_emoji(text) if PREMIUM_EMOJI else strip_custom_emoji_text(text)
     except Exception:
         pass
-    return re.sub(r'href=([^\s">]+)', r'href="\1"', text)
+    text = re.sub(r'href=([^\s">]+)', r'href="\1"', text)
+
+    # Convert line breaks to <br/> outside table tags and pre tags to avoid line collapsing in rich HTML
+    if not re.search(r"<(?:table|pre)\b", text, re.I):
+        text = re.sub(r'(?<!<br/>)(?<!<br>)(?<!</p>)(?<!</h2>)(?<!</h1>)(?<!</h3>)(?<!</blockquote>)\n', '<br/>\n', text, flags=re.I)
+    return text
 
 
 def _plain_fallback(html_text: str) -> str:

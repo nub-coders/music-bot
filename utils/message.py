@@ -273,13 +273,13 @@ class Messages:
 
     # ── Playlist Messages ───────────────────────────────────────────────────
     PLAYLIST_SELECT_PROMPT = (
-        f"{EmojiTag.MUSIC_NOTES} <b>ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ</b>\n\n"
-        "<b>‣ ᴛʀᴀᴄᴋ:</b> <b>{0}</b>\n\n"
+        f"{EmojiTag.MUSIC_NOTES} <b>ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ</b><br/><br/>"
+        "<b>‣ ᴛʀᴀᴄᴋ:</b> <b>{0}</b><br/><br/>"
         "<i>ᴄʜᴏᴏsᴇ ᴀ ᴘʟᴀʏʟɪsᴛ ʙᴇʟᴏᴡ ᴛᴏ sᴀᴠᴇ ᴛʜɪs sᴏɴɢ:</i>"
     )
     PLAYLIST_NO_PLAYLISTS_PROMPT = (
-        f"{EmojiTag.MUSIC_NOTES} <b>ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ</b>\n\n"
-        "<b>‣ ᴛʀᴀᴄᴋ:</b> <b>{0}</b>\n\n"
+        f"{EmojiTag.MUSIC_NOTES} <b>ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ</b><br/><br/>"
+        "<b>‣ ᴛʀᴀᴄᴋ:</b> <b>{0}</b><br/><br/>"
         f"{EmojiTag.INFO} <i>ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴀɴʏ ᴘʟᴀʏʟɪsᴛs ʏᴇᴛ. ᴛᴀᴘ ʙᴇʟᴏᴡ ᴛᴏ ᴄʀᴇᴀᴛᴇ ᴏɴᴇ:</i>"
     )
     PLAYLIST_ADDED_SUCCESS = "✅ Added '{}' to '{}'!"
