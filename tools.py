@@ -985,13 +985,87 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             img_tag,
         )
 
+        # Structured blocks for rich_send_blocks with embedded photo and in-message callback button
+        req_text = getattr(by, "first_name", None) or getattr(by, "title", None) or (by if by else "User")
+        req_id = getattr(by, "id", None)
+        if req_id and isinstance(req_id, int):
+            req_block = {"type": "text_mention", "text": str(req_text), "user": {"id": req_id, "first_name": str(req_text), "is_bot": False}}
+        else:
+            req_block = str(req_text)
+
+        play_blocks = [
+            {
+                "type": "heading",
+                "text": [
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.PLAY), "alternative_text": "▶️"} if getattr(Emoji, "PLAY", None) else "▶️",
+                    " ɴᴏᴡ ᴘʟᴀʏɪɴɢ",
+                ],
+                "size": 2,
+            }
+        ]
+
+        if img_url:
+            play_blocks.append({
+                "type": "photo",
+                "photo": {
+                    "type": "photo",
+                    "media": img_url,
+                }
+            })
+
+        play_blocks.extend([
+            {
+                "type": "paragraph",
+                "text": [
+                    {"type": "bold", "text": "‣ ᴛɪᴛʟᴇ: "},
+                    {"type": "bold", "text": title_formatted},
+                    "\n",
+                    {"type": "bold", "text": "‣ ᴅᴜʀᴀᴛɪᴏɴ: "},
+                    {"type": "code", "text": duration},
+                    "\n",
+                    {"type": "bold", "text": "‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ: "},
+                    req_block,
+                    "\n",
+                    {"type": "bold", "text": "‣ ᴍᴏᴅᴇ: "},
+                    {"type": "code", "text": mode_formatted.capitalize()},
+                ],
+            },
+            {
+                "type": "blockquote",
+                "blocks": [
+                    {
+                        "type": "paragraph",
+                        "text": [
+                            {"type": "custom_emoji", "custom_emoji_id": str(Emoji.ADD), "alternative_text": "➕"} if getattr(Emoji, "ADD", None) else "➕",
+                            " ",
+                            {"type": "bold", "text": "ᴘʟᴀʏʟɪsᴛ: "},
+                            {
+                                "type": "button",
+                                "button": {
+                                    "text": [
+                                        {"type": "custom_emoji", "custom_emoji_id": str(Emoji.ADD), "alternative_text": "➕"} if getattr(Emoji, "ADD", None) else "➕",
+                                        " ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ",
+                                    ],
+                                    "callback_data": f"{prefix}add_to_pl",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            },
+        ])
+
         logger.debug(f"[join_call] Sending now playing message to ui_chat_id {ui_chat_id}")
         sent_message = None
 
         if "bot" in clients and clients["bot"]:
-            sent_message = await rich_send(
-                clients["bot"], ui_chat_id, text, reply_markup=keyboard
+            sent_message = await rich_send_blocks(
+                clients["bot"], ui_chat_id, play_blocks, reply_markup=keyboard
             )
+            if not sent_message:
+                sent_message = await rich_send(
+                    clients["bot"], ui_chat_id, text, reply_markup=keyboard
+                )
 
         if sent_message:
             state.set_now_playing(chat_id, sent_message)
