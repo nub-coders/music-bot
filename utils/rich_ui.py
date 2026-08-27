@@ -89,7 +89,7 @@ _EMOJI_TAG_RE = re.compile(
 )
 _ANY_TAG_RE = re.compile(r"<[^>]+>")
 _RICH_TAGS_RE = re.compile(
-    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|sub|sup|tg-button|button)\b", re.I
+    r"</?(?:h[1-6]|table|thead|tbody|tr|th|td|details|summary|mark|sub|sup|tg-button|button|img)\b", re.I
 )
 
 
@@ -112,6 +112,11 @@ def rich_esc(value) -> str:
     if value is None:
         return ""
     return _html.escape(str(value), quote=False)
+
+
+def rich_img(src: str) -> str:
+    """Embedded image tag (<img src="...">) for Rich Messages."""
+    return f'<img src="{rich_esc(src)}" />' if src else ""
 
 
 def rich_heading(text: str, level: int = 1) -> str:

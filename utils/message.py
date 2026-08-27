@@ -4,7 +4,8 @@ from utils.emoji import EmojiTag
 class Messages:
     # ── Playback & Queue Cards ─────────────────────────────────────────────
     PLAY = (
-        f"{EmojiTag.PLAY} <b>ɴᴏᴡ ᴘʟᴀʏɪɴɢ</b>\n\n"
+        f"{EmojiTag.PLAY} <b>ɴᴏᴡ ᴘʟᴀʏɪɴɢ</b>\n"
+        "{5}"
         "<b>‣ ᴛɪᴛʟᴇ:</b> {1}\n"
         "<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{2}</code>\n"
         "<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {3}\n"
