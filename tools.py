@@ -1150,6 +1150,11 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             )
 
             play_emoji_id = getattr(Emoji, "PLAY", None)
+            play_icon_entity = (
+                {"type": "custom_emoji", "custom_emoji_id": str(play_emoji_id), "alternative_text": "▶️"}
+                if play_emoji_id
+                else "▶️"
+            )
             if vid:
                 btn_dict = {
                     "text": s_title,
@@ -1157,19 +1162,13 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 }
                 if play_emoji_id:
                     btn_dict["icon_custom_emoji_id"] = str(play_emoji_id)
-                title_cell = {
+                title_btn = {
                     "type": "button",
                     "button": btn_dict,
                 }
+                title_cell = [play_icon_entity, " ", title_btn]
             else:
-                title_cell = (
-                    [
-                        {"type": "custom_emoji", "custom_emoji_id": str(play_emoji_id), "alternative_text": "▶️"},
-                        f" {s_title}",
-                    ]
-                    if play_emoji_id
-                    else {"type": "bold", "text": f"▶️ {s_title}"}
-                )
+                title_cell = [play_icon_entity, f" {s_title}"]
 
             table_rows.append([
                 {"text": num_cell, "align": "center"},
