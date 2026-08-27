@@ -974,7 +974,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         img_tag = f'<img src="{img_url}" />\n\n' if img_url else ""
 
         pl_btn = rich_button("➕ ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", callback_data=f"{prefix}add_to_pl")
-        pl_quote = rich_note(f'{EmojiTag.ADD} <b>ᴘʟᴀʏʟɪsᴛ:</b> {pl_btn}')
+        pl_quote = rich_note(pl_btn)
 
         text = Messages.PLAY.format(
             mode_formatted.capitalize(),
@@ -1036,9 +1036,6 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                     {
                         "type": "paragraph",
                         "text": [
-                            {"type": "custom_emoji", "custom_emoji_id": str(Emoji.ADD), "alternative_text": "➕"} if getattr(Emoji, "ADD", None) else "➕",
-                            " ",
-                            {"type": "bold", "text": "ᴘʟᴀʏʟɪsᴛ: "},
                             {
                                 "type": "button",
                                 "button": {
