@@ -140,7 +140,6 @@ _UNICODE_TO_EMOJI_ID = {
     "🎚": Emoji.SETTINGS,
     "📅": Emoji.STATS,
     "🗑": Emoji.CLOSE,
-    "❌": Emoji.CLOSE,
     "🎭": Emoji.KANG,
     "📋": Emoji.INFO,
     "🤖": Emoji.USER,

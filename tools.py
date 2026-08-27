@@ -986,8 +986,23 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         )
 
         # Structured blocks for rich_send_blocks with embedded photo and in-message callback button
-        req_text = getattr(by, "first_name", None) or getattr(by, "title", None) or (by if by else "User")
-        req_id = getattr(by, "id", None)
+        if isinstance(by, str):
+            req_text = by if by else "User"
+            req_id = None
+        elif by:
+            first_name = getattr(by, "first_name", None)
+            chat_title = getattr(by, "title", None)
+            if isinstance(first_name, str) and first_name:
+                req_text = first_name
+            elif isinstance(chat_title, str) and chat_title:
+                req_text = chat_title
+            else:
+                req_text = "User"
+            req_id = getattr(by, "id", None)
+        else:
+            req_text = "User"
+            req_id = None
+
         if req_id and isinstance(req_id, int):
             req_block = {"type": "text_mention", "text": str(req_text), "user": {"id": req_id, "first_name": str(req_text), "is_bot": False}}
         else:

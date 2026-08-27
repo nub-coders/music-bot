@@ -146,7 +146,7 @@ async def add_to_playlist_callback(client: Client, callback_query: CallbackQuery
         from pyrogram.types import ReplyParameters
         inner_msg = getattr(callback_query, "message", None)
         reply_params = ReplyParameters(message_id=inner_msg.id) if inner_msg else None
-        
+
         sent = await rich_send_blocks(
             client,
             chat_id,
