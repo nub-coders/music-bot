@@ -970,7 +970,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         prefix = 'c' if is_channel else ''
         requester_mention = by.mention() if hasattr(by, 'mention') else (by if by else "User")
-        img_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg" if video_id else ""
+        img_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
         img_tag = f'<img src="{img_url}" />\n\n' if img_url else ""
 
         pl_btn = rich_button("➕ ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", callback_data=f"{prefix}add_to_pl")
@@ -997,14 +997,48 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             {
                 "type": "heading",
                 "text": [
-                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.PLAY), "alternative_text": "▶️"} if getattr(Emoji, "PLAY", None) else "▶️",
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.NOW_PLAYING), "alternative_text": "🎵"} if getattr(Emoji, "NOW_PLAYING", None) else "🎵",
                     " ɴᴏᴡ ᴘʟᴀʏɪɴɢ",
                 ],
                 "size": 2,
             }
         ]
 
-        if img_url:
+        local_thumb = None
+        if thumb:
+            if isinstance(thumb, asyncio.Task):
+                if thumb.done() and not thumb.cancelled():
+                    try:
+                        local_thumb = thumb.result()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        local_thumb = await asyncio.wait_for(asyncio.shield(thumb), timeout=3.0)
+                    except Exception:
+                        pass
+            elif isinstance(thumb, str) and os.path.exists(thumb):
+                local_thumb = thumb
+
+        if not local_thumb and video_id:
+            try:
+                local_thumb = await asyncio.wait_for(
+                    get_thumb(title, duration, f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg", None, None, video_id),
+                    timeout=3.0,
+                )
+            except Exception as e:
+                logger.debug(f"[join_call] on-demand get_thumb failed: {e}")
+
+        has_local_thumb = bool(local_thumb and isinstance(local_thumb, str) and os.path.exists(local_thumb))
+        if has_local_thumb:
+            play_blocks.append({
+                "type": "photo",
+                "photo": {
+                    "type": "photo",
+                    "media": "attach://thumb",
+                }
+            })
+        elif img_url:
             play_blocks.append({
                 "type": "photo",
                 "photo": {
@@ -1017,16 +1051,24 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             {
                 "type": "paragraph",
                 "text": [
-                    {"type": "bold", "text": "‣ ᴛɪᴛʟᴇ: "},
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.MUSIC_NOTE), "alternative_text": "🎵"} if getattr(Emoji, "MUSIC_NOTE", None) else "🎵",
+                    " ",
+                    {"type": "bold", "text": "ᴛɪᴛʟᴇ: "},
                     {"type": "bold", "text": title_formatted},
                     "\n",
-                    {"type": "bold", "text": "‣ ᴅᴜʀᴀᴛɪᴏɴ: "},
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.BOLT), "alternative_text": "⚡"} if getattr(Emoji, "BOLT", None) else "⚡",
+                    " ",
+                    {"type": "bold", "text": "ᴅᴜʀᴀᴛɪᴏɴ: "},
                     {"type": "code", "text": duration},
                     "\n",
-                    {"type": "bold", "text": "‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ: "},
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.USER), "alternative_text": "👤"} if getattr(Emoji, "USER", None) else "👤",
+                    " ",
+                    {"type": "bold", "text": "ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ: "},
                     req_block,
                     "\n",
-                    {"type": "bold", "text": "‣ ᴍᴏᴅᴇ: "},
+                    {"type": "custom_emoji", "custom_emoji_id": str(Emoji.HEADPHONES), "alternative_text": "🎧"} if getattr(Emoji, "HEADPHONES", None) else "🎧",
+                    " ",
+                    {"type": "bold", "text": "ᴍᴏᴅᴇ: "},
                     {"type": "code", "text": mode_formatted.capitalize()},
                 ],
             },
@@ -1057,7 +1099,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
 
         if "bot" in clients and clients["bot"]:
             sent_message = await rich_send_blocks(
-                clients["bot"], ui_chat_id, play_blocks, reply_markup=keyboard
+                clients["bot"],
+                ui_chat_id,
+                play_blocks,
+                reply_markup=keyboard,
+                media_file=local_thumb if has_local_thumb else None,
             )
             if not sent_message:
                 sent_message = await rich_send(

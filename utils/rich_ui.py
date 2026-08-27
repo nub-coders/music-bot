@@ -361,8 +361,9 @@ async def rich_send_blocks(
     reply_markup=None,
     reply_parameters=None,
     receiver_user_id=None,
+    media_file=None,
 ):
-    """Send a structured Rich Message using Bot API 10.3 Block entities (supporting RichTextButton callbacks)."""
+    """Send a structured Rich Message using Bot API 10.3 Block entities (supporting RichTextButton callbacks and local file upload)."""
     try:
         from config import BOT_TOKEN
         token = getattr(client, "bot_token", None) or BOT_TOKEN
@@ -397,12 +398,44 @@ async def rich_send_blocks(
                 payload["reply_parameters"] = {"message_id": reply_parameters.message_id}
 
             import httpx
+            import json
+            import os
             from pyrogram import types, enums
             async with httpx.AsyncClient(timeout=15.0) as http_client:
-                resp = await http_client.post(
-                    f"https://api.telegram.org/bot{token}/sendRichMessage",
-                    json=payload,
-                )
+                has_local = bool(media_file and isinstance(media_file, str) and os.path.exists(media_file))
+                if has_local:
+                    form_data = {
+                        "chat_id": str(chat_id),
+                        "rich_message": json.dumps(payload["rich_message"]),
+                    }
+                    if "reply_markup" in payload:
+                        form_data["reply_markup"] = json.dumps(payload["reply_markup"])
+                    if "reply_parameters" in payload:
+                        form_data["reply_parameters"] = json.dumps(payload["reply_parameters"])
+                    if "ephemeral_message_parameters" in payload:
+                        form_data["ephemeral_message_parameters"] = json.dumps(payload["ephemeral_message_parameters"])
+
+                    with open(media_file, "rb") as f:
+                        files = {"thumb": (os.path.basename(media_file), f.read(), "image/jpeg")}
+                        resp = await http_client.post(
+                            f"https://api.telegram.org/bot{token}/sendRichMessage",
+                            data=form_data,
+                            files=files,
+                        )
+                else:
+                    resp = await http_client.post(
+                        f"https://api.telegram.org/bot{token}/sendRichMessage",
+                        json=payload,
+                    )
+
+                if resp.status_code != 200 and any(b.get("type") == "photo" for b in blocks if isinstance(b, dict)):
+                    # If Telegram fails to download image URL (400), retry with text blocks
+                    clean_blocks = [b for b in blocks if isinstance(b, dict) and b.get("type") != "photo"]
+                    payload["rich_message"]["blocks"] = clean_blocks
+                    resp = await http_client.post(
+                        f"https://api.telegram.org/bot{token}/sendRichMessage",
+                        json=payload,
+                    )
                 if resp.status_code == 200:
                     data = resp.json()
                     if data.get("ok"):
@@ -414,6 +447,8 @@ async def rich_send_blocks(
                             reply_markup=reply_markup,
                             client=client,
                         )
+                else:
+                    logger.warning(f"[rich_send_blocks] Bot API {resp.status_code}: {resp.text}")
     except Exception as e:
         logger.debug(f"[rich_send_blocks] direct Bot API block send failed: {e}")
 
