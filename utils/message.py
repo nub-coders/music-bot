@@ -8,8 +8,7 @@ class Messages:
         "<b>‣ ᴛɪᴛʟᴇ:</b> {1}\n"
         "<b>‣ ᴅᴜʀᴀᴛɪᴏɴ:</b> <code>{2}</code>\n"
         "<b>‣ ʀᴇǫᴜᴇsᴛᴇᴅ ʙʏ:</b> {3}\n"
-        "<b>‣ ᴍᴏᴅᴇ:</b> <code>{0}</code>\n\n"
-        "{4}"
+        "<b>‣ ᴍᴏᴅᴇ:</b> <code>{0}</code>"
     )
     NOW_PLAYING = PLAY
 

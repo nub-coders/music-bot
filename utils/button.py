@@ -100,6 +100,9 @@ class Buttons:
         prefix = 'c' if channel_mode else ''
         return InlineKeyboardMarkup([
             [
+                InlineKeyboardButton("➕ ᴀᴅᴅ ᴛᴏ ᴘʟᴀʏʟɪsᴛ", callback_data=f"{prefix}add_to_pl", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.ADD),
+            ],
+            [
                 InlineKeyboardButton("▷",    callback_data=f"{prefix}resume", style=ButtonStyle.SUCCESS, icon_custom_emoji_id=Emoji.RESUME),
                 InlineKeyboardButton("II",   callback_data=f"{prefix}pause",  style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.PAUSE),
                 InlineKeyboardButton("‣‣I",  callback_data=f"{prefix}skip",   style=ButtonStyle.PRIMARY, icon_custom_emoji_id=Emoji.SKIP),
