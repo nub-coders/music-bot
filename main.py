@@ -15,7 +15,7 @@ from pyrogram.errors.exceptions import (
 
 from tools import *
 from config import *
-from youtube import check_and_update_ytdlp, export_browser_cookies, refresh_cookies_loop
+from youtube import log_ytdlp_version, export_browser_cookies, refresh_cookies_loop
 from database import user_sessions as async_user_sessions, collection as async_collection, ensure_indexes, get_all_last_played
 from utils.premium_emoji import setup_premium_emoji
 
@@ -59,15 +59,15 @@ def _clean_stale_files_sync(root_dirs: list, max_age_s: float) -> int:
                     if (now - os.path.getmtime(fpath)) > max_age_s:
                         os.remove(fpath)
                         removed += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[cache_cleanup] Could not remove stale file {fpath}: {e}")
             for dname in dirs:
                 dpath = os.path.join(root, dname)
                 try:
                     if not os.listdir(dpath) and (now - os.path.getmtime(dpath)) > max_age_s:
                         os.rmdir(dpath)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[cache_cleanup] Could not remove stale directory {dpath}: {e}")
     return removed
 
 
@@ -120,12 +120,12 @@ async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
                 try:
                     exempt_chat_ids.add(int(LOGGER_ID))
                 except (ValueError, TypeError):
-                    pass
+                    logger.debug(f"[auto_leave] LOGGER_ID={LOGGER_ID!r} is not a chat id; the log group is NOT exempt from auto-leave")
             for auth_cid in AUTH.keys():
                 try:
                     exempt_chat_ids.add(int(auth_cid))
                 except (ValueError, TypeError):
-                    pass
+                    logger.debug(f"[auto_leave] Skipping unparseable AUTH key {auth_cid!r}; that chat is not exempt")
 
             for idx, ast in list(assistants.items()):
                 active_in_ast = state.assistant_active.get(idx, set())
@@ -190,8 +190,9 @@ async def _assistant_autoleave_loop(check_interval_seconds: int = 3600):
 async def main():
     logger.info("Starting bot initialization...")
 
-    # Check and update yt-dlp if needed
-    await check_and_update_ytdlp()
+    # Record which yt-dlp we're running. Deliberately does not check PyPI or
+    # self-upgrade: dependency changes belong in the image build, not in startup.
+    log_ytdlp_version()
 
     # Optionally refresh the yt-dlp cookie file from a browser profile (no-op
     # unless COOKIES_FROM_BROWSER is set). Best effort — never blocks startup.

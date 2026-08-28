@@ -131,6 +131,11 @@
       "description": "Spotify app Client Secret (keep private). Required together with SPOTIFY_CLIENT_ID to enable Spotify links.",
       "value": "",
       "required": false
+    },
+    "ALLOW_PRIVATE_STREAM_URLS": {
+      "description": "Allow /play direct URLs that resolve to loopback/private/link-local addresses. Leave False (default) — True lets anyone in a group make the bot fetch cloud metadata or LAN services. Only enable for a private media server. Optional.",
+      "value": "False",
+      "required": false
     }
   },
   "buildpacks": [

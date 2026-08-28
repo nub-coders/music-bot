@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 
@@ -15,8 +16,10 @@ try:
         val = os.getenv(env_var)
         if not val or not os.path.exists(val):
             os.environ[env_var] = ca_bundle
-except Exception:
-    pass
+except Exception as e:
+    # Runs before main.py configures logging, so this is only visible when a
+    # handler is already attached; the fallback (system CA store) is harmless.
+    logging.getLogger(__name__).debug(f"[config] certifi CA bundle setup skipped: {e}")
 
 # ── Telegram (non-sensitive — safe as defaults) ───────────────────────────────
 API_ID      = os.getenv("API_ID", "2040")
@@ -47,6 +50,28 @@ else:
 # True when a real owner is configured. Prefer this over truth-testing OWNER_ID
 # at call sites that must not contact Telegram for a nonexistent account.
 HAS_OWNER = OWNER_ID > 0
+
+
+def is_bot_owner(user_id) -> bool:
+    """Is this caller the configured bot owner? The single place that answers it.
+
+    Around twenty handlers used to inline this comparison, each written slightly
+    differently (`user.id != OWNER_ID`, `str(OWNER_ID) == str(uid)`, `not sender_id
+    == OWNER_ID`), so there was no one place to reason about the two edge cases:
+
+    * HAS_OWNER -- in ownerless mode OWNER_ID is 0, and a bare comparison promotes
+      any caller whose id is 0 or otherwise falsy.
+    * A missing id -- anonymous group admins and channel senders have no user id,
+      so callers can pass `message.from_user.id if message.from_user else None`
+      and get False rather than an accidental match.
+
+    Named `is_bot_owner` rather than `is_owner` because several handlers already
+    use `is_owner` as a local flag, and a star-imported function of that name
+    would be shadowed into an UnboundLocalError.
+    """
+    if not HAS_OWNER or not user_id:
+        return False
+    return str(OWNER_ID) == str(user_id)
 
 # ── Sensitive — must be set via environment, no defaults ────────────────────────
 BOT_TOKEN       = os.getenv("BOT_TOKEN", "")
@@ -138,6 +163,17 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", None)
 
 # ── Media File Limits ─────────────────────────────────────────────────────────────
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB limit (2,147,483,648 bytes)
+
+# ── Direct stream URL safety (SSRF) ───────────────────────────────────────────────
+# /play accepts arbitrary http(s) URLs from any group member, which are then
+# fetched by yt-dlp and by the bot's HTTP client. By default those URLs must
+# resolve to globally-routable addresses, so nobody can make the bot read
+# 169.254.169.254 (cloud metadata), a loopback admin port, or the host's LAN.
+#
+# Set ALLOW_PRIVATE_STREAM_URLS=True only when the bot is deliberately pointed at
+# a private media server (Jellyfin/Plex on a LAN). It re-opens the metadata and
+# loopback surface to everyone who can type /play, so keep it off in public bots.
+ALLOW_PRIVATE_STREAM_URLS = os.getenv("ALLOW_PRIVATE_STREAM_URLS", "False").lower() in ("true", "1", "yes")
 
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()

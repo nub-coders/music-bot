@@ -21,7 +21,28 @@ jobs:
         run: sudo apt-get install -y libmagic1 ffmpeg
 
       - name: Install Python deps
-        run: pip install -r requirements.txt ruff
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lint
         run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install system deps
+        run: sudo apt-get install -y libmagic1 ffmpeg
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Test
+        # tests/conftest.py supplies a dummy MONGODB_URI; nothing here connects
+        # to Mongo or Telegram.
+        run: pytest

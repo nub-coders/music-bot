@@ -66,8 +66,8 @@ async def _build_and_send_user_info(client, message, user, chat, photo_path, cre
             try:
                 if os.path.exists(photo_path):
                     os.remove(photo_path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[_build_and_send_user_info] Removing temp photo {photo_path} failed: {e}")
     else:
         await rich_reply(message, response, reply_markup=markup, client=client)
 
@@ -92,7 +92,7 @@ async def info_command(client: Client, message: Message):
     # Handle second argument if provided
     target_user = None
     sender_id = message.from_user.id
-    if not sender_id == OWNER_ID:
+    if not is_bot_owner(sender_id):
         return await rich_reply(message, rich_note(Messages.BOT_OWNER_ONLY), ephemeral=True, client=client)
 
     if len(message.command) >= 2:

@@ -47,8 +47,8 @@ async def add_to_playlist_callback(client: Client, callback_query: CallbackQuery
             linked = (await client.get_chat(chat_id)).linked_chat
             if linked:
                 chat_id = linked.id
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[add_to_playlist] Linked chat lookup failed for {chat_id}: {e}")
 
     # Retrieve currently playing track
     current_song = state.playing.get(chat_id)
@@ -222,8 +222,8 @@ async def add_track_to_selected_playlist(client: Client, callback_query: Callbac
         )
         try:
             await ephemeral_edit(callback_query.message, success_card, reply_markup=None, client=client)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[playlist_add] Failed to update ephemeral card for user {user.id} on playlist {playlist_id}: {e}")
     elif msg_code == "ALREADY_EXISTS":
         await callback_query.answer(clean_alert(Messages.PLAYLIST_TRACK_EXISTS.format(pl_name)), show_alert=True)
     elif msg_code == "MAX_TRACKS":
@@ -442,8 +442,8 @@ async def _play_playlist_tracks(client: Client, message_or_cb, playlist: dict, s
             if linked:
                 target_chat_id = linked.id
                 target_chat = linked
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[play_playlist] Linked chat lookup failed for {chat.id}: {e}")
 
     tracks = list(playlist.get("tracks", []))
     if not tracks:

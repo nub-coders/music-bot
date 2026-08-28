@@ -1,4 +1,4 @@
-"""plugins/admin_auth.py — Authorisation: /auth /unauth /block /unblock /blocklist."""
+"""plugins/admin_auth.py — Authorisation: /auth /unauth /authlist /block /unblock /blocklist."""
 
 from plugins._common import *  # noqa: F401,F403
 
@@ -37,7 +37,7 @@ async def auth_user(client, message):
             # Check if user can be authorized
             if (replied_user_id != message.chat.id and
                 not replied_message.from_user.is_self and
-                not OWNER_ID == replied_user_id):
+                not is_bot_owner(replied_user_id)):
 
                 # Check if user is already authorized in this chat using global AUTH
                 if replied_user_id not in AUTH[str(chat_id)]:
@@ -137,6 +137,7 @@ async def unauth_user(client, message):
 
 
 @Client.on_message(filters.command(["authlist", "authusers"]) & filters.group)
+@admin_only()
 async def authlist_handler(client, message):
     chat_id = message.chat.id
     auth_users = AUTH.get(str(chat_id), [])
@@ -161,18 +162,13 @@ async def authlist_handler(client, message):
 @Client.on_message(filters.command("block"))
 async def block_user(client, message):
     admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
-    admin_ids = get_admin_ids(admin_file)
-    is_admin = user_id in admin_ids
-
-    # Check permissions using global SUDO variable
-    is_authorized = (
-        is_admin or
-        str(OWNER_ID) == str(user_id) or
-        user_id in SUDO
-    )
-
-    if not is_authorized:
+    # Anonymous group admins and channel senders arrive with from_user unset, so
+    # there is no identity to weigh against ADMIN/SUDO -- fail closed instead of
+    # raising AttributeError on .id.
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        return await rich_reply(message, rich_note(Messages.ADMIN_UNKNOWN_USER), ephemeral=True, client=client)
+    if not is_bot_operator(user_id):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     # Check if the message is a reply
@@ -184,7 +180,7 @@ async def block_user(client, message):
             if replied_user_id in get_admin_ids(admin_file):
                 return await rich_reply(message, rich_note(Messages.OWNER_BLOCK_RESTRICT), ephemeral=True, client=client)
             # Check if the replied user is the same as the current chat (group) id
-            if replied_user_id != message.chat.id and not replied_message.from_user.is_self and not OWNER_ID == replied_user_id:
+            if replied_user_id != message.chat.id and not replied_message.from_user.is_self and not is_bot_owner(replied_user_id):
                 if replied_user_id not in BLOCK:
                     BLOCK.append(replied_user_id)
                     # Update database to maintain persistence (low priority)
@@ -224,18 +220,11 @@ async def block_user(client, message):
 
 @Client.on_message(filters.command("unblock"))
 async def unblock_user(client, message):
-    admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
-    is_admin = user_id in get_admin_ids(admin_file)
-
-    # Check permissions using global SUDO variable
-    is_authorized = (
-        is_admin or
-        str(OWNER_ID) == str(user_id) or
-        user_id in SUDO
-    )
-
-    if not is_authorized:
+    # See block_user: no from_user means no identity to authorize.
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        return await rich_reply(message, rich_note(Messages.ADMIN_UNKNOWN_USER), ephemeral=True, client=client)
+    if not is_bot_operator(user_id):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     if message.reply_to_message:
@@ -278,28 +267,13 @@ async def unblock_user(client, message):
 
 @Client.on_message(filters.command("blocklist"))
 async def blocklist_handler(client, message):
-    admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
-    users_data = await user_sessions.find_one({"bot_id": client.me.id})
-    sudoers = users_data.get("SUDOERS", []) if users_data else []
-
-    is_admin = False
-    if os.path.exists(admin_file):
-        admin_ids = get_admin_ids(admin_file)
-        is_admin = user_id in admin_ids
-
-    # Check permissions
-    is_authorized = (
-        is_admin or
-        str(OWNER_ID) == str(user_id) or
-        user_id in sudoers
-    )
-
-    if not is_authorized:
+    # See block_user. Checked before any database round-trip so an anonymous
+    # sender costs nothing.
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        return await rich_reply(message, rich_note(Messages.ADMIN_UNKNOWN_USER), ephemeral=True, client=client)
+    if not is_bot_operator(user_id):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
-
-    # Check for admin or owner
-
 
     # Fetch blocklist from the database
     user_data = await collection.find_one({"bot_id": client.me.id})

@@ -1,0 +1,5 @@
+# Development / CI-only dependencies. Install alongside requirements.txt:
+#   pip install -r requirements.txt -r requirements-dev.txt
+ruff==0.14.2
+pytest==9.1.1
+pytest-asyncio==1.4.0

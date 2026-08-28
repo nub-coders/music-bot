@@ -2,7 +2,6 @@
 
 import os
 import re
-import sys
 import logging
 import asyncio
 import httpx
@@ -10,8 +9,6 @@ import random
 import hashlib
 import json
 import time
-import subprocess
-import requests
 import yt_dlp
 from urllib.parse import urlparse, parse_qs
 from typing import List, Tuple, Dict
@@ -121,8 +118,8 @@ def get_http_client() -> httpx.AsyncClient:
             ca_path = certifi.where()
             if os.path.exists(ca_path):
                 verify = ca_path
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[youtube.get_http_client] certifi CA bundle unavailable, falling back to default verification: {e}")
 
         _http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(15.0, connect=8.0),
@@ -152,7 +149,9 @@ from config import (
     COOKIES_BOOTSTRAP_URL,
     COOKIES_REFRESH_HOURS,
     MAX_FILE_SIZE_BYTES,
+    ALLOW_PRIVATE_STREAM_URLS,
 )
+from url_guard import check_url as check_stream_url
 
 SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -290,7 +289,12 @@ def _extract_expire(stream_url: str) -> int | None:
     except Exception:
         return None
 
-def _read_cache(url: str, prefix: str = "") -> str | None:
+# The disk cache sits on the /play hot path, so the blocking parts (stat, open,
+# json, unlink) live in *_sync helpers and the coroutines below hand them to a
+# worker thread. Previously every resolve did this filesystem work directly on the
+# event loop, stalling playback in every other chat for the duration.
+
+def _read_cache_sync(url: str, prefix: str = "") -> str | None:
     path = _cache_path(url, prefix)
     if not os.path.exists(path):
         return None
@@ -303,24 +307,66 @@ def _read_cache(url: str, prefix: str = "") -> str | None:
             return data.get("url")
         logger.info(f"[CACHE EXPIRED] {prefix}{url[:80]}... removing")
         os.remove(path)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"[CACHE READ] Discarding unreadable entry {os.path.basename(path)}: {type(e).__name__} - {e}")
         try:
             os.remove(path)
-        except Exception:
-            pass
+        except Exception as remove_error:
+            logger.debug(f"[CACHE READ] Could not remove {os.path.basename(path)}: {remove_error}")
     return None
 
-def _write_cache(url: str, stream_url: str, prefix: str = ""):
+
+def _write_cache_sync(url: str, stream_url: str, prefix: str = ""):
     expire = _extract_expire(stream_url)
     if not expire:
         logger.warning(f"[CACHE SKIP] No expire found in stream URL for {url[:80]}")
         return
     try:
-        with open(_cache_path(url, prefix), "w") as f:
+        # 0o600: the payload is a signed CDN URL, so anyone who can read this file
+        # can stream the media until it expires. Under the default umask the file
+        # would be group- and world-readable, which matters on a shared host. fchmod
+        # as well as the open mode, because O_TRUNC reuses an existing file and
+        # would keep whatever permissions it already had.
+        fd = os.open(_cache_path(url, prefix), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
             json.dump({"url": stream_url, "expire": expire}, f)
         logger.info(f"[CACHE WRITE] {prefix}{url[:80]}... (expires in {int(expire - time.time())}s)")
     except Exception as e:
         logger.error(f"[CACHE WRITE ERROR] {e}")
+
+
+async def _read_cache(url: str, prefix: str = "") -> str | None:
+    return await asyncio.to_thread(_read_cache_sync, url, prefix)
+
+
+async def _write_cache(url: str, stream_url: str, prefix: str = ""):
+    # Awaited rather than fire-and-forget: the thread hop costs far less than the
+    # resolve that just happened, and it keeps a following read consistent with
+    # the write. _write_cache_sync swallows and logs its own failures.
+    await asyncio.to_thread(_write_cache_sync, url, stream_url, prefix)
+
+async def _kill_process(process):
+    """Kill and reap a yt-dlp child process.
+
+    `asyncio.wait_for` only cancels our side of `communicate()`; the child keeps
+    running and its pipes stay open, so a bot that times out regularly leaks one
+    process and three fds per attempt for its whole lifetime.
+    """
+    if process is None or process.returncode is not None:
+        return
+    try:
+        process.kill()
+    except ProcessLookupError:
+        return  # already exited between the check and the kill
+    except Exception as e:
+        logger.debug(f"[YT-DLP] kill() failed: {e}")
+        return
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5)
+    except Exception:
+        logger.warning(f"[YT-DLP] child pid={process.pid} did not exit after kill()")
+
 
 async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
     cmd = [
@@ -341,6 +387,7 @@ async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
     sanitized_cmd = [c if (not cookies or c != cookies) else "[REDACTED]" for c in cmd]
     logger.debug(f"[YT-DLP] Running: {' '.join(sanitized_cmd)}")
     start = time.time()
+    process = None
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -353,9 +400,11 @@ async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
         )
     except asyncio.TimeoutError:
         logger.error(f"[YT-DLP] TIMEOUT after 40s for {url}")
+        await _kill_process(process)
         return None
     except Exception as e:
         logger.error(f"[YT-DLP] Exception: {e}")
+        await _kill_process(process)
         return None
     elapsed = round(time.time() - start, 2)
     if process.returncode == 0 and stdout:
@@ -567,7 +616,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
     if cached:
         logger.info(f"[AUDIO] MEM_CACHE hit for {url[:80]}")
         return cached
-    cached = _read_cache(url, prefix="audio_")
+    cached = await _read_cache(url, prefix="audio_")
     if cached:
         _mem_cache_set(("audio", url), cached)
         return cached
@@ -579,7 +628,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         stream = innertube_data["stream_url"]
         logger.info(f"[AUDIO] ✅ Innertube success — {stream[:100]}...")
         _mem_cache_set(("audio", url), stream)
-        _write_cache(url, stream, prefix="audio_")
+        await _write_cache(url, stream, prefix="audio_")
         return stream
 
     # Fast Path 2: ytube API (/info) if configured and breaker is closed
@@ -598,7 +647,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
                     logger.info(f"[AUDIO] ✅ ytube API success — {stream[:100]}...")
                     _api_record_success()
                     _mem_cache_set(("audio", url), stream)
-                    _write_cache(url, stream, prefix="audio_")
+                    await _write_cache(url, stream, prefix="audio_")
                     return stream
             _api_record_failure()
         except Exception as e:
@@ -613,7 +662,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
     )
     if stream:
         _mem_cache_set(("audio", url), stream)
-        _write_cache(url, stream, prefix="audio_")
+        await _write_cache(url, stream, prefix="audio_")
     else:
         logger.warning(f"[AUDIO] Extraction returned None for {url}")
     return stream
@@ -624,7 +673,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     if cached:
         logger.info(f"[VIDEO] MEM_CACHE hit for {url[:80]}")
         return cached
-    cached = _read_cache(url, prefix="video_")
+    cached = await _read_cache(url, prefix="video_")
     if cached:
         _mem_cache_set(("video", url), cached)
         return cached
@@ -636,7 +685,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         stream = innertube_data["stream_url"]
         logger.info(f"[VIDEO] ✅ Innertube success — {stream[:100]}...")
         _mem_cache_set(("video", url), stream)
-        _write_cache(url, stream, prefix="video_")
+        await _write_cache(url, stream, prefix="video_")
         return stream
 
     # Fast Path 2: ytube API (/info) if configured and breaker is closed
@@ -655,7 +704,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
                     logger.info(f"[VIDEO] ✅ ytube API video success — {stream[:100]}...")
                     _api_record_success()
                     _mem_cache_set(("video", url), stream)
-                    _write_cache(url, stream, prefix="video_")
+                    await _write_cache(url, stream, prefix="video_")
                     return stream
             _api_record_failure()
         except Exception as e:
@@ -670,7 +719,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     )
     if stream:
         _mem_cache_set(("video", url), stream)
-        _write_cache(url, stream, prefix="video_")
+        await _write_cache(url, stream, prefix="video_")
     else:
         logger.warning(f"[VIDEO] Extraction returned None for {url}")
     return stream
@@ -904,54 +953,6 @@ def time_to_seconds(time):
         logger.warning(f"[youtube.time_to_seconds] Failed to convert '{time}': {e}")
         return 0
 
-def is_ytdlp_updated():
-    """Check if yt-dlp is up to date"""
-    try:
-        # Get installed version using modern API
-        try:
-            from importlib.metadata import version, PackageNotFoundError
-            installed_version = version('yt-dlp')
-        except PackageNotFoundError:
-            logger.warning("[youtube.is_ytdlp_updated] yt-dlp not installed via pip")
-            return False
-
-        # Get latest version from PyPI
-        response = requests.get('https://pypi.org/pypi/yt-dlp/json', timeout=10)
-        response.raise_for_status()  # better error handling
-        latest_version = response.json()['info']['version']
-
-        is_current = installed_version == latest_version
-        logger.info(
-            f"[youtube.is_ytdlp_updated] Installed={installed_version}, "
-            f"Latest={latest_version}, UpToDate={is_current}"
-        )
-        return is_current
-
-    except requests.RequestException as e:
-        logger.error(f"[youtube.is_ytdlp_updated] PyPI request failed: {e}")
-        return False
-    except Exception as e:
-        logger.error(f"[youtube.is_ytdlp_updated] Error: {e}")
-        return False
-
-def update_ytdlp():
-    """Update yt-dlp to the latest version"""
-    try:
-        logger.info("[youtube.update_ytdlp] Updating yt-dlp")
-        result = subprocess.run([
-            sys.executable, "-m", "pip", "install", "-U", "yt-dlp"
-        ], capture_output=True, text=True, timeout=120)
-
-        if result.returncode == 0:
-            logger.info("[youtube.update_ytdlp] Update successful")
-            return True
-        else:
-            logger.error(f"[youtube.update_ytdlp] Update failed: {result.stderr}")
-            return False
-    except Exception as e:
-        logger.error(f"[youtube.update_ytdlp] Error: {e}")
-        return False
-
 async def _export_cookies():
     """Re-export the browser cookie jar into YT_COOKIES_FILE. yt-dlp writes the
     Netscape file to --cookies after running, so pairing it with
@@ -1027,17 +1028,29 @@ async def refresh_cookies_loop():
         await _export_cookies()
 
 
-async def check_and_update_ytdlp():
-    """Check and update yt-dlp if needed"""
+def log_ytdlp_version():
+    """Log the installed yt-dlp version. Purely informational.
+
+    This deliberately does NOT check PyPI or upgrade anything. The bot used to
+    run `pip install -U yt-dlp` at every startup, which mutated its own
+    dependencies at runtime, made the deployed version unreproducible, and
+    blocked the event loop for up to ~130s on a slow network. yt-dlp is now
+    whatever the image/venv was built with -- bump it by rebuilding, not by
+    restarting the bot.
+    """
     try:
-        logger.debug("[youtube.check_and_update_ytdlp] Checking yt-dlp status")
-        if not is_ytdlp_updated():
-            logger.info("[youtube.check_and_update_ytdlp] yt-dlp is outdated, updating")
-            update_ytdlp()
-        else:
-            logger.info("[youtube.check_and_update_ytdlp] yt-dlp is up to date")
+        from importlib.metadata import version, PackageNotFoundError
+        try:
+            installed = version("yt-dlp")
+        except PackageNotFoundError:
+            logger.warning("[youtube] yt-dlp is not installed; playback will fail until it is")
+            return None
+        logger.info(f"[youtube] yt-dlp version {installed}")
+        return installed
     except Exception as e:
-        logger.error(f"[youtube.check_and_update_ytdlp] Error: {e}")
+        logger.warning(f"[youtube] Could not determine yt-dlp version: {e}")
+        return None
+
 
 def extract_best_format(formats):
     """Pick the best format (progressive MP4 preferred) and return URL"""
@@ -1078,6 +1091,12 @@ async def _get_remote_file_size(url: str) -> int | None:
     """Fetch file size from Content-Length / Content-Range HTTP headers for non-live stream URLs."""
     if not url or not url.startswith(("http://", "https://")):
         return None
+    # Defence in depth: callers are expected to have gated the URL already, but
+    # this function is the one that actually issues the request.
+    block_reason = await check_stream_url(url, allow_private=ALLOW_PRIVATE_STREAM_URLS)
+    if block_reason:
+        logger.warning(f"[youtube._get_remote_file_size] Refused size check: {block_reason}")
+        return None
     try:
         http = get_http_client()
         resp = await http.head(url, follow_redirects=True, timeout=5.0)
@@ -1099,6 +1118,103 @@ async def _get_remote_file_size(url: str) -> int | None:
     return None
 
 
+# Extensions whose path alone identifies a playable media file or HLS/DASH
+# manifest. ffmpeg can stream these even when yt-dlp failed to understand the
+# page, so a failed probe on one of these is recoverable; anything else is not.
+_DIRECT_MEDIA_EXTS = (
+    ".mp3", ".m4a", ".aac", ".opus", ".ogg", ".oga", ".flac", ".wav", ".wma",
+    ".mp4", ".m4v", ".mkv", ".webm", ".mov", ".avi", ".flv", ".ts",
+    ".m3u8", ".mpd",
+)
+
+
+def _looks_playable_direct_url(url: str) -> bool:
+    """True when the URL path itself names a media file or a streaming manifest.
+
+    Used to decide whether a failed yt-dlp probe may still be passed through to
+    the player. An HTML page or JSON endpoint must NOT be passed through: doing
+    so hands py-tgcalls an unplayable URL and the user hears silence with no
+    error message.
+    """
+    try:
+        path = urlparse(url).path.lower()
+    except Exception:
+        return False
+    return path.endswith(_DIRECT_MEDIA_EXTS)
+
+
+def _extract_direct_info_sync(url: str) -> dict | None:
+    """Blocking yt-dlp probe of a direct stream URL. Always run in a thread.
+
+    yt-dlp's extract_info does network I/O and can execute JS challenges, so
+    calling it on the event loop stalls every voice chat and the Telegram
+    heartbeat for its full duration.
+    """
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "http_chunk_size": 10485760,
+        "retries": 1,
+        "socket_timeout": 15,
+        **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if not info:
+        return None
+    if "entries" in info and info["entries"]:
+        info = info["entries"][0]
+    return info
+
+
+# Wall-clock budget for the direct-URL probe above. The worker thread cannot be
+# cancelled, but the event loop stops waiting on it.
+DIRECT_PROBE_TIMEOUT = 30
+
+
+def _ytdlp_search_first_sync(query: str) -> dict | None:
+    """Blocking yt-dlp `ytsearch:` metadata lookup. Always run in a thread.
+
+    Last-resort fallback when the InnerTube -> ytube API -> Data API chain has
+    yielded nothing. Same constraint as _extract_direct_info_sync: this does
+    network I/O and may execute JS challenges, so it must never run on the loop.
+    """
+    ydl_opts = {
+        # Only gather metadata, no downloads
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "socket_timeout": 15,
+        **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
+
+        # Performance optimizations
+        "extract_flat": False,  # We need full info
+        "writethumbnail": False,
+        "writeinfojson": False,
+        "writedescription": False,
+        "writesubtitles": False,
+        "writeautomaticsub": False,
+
+        # Network optimizations
+        "http_chunk_size": 10485760,  # 10MB chunks
+        "retries": 1,  # Reduce retries for speed
+        "fragment_retries": 1,
+
+        # Skip unnecessary processing
+        "skip_playlist_after_errors": 1,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        search_result = ydl.extract_info(f"ytsearch:{query}", download=False)
+    entries = (search_result or {}).get("entries") or []
+    return entries[0] if entries else None
+
+
+# Searches go through a full extraction, so they get a longer budget than the
+# direct-URL probe.
+YTDLP_SEARCH_TIMEOUT = 60
+
+
 async def get_video_details(video_id):
     """
     Get video details using direct stream resolution, API (for YouTube videos), or yt-dlp fallback.
@@ -1113,74 +1229,106 @@ async def get_video_details(video_id):
     # Direct stream URL resolution (bypasses YouTube API and external ytube API)
     if is_direct_stream_url(video_id):
         logger.info(f"[youtube.get_video_details] Handling direct stream URL: '{video_id[:80]}...'")
+
+        # SSRF gate. Anyone in the group can pass a URL here, and everything
+        # below fetches it -- so reject loopback / private / link-local targets
+        # (cloud metadata, LAN services, admin ports) before the first request.
+        block_reason = await check_stream_url(video_id, allow_private=ALLOW_PRIVATE_STREAM_URLS)
+        if block_reason:
+            logger.warning(f"[youtube.get_video_details] Refused direct URL: {block_reason} — {video_id[:120]}")
+            return {"error": "That link points to a private or non-routable address, so it cannot be played."}
+
         is_live = (
             ".m3u8" in video_id.lower()
             or ".mpd" in video_id.lower()
             or "/live" in video_id.lower()
         )
+        info = None
+        probe_failed = False
         try:
-            ydl_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "skip_download": True,
-                "http_chunk_size": 10485760,
-                "retries": 1,
-                **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(video_id, download=False)
-                if info:
-                    if "entries" in info and info["entries"]:
-                        info = info["entries"][0]
-
-                    protocol = str(info.get("protocol", "")).lower()
-                    ext = str(info.get("ext", "")).lower()
-                    if (
-                        info.get("is_live") is True
-                        or info.get("live_status") == "is_live"
-                        or protocol in ("m3u8", "m3u8_native", "http_dash_segments")
-                        or ext in ("m3u8", "mpd")
-                    ):
-                        is_live = True
-
-                    duration = "Live Stream" if is_live else "N/A"
-                    if not is_live and info.get("duration"):
-                        try:
-                            duration = format_duration(int(info["duration"]))
-                        except Exception:
-                            duration = "N/A"
-
-                    # 2 GB limit check for non-live files
-                    if not is_live:
-                        filesize = info.get("filesize") or info.get("filesize_approx")
-                        if not filesize:
-                            filesize = await _get_remote_file_size(video_id)
-                        if filesize and filesize > MAX_FILE_SIZE_BYTES:
-                            size_mb = filesize / (1024 * 1024)
-                            logger.warning(f"[youtube.get_video_details] Direct URL file size {size_mb:.1f}MB exceeds 2 GB limit")
-                            return {"error": f"File size ({size_mb:.1f} MB) exceeds the 2 GB limit."}
-
-                    thumbnail = "N/A"
-                    if info.get("thumbnails"):
-                        thumbnail = info["thumbnails"][-1].get("url", "N/A")
-                    stream_url = extract_best_format(info.get("formats", [])) or info.get("url") or video_id
-                    clean_filename = video_id.split("/")[-1].split("?")[0]
-                    title = info.get("title") or (clean_filename if clean_filename and len(clean_filename) < 50 else "Direct Stream")
-                    return {
-                        "title": title,
-                        "thumbnail": thumbnail,
-                        "duration": duration,
-                        "view_count": "N/A",
-                        "channel_name": info.get("uploader") or "Direct Stream",
-                        "video_url": video_id,
-                        "platform": "Direct",
-                        "stream_url": stream_url,
-                        "video_id": video_id,
-                    }
+            info = await asyncio.wait_for(
+                asyncio.to_thread(_extract_direct_info_sync, video_id),
+                timeout=DIRECT_PROBE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            probe_failed = True
+            logger.warning(
+                f"[youtube.get_video_details] Direct URL probe timed out after {DIRECT_PROBE_TIMEOUT}s: {video_id[:80]}"
+            )
         except Exception as e:
+            probe_failed = True
             logger.warning(f"[youtube.get_video_details] Direct URL yt-dlp extraction notice: {e}")
 
-        # Fallback when yt-dlp extraction fails or returns notice
+        if info:
+            # extract_best_format signals failure with the *string* "N/A", which is
+            # truthy -- so an `or` chain on its result silently swallows the
+            # info["url"] fallback. Normalise it before falling back.
+            best = extract_best_format(info.get("formats", []))
+            if best == "N/A":
+                best = None
+            stream_url = best or info.get("url")
+            if not stream_url:
+                logger.warning(
+                    f"[youtube.get_video_details] Probe returned metadata but no playable "
+                    f"URL for {video_id[:80]}"
+                )
+                info = None
+
+        if info:
+            protocol = str(info.get("protocol", "")).lower()
+            ext = str(info.get("ext", "")).lower()
+            if (
+                info.get("is_live") is True
+                or info.get("live_status") == "is_live"
+                or protocol in ("m3u8", "m3u8_native", "http_dash_segments")
+                or ext in ("m3u8", "mpd")
+            ):
+                is_live = True
+
+            duration = "Live Stream" if is_live else "N/A"
+            if not is_live and info.get("duration"):
+                try:
+                    duration = format_duration(int(info["duration"]))
+                except Exception:
+                    duration = "N/A"
+
+            # 2 GB limit check for non-live files
+            if not is_live:
+                filesize = info.get("filesize") or info.get("filesize_approx")
+                if not filesize:
+                    filesize = await _get_remote_file_size(video_id)
+                if filesize and filesize > MAX_FILE_SIZE_BYTES:
+                    size_mb = filesize / (1024 * 1024)
+                    logger.warning(f"[youtube.get_video_details] Direct URL file size {size_mb:.1f}MB exceeds 2 GB limit")
+                    return {"error": f"File size ({size_mb:.1f} MB) exceeds the 2 GB limit."}
+
+            thumbnail = "N/A"
+            if info.get("thumbnails"):
+                thumbnail = info["thumbnails"][-1].get("url", "N/A")
+            clean_filename = video_id.split("/")[-1].split("?")[0]
+            title = info.get("title") or (clean_filename if clean_filename and len(clean_filename) < 50 else "Direct Stream")
+            return {
+                "title": title,
+                "thumbnail": thumbnail,
+                "duration": duration,
+                "view_count": "N/A",
+                "channel_name": info.get("uploader") or "Direct Stream",
+                "video_url": video_id,
+                "platform": "Direct",
+                "stream_url": stream_url,
+                "video_id": video_id,
+            }
+
+        # The probe produced nothing. Passing the URL straight to the player is
+        # only safe when the URL itself names media -- otherwise report the
+        # failure instead of returning a success dict the caller cannot play.
+        if not (is_live or _looks_playable_direct_url(video_id)):
+            logger.error(
+                f"[youtube.get_video_details] Direct URL is not a recognisable media stream "
+                f"(probe_failed={probe_failed}): {video_id[:120]}"
+            )
+            return {"error": "Could not read that link as a media stream. Use a direct audio/video URL or an HLS/DASH manifest."}
+
         if not is_live:
             remote_size = await _get_remote_file_size(video_id)
             if remote_size and remote_size > MAX_FILE_SIZE_BYTES:
@@ -1238,77 +1386,59 @@ async def get_video_details(video_id):
     # Fallback to yt-dlp
     try:
         logger.debug(f"[youtube.get_video_details] Using yt-dlp fallback for video_id='{video_id}'")
-        ydl_opts = {
-            # Only gather metadata, no downloads
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            **({"cookiefile": YT_COOKIES_FILE} if YT_COOKIES_FILE and os.path.exists(YT_COOKIES_FILE) else {}),
+        video_info = await asyncio.wait_for(
+            asyncio.to_thread(_ytdlp_search_first_sync, video_id),
+            timeout=YTDLP_SEARCH_TIMEOUT,
+        )
 
-            # Performance optimizations
-            "extract_flat": False,  # We need full info
-            "writethumbnail": False,
-            "writeinfojson": False,
-            "writedescription": False,
-            "writesubtitles": False,
-            "writeautomaticsub": False,
+        if not video_info:
+            logger.warning("[youtube.get_video_details] No entries found in yt-dlp search")
+            return {'error': 'No video found for the given ID'}
 
-            # Network optimizations
-            "http_chunk_size": 10485760,  # 10MB chunks
-            "retries": 1,  # Reduce retries for speed
-            "fragment_retries": 1,
+        # Create YouTube URL from video ID
+        youtube_url = f"https://www.youtube.com/watch?v={video_info.get('id', video_id)}"
 
-            # Skip unnecessary processing
-            "skip_playlist_after_errors": 1,
+        # Process duration
+        duration = 'N/A'
+        if video_info.get('duration'):
+            try:
+                duration_seconds = int(video_info.get('duration'))
+                duration = format_duration(duration_seconds)
+            except (ValueError, TypeError):
+                duration = 'N/A'
+
+        # Get thumbnail URL
+        thumbnail = 'N/A'
+        if video_info.get('thumbnails'):
+            thumbnail = video_info['thumbnails'][-1].get('url', 'N/A')
+
+        # Extract best format stream URL. "N/A" is this helper's failure signal,
+        # and a details dict carrying it is unplayable -- report the failure
+        # rather than handing the caller a success it cannot stream.
+        stream_url = extract_best_format(video_info.get('formats', []))
+        if not stream_url or stream_url == 'N/A':
+            logger.error(f"[youtube.get_video_details] yt-dlp returned no playable format for '{video_id}'")
+            return {'error': 'No playable audio/video stream found for that track.'}
+
+        # Prepare details dictionary
+        details = {
+            'title': video_info.get('title', 'N/A'),
+            'thumbnail': thumbnail,
+            'duration': duration,
+            'view_count': video_info.get('view_count', 'N/A'),
+            'channel_name': video_info.get('uploader', 'N/A'),
+            'video_url': youtube_url,
+            'platform': 'YouTube',
+            'stream_url': stream_url,
+            'video_id': video_info.get('id', video_id)
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract initial info using ytsearch
-            search_result = ydl.extract_info(f"ytsearch:{video_id}", download=False)
+        logger.info(f"[youtube.get_video_details] yt-dlp details extracted for id='{details.get('video_id')}'")
+        return details
 
-            if not search_result or 'entries' not in search_result or not search_result['entries']:
-                logger.warning("[youtube.get_video_details] No entries found in yt-dlp search")
-                return {'error': 'No video found for the given ID'}
-
-            # Get the first entry from search results
-            video_info = search_result['entries'][0]
-
-            # Create YouTube URL from video ID
-            youtube_url = f"https://www.youtube.com/watch?v={video_info.get('id', video_id)}"
-
-            # Process duration
-            duration = 'N/A'
-            if video_info.get('duration'):
-                try:
-                    duration_seconds = int(video_info.get('duration'))
-                    duration = format_duration(duration_seconds)
-                except (ValueError, TypeError):
-                    duration = 'N/A'
-
-            # Get thumbnail URL
-            thumbnail = 'N/A'
-            if video_info.get('thumbnails'):
-                thumbnail = video_info['thumbnails'][-1].get('url', 'N/A')
-
-            # Extract best format stream URL
-            stream_url = extract_best_format(video_info.get('formats', []))
-
-            # Prepare details dictionary
-            details = {
-                'title': video_info.get('title', 'N/A'),
-                'thumbnail': thumbnail,
-                'duration': duration,
-                'view_count': video_info.get('view_count', 'N/A'),
-                'channel_name': video_info.get('uploader', 'N/A'),
-                'video_url': youtube_url,
-                'platform': 'YouTube',
-                'stream_url': stream_url,
-                'video_id': video_info.get('id', video_id)
-            }
-
-            logger.info(f"[youtube.get_video_details] yt-dlp details extracted for id='{details.get('video_id')}'")
-            return details
-
+    except asyncio.TimeoutError:
+        logger.error(f"[youtube.get_video_details] yt-dlp search timed out after {YTDLP_SEARCH_TIMEOUT}s for '{video_id}'")
+        return {'error': 'Lookup timed out. Please try again.'}
     except (yt_dlp.utils.ExtractorError, yt_dlp.utils.DownloadError) as youtube_error:
         logger.error(f"[youtube.get_video_details] YouTube extraction failed: {youtube_error}")
         return {'error': f"YouTube extraction failed: {youtube_error}"}
@@ -1357,8 +1487,8 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
                 'stream_url': details.get('stream_url', 'N/A'),
                 'thumbnail': details.get('thumbnail', 'N/A'),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[youtube.handle_youtube] Queue update callback failed for track {track_id} in chat {chat_id} (video {details.get('video_id', 'N/A')}): {e}")
 
     return result_tuple
 

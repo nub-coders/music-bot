@@ -52,9 +52,35 @@ class TokenBucket:
             await asyncio.sleep(wait)
         return await self.acquire(tokens)
 
+    def is_disposable(self, now: float) -> bool:
+        """True when this bucket holds no state a freshly built one wouldn't.
+
+        Refill is purely time-based, so `capacity / refill_per_sec` seconds after
+        the last acquire the bucket is back at capacity -- identical to a new one,
+        and therefore safe to drop. `_last_ts` is read without the lock: a stale
+        value only postpones eviction to the next sweep.
+
+        A non-refilling bucket (refill_per_sec <= 0) never returns to capacity, so
+        it is never disposable; dropping one would hand back a spent allowance.
+        """
+        if self.refill_per_sec <= 0:
+            return False
+        return (now - self._last_ts) >= (self.capacity / self.refill_per_sec)
+
+
+# One bucket per key was retained forever, so a long-running bot accumulated a
+# TokenBucket plus an asyncio.Lock for every user id it ever saw. Sweep once the
+# map crosses _SWEEP_AT, and keep a hard ceiling as a backstop.
+_SWEEP_AT = 512
+_MAX_KEYS = 10_000
+
 
 class TokenBucketMap:
-    """Per-key token buckets (e.g., per-user, per-chat)."""
+    """Per-key token buckets (e.g., per-user, per-chat).
+
+    Bounded: fully-refilled keys are evicted on a lazy sweep, which is lossless
+    because a refilled bucket and a new bucket behave identically.
+    """
 
     def __init__(self, capacity: int, refill_per_sec: float):
         self.capacity = capacity
@@ -62,8 +88,29 @@ class TokenBucketMap:
         self._buckets: Dict[int, TokenBucket] = {}
         self._lock = asyncio.Lock()
 
+    def __len__(self) -> int:
+        return len(self._buckets)
+
+    def _sweep(self) -> None:
+        """Drop refilled keys. Caller holds self._lock."""
+        now = time.time()
+        for key in [k for k, b in self._buckets.items() if b.is_disposable(now)]:
+            del self._buckets[key]
+
+        if len(self._buckets) <= _MAX_KEYS:
+            return
+        # Backstop: this many keys are actively throttled at once, which in practice
+        # means a flood. Evicting the least-recently-used refunds those callers their
+        # allowance -- accepted deliberately, because unbounded memory is worse.
+        overflow = len(self._buckets) - _MAX_KEYS
+        oldest = sorted(self._buckets, key=lambda k: self._buckets[k]._last_ts)[:overflow]
+        for key in oldest:
+            del self._buckets[key]
+
     async def _get_bucket(self, key: int) -> TokenBucket:
         async with self._lock:
+            if len(self._buckets) >= _SWEEP_AT and key not in self._buckets:
+                self._sweep()
             if key not in self._buckets:
                 self._buckets[key] = TokenBucket(self.capacity, self.refill_per_sec)
             return self._buckets[key]

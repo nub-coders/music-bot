@@ -10,8 +10,11 @@ containers for Redis (keyed f"{bot_id}:{chat_id}") behind these same attributes/
 methods to go multi-worker, without touching the ~80 call sites.
 """
 import asyncio
+import logging
 import time
 from collections import defaultdict, deque
+
+logger = logging.getLogger(__name__)
 
 
 class SessionStore:
@@ -81,8 +84,8 @@ class SessionStore:
         if msg:
             try:
                 await msg.delete()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[state] Deleting now-playing message for chat {chat_id} failed: {e}")
 
     def lock(self, chat_id):
         """Per-chat lock. Wrap any queue/active read-modify-write in `async with`."""

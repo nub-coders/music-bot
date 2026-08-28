@@ -13,20 +13,48 @@ def _sudo_card(headline: str, user_id: int, status: str) -> str:
     ])
 
 
+# Sudo state lives in two places: the SUDOERS array in Mongo is authoritative, and
+# the in-memory SUDO list is a mirror rebuilt from it at startup (main.py). These
+# two helpers are the only sanctioned way to change either, so the pair cannot
+# drift apart.
+#
+# The previous call sites used a bare asyncio.create_task() for the write and
+# updated SUDO unconditionally afterwards. A failed write therefore vanished (a
+# bare task's exception only surfaces if and when the task is garbage collected)
+# while the reply still confirmed the change and the in-memory mirror still
+# honoured it -- so the grant worked until the next restart and then silently did
+# not. Awaiting the write is cheap; the caller reports failure instead.
+
+async def _grant_sudo(client, user_id: int) -> bool:
+    """Persist a sudo grant, then mirror it in memory. False if nothing was saved."""
+    try:
+        await push_to_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", user_id, upsert=True)
+    except Exception as e:
+        logger.error(f"[addsudo] Failed to persist SUDOERS grant for {user_id}: {e}", exc_info=True)
+        return False
+    if user_id not in SUDO:
+        SUDO.append(user_id)
+    return True
+
+
+async def _revoke_sudo(client, user_id: int) -> bool:
+    """Persist a sudo revocation, then mirror it in memory. False if nothing was saved."""
+    try:
+        await pull_from_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", user_id)
+    except Exception as e:
+        logger.error(f"[rmsudo] Failed to persist SUDOERS revocation for {user_id}: {e}", exc_info=True)
+        return False
+    # Guarded because list.remove() raises ValueError when the mirror has drifted
+    # from the database -- the caller decided on the DB's copy, not this one.
+    if user_id in SUDO:
+        SUDO.remove(user_id)
+    return True
+
+
 @Client.on_message(filters.command("reboot") & filters.private)
 async def reboot_handler(client: Client, message: Message):
     user_id = message.from_user.id
-    admin_file = f"{ggg}/admin.txt"
-    is_admin = user_id in get_admin_ids(admin_file)
-
-    # Authorization check using global SUDO variable
-    is_authorized = (
-        is_admin or
-        str(OWNER_ID) == str(user_id) or
-        user_id in SUDO
-    )
-
-    if not is_authorized:
+    if not is_bot_operator(user_id):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     # Authorized: Reboot process
@@ -53,13 +81,13 @@ async def reboot_handler(client: Client, message: Message):
     try:
         from thumbnails import close_session as close_thumbnail_session
         await close_thumbnail_session()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[reboot] Closing thumbnail HTTP session failed: {e}")
     try:
         from youtube import close_http_client
         await close_http_client()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[reboot] Closing YouTube HTTP client failed: {e}")
 
     # Restart process gracefully
     try:
@@ -70,14 +98,13 @@ async def reboot_handler(client: Client, message: Message):
 
 @Client.on_message(filters.command("sudolist"))
 async def show_sudo_list(client, message):
-    admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
-    is_admin = user_id in get_admin_ids(admin_file)
-
-    # Check permissions
-    is_authorized = is_admin or str(OWNER_ID) == str(user_id)
-
-    if not is_authorized:
+    # /sudolist, /addsudo and /rmsudo are not private-only, so an anonymous group
+    # admin or a linked channel can reach them with from_user unset. No identity
+    # means nothing to authorize -- fail closed rather than raise on .id.
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        return await rich_reply(message, rich_note(Messages.ADMIN_UNKNOWN_USER), ephemeral=True, client=client)
+    if not is_owner_tier(user_id):
         return await rich_reply(message, rich_note(Messages.PAID_OWNER_CMD), ephemeral=True, client=client)
     try:
         users_data = await user_sessions.find_one({"bot_id": client.me.id})
@@ -118,13 +145,11 @@ async def show_sudo_list(client, message):
 @Client.on_message(filters.command("addsudo"))
 async def add_to_sudo(client, message):
     admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
-    admin_ids = get_admin_ids(admin_file)
-    is_admin = user_id in admin_ids
-
-    is_authorized = is_admin or str(OWNER_ID) == str(user_id)
-
-    if not is_authorized:
+    # See show_sudo_list.
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        return await rich_reply(message, rich_note(Messages.ADMIN_UNKNOWN_USER), ephemeral=True, client=client)
+    if not is_owner_tier(user_id):
         return await rich_reply(message, rich_note(Messages.OWNER_CMD), ephemeral=True, client=client)
 
     if message.reply_to_message:
@@ -142,9 +167,9 @@ async def add_to_sudo(client, message):
                 users_data = await user_sessions.find_one({"bot_id": client.me.id})
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if replied_user_id not in sudoers:
-                    asyncio.create_task(push_to_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", replied_user_id, upsert=True))
+                    if not await _grant_sudo(client, replied_user_id):
+                        return await rich_reply(message, rich_note(Messages.ERR_SUDO_WRITE), ephemeral=True, client=client)
                     await rich_reply(message, _sudo_card(Messages.USER_ADDED_SUDO.format(replied_user_id), replied_user_id, "sᴜᴅᴏ"), ephemeral=True, client=client)
-                    SUDO.append(replied_user_id)
                 else:
                     await rich_reply(message, rich_note(Messages.USER_ALREADY_SUDO.format(replied_user_id)), ephemeral=True, client=client)
             else:
@@ -166,9 +191,9 @@ async def add_to_sudo(client, message):
                 users_data = await user_sessions.find_one({"bot_id": client.me.id})
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if target_user_id not in sudoers:
-                    asyncio.create_task(push_to_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", target_user_id, upsert=True))
+                    if not await _grant_sudo(client, target_user_id):
+                        return await rich_reply(message, rich_note(Messages.ERR_SUDO_WRITE), ephemeral=True, client=client)
                     await rich_reply(message, _sudo_card(Messages.USER_ADDED_SUDO.format(target_user_id), target_user_id, "sᴜᴅᴏ"), ephemeral=True, client=client)
-                    SUDO.append(target_user_id)
                 else:
                     await rich_reply(message, rich_note(Messages.USER_ALREADY_SUDO.format(target_user_id)), ephemeral=True, client=client)
             except ValueError:
@@ -180,13 +205,11 @@ async def add_to_sudo(client, message):
 @Client.on_message(filters.command("rmsudo"))
 async def remove_from_sudo(client, message):
     admin_file = f"{ggg}/admin.txt"
-    user_id = message.from_user.id
-    admin_ids = get_admin_ids(admin_file)
-    is_admin = user_id in admin_ids
-
-    is_authorized = is_admin or (user_id == OWNER_ID)
-
-    if not is_authorized:
+    # See show_sudo_list.
+    user_id = message.from_user.id if message.from_user else None
+    if not user_id:
+        return await rich_reply(message, rich_note(Messages.ADMIN_UNKNOWN_USER), ephemeral=True, client=client)
+    if not is_owner_tier(user_id):
         return await rich_reply(message, rich_note(Messages.OWNER_CMD), ephemeral=True, client=client)
 
     # Handle reply to message
@@ -207,9 +230,9 @@ async def remove_from_sudo(client, message):
                     return await rich_reply(message, rich_note(Messages.USER_NOT_IN_DB.format(replied_user_id)), ephemeral=True, client=client)
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if replied_user_id in sudoers:
-                    asyncio.create_task(pull_from_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", replied_user_id))
+                    if not await _revoke_sudo(client, replied_user_id):
+                        return await rich_reply(message, rich_note(Messages.ERR_SUDO_WRITE), ephemeral=True, client=client)
                     await rich_reply(message, _sudo_card(Messages.USER_REMOVED_SUDO.format(replied_user_id), replied_user_id, "ʀᴇᴍᴏᴠᴇᴅ"), ephemeral=True, client=client)
-                    SUDO.remove(replied_user_id)
                 else:
                     await rich_reply(message, rich_note(Messages.USER_NOT_IN_SUDO.format(replied_user_id)), ephemeral=True, client=client)
             else:
@@ -233,9 +256,9 @@ async def remove_from_sudo(client, message):
                     return await rich_reply(message, rich_note(Messages.USER_NOT_IN_DB.format(target_user_id)), ephemeral=True, client=client)
                 sudoers = users_data.get("SUDOERS", []) if users_data else []
                 if target_user_id in sudoers:
-                    asyncio.create_task(pull_from_array(user_sessions, {"bot_id": client.me.id}, "SUDOERS", target_user_id))
+                    if not await _revoke_sudo(client, target_user_id):
+                        return await rich_reply(message, rich_note(Messages.ERR_SUDO_WRITE), ephemeral=True, client=client)
                     await rich_reply(message, _sudo_card(Messages.USER_REMOVED_SUDO.format(target_user_id), target_user_id, "ʀᴇᴍᴏᴠᴇᴅ"), ephemeral=True, client=client)
-                    SUDO.remove(target_user_id)
                 else:
                     await rich_reply(message, rich_note(Messages.USER_NOT_IN_SUDO.format(target_user_id)), ephemeral=True, client=client)
             except ValueError:

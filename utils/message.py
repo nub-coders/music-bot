@@ -229,6 +229,7 @@ class Messages:
     PAID_OWNER_CMD = f"{EmojiTag.OWNER} <b>ᴘᴀɪᴅ ᴏᴡɴᴇʀ ᴏɴʟʏ ᴄᴏᴍᴍᴀɴᴅ.</b>"
     NO_SUDO_USERS = f"{EmojiTag.INFO} <b>ɴᴏ sᴜᴅᴏ ᴜsᴇʀs ꜰᴏᴜɴᴅ.</b>"
     ERR_FETCH_SUDO = f"{EmojiTag.ERROR} <b>ᴇʀʀᴏʀ ᴡʜɪʟᴇ ꜰᴇᴛᴄʜɪɴɢ sᴜᴅᴏ ʟɪsᴛ.</b>"
+    ERR_SUDO_WRITE = f"{EmojiTag.ERROR} <b>ᴄᴏᴜʟᴅ ɴᴏᴛ sᴀᴠᴇ ᴛʜᴇ sᴜᴅᴏ ᴄʜᴀɴɢᴇ — ɴᴏᴛʜɪɴɢ ᴡᴀs ᴀᴘᴘʟɪᴇᴅ.</b>"
     RATE_LIMITED = f"{EmojiTag.WARNING} <b>ʏᴏᴜ'ʀᴇ sᴇɴᴅɪɴɢ ᴘʟᴀʏ ᴄᴏᴍᴍᴀɴᴅs ᴛᴏᴏ ꜰᴀsᴛ.</b>"
     OWNER_CMD = f"{EmojiTag.OWNER} <b>ᴏᴡɴᴇʀ ᴏɴʟʏ ᴄᴏᴍᴍᴀɴᴅ.</b>"
     ALREADY_OWNER = f"{EmojiTag.INFO} <b>ᴛʜɪs ᴜsᴇʀ ɪs ᴀʟʀᴇᴀᴅʏ ᴏᴡɴᴇʀ.</b>"

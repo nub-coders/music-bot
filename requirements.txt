@@ -14,6 +14,5 @@ psutil==7.2.2
 py-tgcalls==2.3.3
 pymediainfo==7.0.1
 python-magic==0.4.27
-requests==2.33.0
 yt-dlp[default]
 python-dotenv==1.2.2

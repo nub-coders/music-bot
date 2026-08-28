@@ -58,6 +58,12 @@
    Client Credentials flow — no user login). Create an app at
    https://developer.spotify.com/dashboard and set both. If unset, Spotify links fall
    back to a plain search. Keep the secret out of git.
+ - Optional: `ALLOW_PRIVATE_STREAM_URLS` (True/False, default `False`) — by default a
+   direct URL passed to `/play` is rejected if it resolves to a loopback, link-local,
+   or private address, so group members cannot make the bot fetch cloud metadata
+   (`169.254.169.254`), localhost admin ports, or your LAN. Set this to `True` only if
+   you deliberately stream from a private media server (Jellyfin/Plex); it re-opens
+   that surface to anyone who can type `/play`.
 
  Quickstart (local or VPS)
  -------------------------

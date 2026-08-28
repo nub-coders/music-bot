@@ -15,13 +15,22 @@ logger = logging.getLogger(__name__)
 
 _session = None
 
+# Thumbnail URLs are third-party (YouTube/Spotify CDNs, and whatever art a track
+# carries), so the fetch gets a hard deadline and a size cap. Without the deadline
+# a stalled CDN holds up the /play card behind aiohttp's 5-minute default; without
+# the cap an oversized or hostile body is read wholly into memory and onto disk.
+# A rendered card's source art is ~100 KB, so 8 MB is generous.
+_THUMB_TIMEOUT = aiohttp.ClientTimeout(total=20, connect=10)
+_THUMB_MAX_BYTES = 8 * 1024 * 1024
+_THUMB_CHUNK = 64 * 1024
+
 
 def _get_session():
     """Reused aiohttp session so cache-miss thumbnail downloads keep the
     TCP/TLS connection alive instead of a fresh handshake each time."""
     global _session
     if _session is None or _session.closed:
-        _session = aiohttp.ClientSession()
+        _session = aiohttp.ClientSession(timeout=_THUMB_TIMEOUT)
     return _session
 
 
@@ -338,8 +347,8 @@ def render_thumb(image_path, title, duration, channel, views, videoid, random_id
         try:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[render_thumb] Temp file cleanup failed for {temp_file} (video {videoid}): {e}")
 
     return background_path
 
@@ -482,6 +491,32 @@ def draw_text_with_shadow(background, draw, position, text, font, fill, shadow_o
     draw.text(position, text, font=font, fill=fill)
 
 
+async def _download_thumb(resp, dest_path) -> bool:
+    """Stream a thumbnail response body to dest_path under a size cap.
+
+    Returns False when the body is missing or larger than _THUMB_MAX_BYTES, so the
+    caller falls back to the bundled placeholder rather than rendering a truncated
+    image. Cleanup of a partial file is the caller's (it already tracks the path in
+    temp_files_to_delete).
+    """
+    declared = resp.headers.get("Content-Length")
+    if declared and declared.isdigit() and int(declared) > _THUMB_MAX_BYTES:
+        logger.warning(f"[thumbnails] Refusing thumbnail: declared {declared} bytes exceeds cap")
+        return False
+
+    written = 0
+    # `async with` matters here: the previous open/write/close sequence leaked the
+    # descriptor whenever the write or the socket read raised.
+    async with aiofiles.open(dest_path, mode="wb") as f:
+        async for chunk in resp.content.iter_chunked(_THUMB_CHUNK):
+            written += len(chunk)
+            if written > _THUMB_MAX_BYTES:
+                logger.warning(f"[thumbnails] Refusing thumbnail: body exceeded {_THUMB_MAX_BYTES} bytes")
+                return False
+            await f.write(chunk)
+    return written > 0
+
+
 async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoid=None, track_id=None, chat_id=None, update_callback=None):
     temp_files_to_delete = []
     try:
@@ -511,22 +546,28 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
             if not title:
                 title = "Now Playing"
         else:
+            # A failed or refused download degrades to the bundled placeholder so a
+            # slow CDN costs the card its art, not the whole /play response.
+            image_path = "thumbnail.png"
             session = _get_session()
-            async with session.get(thumbnail) as resp:
-                if resp.status == 200:
-                    os.makedirs("cache", exist_ok=True)
-                    # random_id is a deterministic hash (so the rendered card can be
-                    # cached), which means two concurrent plays of the same track
-                    # derive the same download path and clobber/delete each other's
-                    # file mid-render. A uuid keeps the scratch download private.
-                    temp_thumb_path = f"cache/thumb_{uuid.uuid4().hex[:8]}_{videoid}.png"
-                    f = await aiofiles.open(temp_thumb_path, mode="wb")
-                    await f.write(await resp.read())
-                    await f.close()
-                    image_path = temp_thumb_path
-                    temp_files_to_delete.append(temp_thumb_path)
-                else:
-                    image_path = "thumbnail.png"
+            try:
+                async with session.get(thumbnail) as resp:
+                    if resp.status == 200:
+                        os.makedirs("cache", exist_ok=True)
+                        # random_id is a deterministic hash (so the rendered card can be
+                        # cached), which means two concurrent plays of the same track
+                        # derive the same download path and clobber/delete each other's
+                        # file mid-render. A uuid keeps the scratch download private.
+                        temp_thumb_path = f"cache/thumb_{uuid.uuid4().hex[:8]}_{videoid}.png"
+                        temp_files_to_delete.append(temp_thumb_path)
+                        if await _download_thumb(resp, temp_thumb_path):
+                            image_path = temp_thumb_path
+                    else:
+                        logger.warning(f"[thumbnails] Thumbnail fetch returned HTTP {resp.status} for {videoid}")
+            except asyncio.TimeoutError:
+                logger.warning(f"[thumbnails] Thumbnail fetch timed out for {videoid}")
+            except aiohttp.ClientError as e:
+                logger.warning(f"[thumbnails] Thumbnail fetch failed for {videoid}: {type(e).__name__} - {e}")
 
         background_path = await asyncio.to_thread(
             render_thumb,
@@ -543,8 +584,8 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
         if update_callback and track_id and chat_id:
             try:
                 update_callback(track_id, chat_id, {'thumb': background_path})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[get_thumb] Thumbnail-ready callback failed for track {track_id} in chat {chat_id}: {e}")
 
         return background_path
 
@@ -560,5 +601,5 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
             try:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[get_thumb] Temp file cleanup failed for {temp_file} (video {videoid}): {e}")

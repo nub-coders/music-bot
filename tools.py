@@ -223,6 +223,42 @@ def get_admin_ids(admin_file: str = "") -> list:
     """
     return ADMIN
 
+
+# Two privilege tiers, named once instead of re-derived per handler.
+#
+# Every bot-level command used to inline its own version of
+# `is_admin or is_bot_owner(uid) or uid in SUDO`, and they did not agree:
+#   * /leaveall dropped the ADMIN term, so an INITIAL_ADMIN_IDS admin could
+#     reboot the bot but not make it leave empty chats.
+#   * /blocklist wrapped the ADMIN lookup in `os.path.exists(admin.txt)`, and
+#     get_admin_ids() has been DB-backed since the file was retired — so the
+#     whole ADMIN tier was skipped in every deployment that has no admin.txt.
+#   * /block and /unblock read the in-memory SUDO mirror while /blocklist read
+#     the SUDOERS array straight from Mongo.
+#
+# ponytail: the ADMIN/SUDO split is a deliberate seam. Widening the sudo list is
+# a grantor action, so /addsudo, /rmsudo and /sudolist gate on is_owner_tier and
+# a sudoer cannot use them to promote anyone.
+
+def is_owner_tier(user_id) -> bool:
+    """Owner or owner-tier ADMIN. Excludes sudoers: they may not grant sudo."""
+    if not user_id:
+        return False
+    return is_bot_owner(user_id) or user_id in ADMIN
+
+
+def is_bot_operator(user_id) -> bool:
+    """Owner, owner-tier ADMIN, or sudoer — the bot-level operator tier.
+
+    Reads the in-memory SUDO mirror, which main.py rebuilds from the
+    authoritative SUDOERS array in Mongo at startup and which _grant_sudo /
+    _revoke_sudo keep in step with it.
+    """
+    if not user_id:
+        return False
+    return is_owner_tier(user_id) or user_id in SUDO
+
+
 def clear_directory(directory_path):
     """Clear all files and subdirectories in the given directory."""
     if not os.path.exists(directory_path):
@@ -286,8 +322,8 @@ async def update_progress_button(message, duration_str, chat, markup):
                 song = state.playing.get(chat.id)
                 if not song or str(song.get('duration')) != str(duration_str):
                     break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[update_progress_button] Song-change check failed for chat {chat.id}: {e}")
 
             elapsed_str = time.strftime('%M:%S', time.gmtime(elapsed_seconds))
 
@@ -348,8 +384,8 @@ async def autoleave_vc(chat_id: int) -> bool:
             if call_py:
                 try:
                     await call_py.leave_call(chat_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[autoleave_vc] leave_call failed for empty chat {chat_id}: {e}")
             state.queues.pop(chat_id, None)
             state.playing.pop(chat_id, None)
             await remove_active_chat(chat_id)
@@ -363,8 +399,8 @@ async def autoleave_vc(chat_id: int) -> bool:
                         rich_note(Messages.AUTO_LEAVE_EMPTY),
                         reply_markup=Buttons.autoleave_markup(),
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[autoleave_vc] Could not send auto-leave notice to chat {chat_id}: {e}")
             return True
     except Exception as e:
         logger.warning(f"[autoleave_vc] Error: {e}")
@@ -390,8 +426,8 @@ async def _swap_in_photo(thumb_task, ui_chat_id, chat_id, text, keyboard, text_m
         return
     try:
         await text_msg.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[_swap_in_photo] Deleting the text now-playing message failed in chat {chat_id}: {e}")
     state.set_now_playing(chat_id, photo_msg)
     asyncio.create_task(update_progress_button(photo_msg, duration, chat, keyboard))
 
@@ -585,8 +621,8 @@ async def add_text_img(image_path, text):
                     image_width = int(vt.width)
                     image_height = int(vt.height)
                     probed = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[add_text_img] pymediainfo probe failed for {image_path}: {e}")
 
         if not probed:
             try:
@@ -598,8 +634,8 @@ async def add_text_img(image_path, text):
                 if w > 0 and h > 0:
                     image_width, image_height = w, h
                     probed = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[add_text_img] cv2 probe failed for {image_path}: {e}")
 
         overlay = Image.new("RGBA", (image_width, image_height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
@@ -766,13 +802,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         if queue_msg:
             try:
                 await queue_msg.delete()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[join_call] Deleting the queue card failed in chat {chat_id}: {e}")
         if message and message != queue_msg:
             try:
                 await message.delete()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[join_call] Deleting the command message failed in chat {chat_id}: {e}")
 
         # ── Wait for YouTube task if we have no stream source or incomplete metadata ──
         # ponytail: await the task we depend on (up to 30s) instead of proceeding sourceless
@@ -1025,13 +1061,13 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                 if thumb.done() and not thumb.cancelled():
                     try:
                         local_thumb = thumb.result()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"[join_call] Reading the finished thumbnail task result failed for chat {chat_id}: {e}")
                 else:
                     try:
                         local_thumb = await asyncio.wait_for(asyncio.shield(thumb), timeout=3.0)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"[join_call] Waiting up to 3s for the thumbnail task failed for chat {chat_id}: {e}")
             elif isinstance(thumb, str) and os.path.exists(thumb):
                 local_thumb = thumb
 
@@ -1191,7 +1227,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
     """
     Called when a chat's queue is empty and playback has ended.
     Fetches suggestions related to the last played track and posts an interactive
-    suggestion card with a 5-second countdown to autoplay the top result.
+    suggestion card with a 10-second countdown to autoplay the top result.
     """
     try:
         last_vid = None
@@ -1233,7 +1269,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             await remove_active_chat(chat_id)
             return
 
-        countdown_sec = 5
+        countdown_sec = 10
         autoplay_enabled = state.is_autoplay_enabled(chat_id)
 
         # Build Rich Message blocks with title callback buttons in bordered table
@@ -1385,8 +1421,8 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                         reply_markup=None,
                         client=bot,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[Suggest] Editing the suggestion card to the autoplay notice failed for chat {chat_id}: {e}")
 
                 yt_task = asyncio.create_task(handle_youtube(top_url))
                 yt_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -1408,7 +1444,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                     assistant_num=ast_num,
                 )
             except asyncio.CancelledError:
-                pass
+                logger.debug(f"[Suggest] Countdown autoplay cancelled for chat {chat_id}")
             except Exception as err:
                 logger.warning(f"[Suggest] Countdown autoplay failed for chat {chat_id}: {err}")
                 await client.leave_call(chat_id)
@@ -1424,8 +1460,8 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
         try:
             await client.leave_call(chat_id)
             await remove_active_chat(chat_id)
-        except Exception:
-            pass
+        except Exception as cleanup_err:
+            logger.debug(f"[Suggest] Cleanup after the suggestion failure failed for chat {chat_id}: {cleanup_err}")
 
 
 trigger_suggestions = _trigger_suggestions

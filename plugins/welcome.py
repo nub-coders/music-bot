@@ -9,7 +9,7 @@ async def set_welcome_handler(client, message):
     session_name = f'user_{client.me.id}'
     user_dir = f"{ggg}/{session_name}"
     try:
-        if not sender_id == OWNER_ID:
+        if not is_bot_owner(sender_id):
            return await rich_reply(message, rich_note(Messages.BOT_OWNER_ONLY), ephemeral=True, client=client)
 
         replied_msg = message.reply_to_message
@@ -249,7 +249,7 @@ async def set_welcome_handler(client, message):
 @Client.on_message(filters.command(["resetwelcome", "rwelcome"]))
 async def resetwelcome(client: Client, message: Message):
     sender_id = message.from_user.id
-    if not sender_id == OWNER_ID:
+    if not is_bot_owner(sender_id):
         return await rich_reply(message, rich_note(Messages.BOT_OWNER_ONLY), ephemeral=True, client=client)
 
     set_user_data(client.me.id, "WELCOME", None)

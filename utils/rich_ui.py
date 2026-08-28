@@ -237,8 +237,8 @@ def _normalize_html(html_text: str) -> str:
     try:
         from utils.premium_emoji import PREMIUM_EMOJI, _upgrade_unicode_emoji, strip_custom_emoji_text
         text = _upgrade_unicode_emoji(text) if PREMIUM_EMOJI else strip_custom_emoji_text(text)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[_normalize_html] premium-emoji pass skipped: {e}")
     text = re.sub(r'href=([^\s">]+)', r'href="\1"', text)
 
     # Convert line breaks to <br/> outside table tags and pre tags to avoid line collapsing in rich HTML

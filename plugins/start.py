@@ -74,7 +74,7 @@ async def user_client_start_handler(client, message):
         users_data = await user_sessions.find_one({"bot_id": client.me.id})
         sudoers = users_data.get("SUDOERS", []) if users_data else []
         uid = message.from_user.id if message.from_user else message.chat.id
-        is_owner = str(uid) == str(OWNER_ID)
+        is_owner = is_bot_owner(uid)
         is_admin = uid in admin_ids or is_owner
         is_sudo = uid in sudoers or is_owner
 
@@ -348,7 +348,7 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     data = callback_query.data.split("_")[1]
     user_id = callback_query.from_user.id
     admin_ids = get_admin_ids(f"{ggg}/admin.txt")
-    is_owner = bool(OWNER_ID) and str(OWNER_ID) == str(user_id)
+    is_owner = is_bot_owner(user_id)
     is_sudo = is_owner or user_id in SUDO
     is_admin = is_owner or is_sudo or (user_id in admin_ids)
     owner = await client.get_users(OWNER_ID) if OWNER_ID else None
@@ -534,7 +534,7 @@ async def help_command_handler(client: Client, message: Message):
         admin_ids = get_admin_ids(f"{ggg}/admin.txt")
         users_data = await user_sessions.find_one({"bot_id": client.me.id})
         sudoers = users_data.get("SUDOERS", []) if users_data else []
-        is_owner = str(user_id) == str(OWNER_ID)
+        is_owner = is_bot_owner(user_id)
         is_admin = user_id in admin_ids or is_owner
         is_sudo = user_id in sudoers or is_owner
 

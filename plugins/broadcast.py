@@ -35,8 +35,44 @@ from utils.rich_ui import (
 logger = logging.getLogger(__name__)
 
 
+async def _is_broadcast_authorized(client, user_id) -> bool:
+    """Owner / owner-tier admin / DB sudoer — may this user drive the broadcast flow?
+
+    Single source of truth for every broadcast entry point (the command, the
+    panel callback, and the setting toggles) so revoking a sudoer closes all of
+    them at once, and a stale panel left open in an old chat stops working.
+    Falls closed for anonymous admins / channel senders (user_id is None) and in
+    ownerless mode, where OWNER_ID == 0 matches no real account.
+
+    Deliberately spelled out rather than delegating to tools.is_bot_operator:
+    this is the one gate whose action reaches every chat the bot knows, so the
+    sudo term is read from the authoritative SUDOERS array in Mongo instead of
+    the in-memory mirror. One await is a fair price for not fanning out on stale
+    state.
+    """
+    if not user_id:
+        return False
+    # get_admin_ids() is DB-backed now and ignores its path argument (tools.py:218),
+    # so it must be consulted unconditionally. The old `os.path.exists(admin.txt)`
+    # guard meant the owner-tier ADMIN list was skipped whenever that legacy file
+    # was absent -- i.e. in every deployment using INITIAL_ADMIN_IDS.
+    if user_id in get_admin_ids():
+        return True
+    if is_bot_owner(user_id):
+        return True
+    users_data = await user_sessions.find_one({"bot_id": client.me.id})
+    sudoers = users_data.get("SUDOERS", []) if users_data else []
+    return user_id in sudoers
+
+
 @Client.on_callback_query(filters.regex(r"^broadcast$"))
 async def broadcast_callback_handler(client, callback_query):
+    # Authorize first: everything below this line sends to every stored chat.
+    user_id = callback_query.from_user.id if callback_query.from_user else None
+    if not await _is_broadcast_authorized(client, user_id):
+        logger.warning(f"[broadcast] Rejected unauthorized broadcast callback from user_id={user_id}")
+        return await callback_query.answer(clean_alert(Messages.OWNER_SUDO_CMD), show_alert=True)
+
     # Prevent concurrent broadcasts globally
     sem = broadcast_semaphore()
     if sem.locked():
@@ -66,8 +102,10 @@ async def broadcast_callback_handler(client, callback_query):
 
         try:
             await callback_query.message.delete()
-        except Exception:
-            pass
+        except Exception as e:
+            # Do not dereference callback_query.message here: it is None for
+            # inaccessible/expired panels, which is one of the ways this fails.
+            logger.debug(f"[broadcast] Failed to delete the panel message (user_id={user_id}): {e}")
 
         # Fetch bot data and broadcast payload
         bot_data = await collection.find_one({"bot_id": client.me.id})
@@ -110,8 +148,8 @@ async def broadcast_callback_handler(client, callback_query):
                                 try:
                                     await sent_message.pin(both_sides=False)
                                     a_chat += 1
-                                except Exception:
-                                    pass
+                                except Exception as pin_err:
+                                    logger.debug(f"[broadcast] Pin failed in {cid}: {pin_err}")
 
                         # Debounce progress edits to avoid rate-limiting
                         if (u + g) % 20 == 0 or time.time() - last_edit_time > 3:
@@ -125,8 +163,8 @@ async def broadcast_callback_handler(client, callback_query):
                                     ])
                                 )
                                 last_edit_time = time.time()
-                            except Exception:
-                                pass
+                            except Exception as edit_err:
+                                logger.debug(f"[broadcast] Bot progress update failed in {chat_id_for_progress}: {edit_err}")
 
                     except FloodWait as e:
                         # Respect Telegram's backoff
@@ -222,8 +260,8 @@ async def broadcast_callback_handler(client, callback_query):
                                         ])
                                     )
                                     last_edit_time = time.time()
-                                except Exception:
-                                    pass
+                                except Exception as edit_err:
+                                    logger.debug(f"[broadcast] Assistant progress update failed in {chat_id_for_progress}: {edit_err}")
 
                         except FloodWait as e:
                             await asyncio.sleep(e.value)
@@ -354,8 +392,8 @@ async def compare_message(mess, client, session):
                     media_obj = getattr(msg, attr, None)
                     if media_obj and getattr(media_obj, "file_id", None) == mess_file_id:
                         return msg
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[compare_message] Failed to scan assistant history for the broadcast payload: {e}")
 
     return None
 
@@ -363,6 +401,14 @@ async def compare_message(mess, client, session):
 @Client.on_callback_query(filters.regex(r"^toggle_(.*)$"))
 async def toggle_setting(client, callback_query):
     sender_id = client.me.id
+
+    # Authorize before the update_one below: these settings are bot-wide, so an
+    # unauthorized tap must not persist a change just because the panel refresh
+    # that follows would have been denied.
+    user_id = callback_query.from_user.id if callback_query.from_user else None
+    if not await _is_broadcast_authorized(client, user_id):
+        logger.warning(f"[broadcast] Rejected unauthorized toggle from user_id={user_id}")
+        return await callback_query.answer(clean_alert(Messages.OWNER_SUDO_CMD), show_alert=True)
 
     user_data = await user_sessions.find_one({"bot_id": sender_id}) or {}
     setting_to_toggle = callback_query.data.split("_", 1)[1]
@@ -398,24 +444,9 @@ async def status_command_handler(client, message):
 
 @Client.on_message(filters.command(["broadcast", "fbroadcast"]) & filters.private)
 async def broadcast_command_handler(client, message, user_data=None):
-    user_id = message.from_user.id
-    admin_file = f"{ggg}/admin.txt"
-    users_data = await user_sessions.find_one({"bot_id": client.me.id})
-    sudoers = users_data.get("SUDOERS", []) if users_data else []
+    user_id = message.from_user.id if message.from_user else None
 
-    is_admin = False
-    if os.path.exists(admin_file):
-        admin_ids = get_admin_ids(admin_file)
-        is_admin = user_id in admin_ids
-
-    # Check permissions
-    is_authorized = (
-        is_admin or
-        str(OWNER_ID) == str(user_id) or
-        user_id in sudoers
-    )
-
-    if not is_authorized:
+    if not await _is_broadcast_authorized(client, user_id):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     sender_id = client.me.id

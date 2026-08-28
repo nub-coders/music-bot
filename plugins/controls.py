@@ -32,8 +32,8 @@ async def _resolve_ctrl_chat_id(client, update, is_channel: bool) -> int:
 async def seek_handler_func(client, message):
     try:
         await message.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[seek] Failed to delete command message in {message.chat.id}: {e}")
     # Check if user is banned using global variable
     if message.from_user.id in BLOCK:
         return
@@ -261,8 +261,8 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             await state.delete_now_playing(chat_id)
             try:
                 await rich_edit(callback_query, rich_note(Messages.STREAM_ENDED), reply_markup=None)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[end_callback] Failed to edit panel to stream-ended in {chat_id}: {e}")
 
             await callback_query.answer(Messages.STREAM_ENDED, show_alert=False)
         else:
@@ -278,8 +278,8 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
             await state.delete_now_playing(chat_id)
             try:
                 await rich_edit(callback_query, rich_note(Messages.NO_STREAM), reply_markup=None)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[end_callback] Failed to edit panel to no-stream in {chat_id}: {e}")
 
             await callback_query.answer(Messages.NO_ACTIVE_STREAM, show_alert=False)
     except NotInCallError:
@@ -298,8 +298,8 @@ async def button_end_handler(client: Client, callback_query: CallbackQuery):
 async def end_handler_func(client, message):
   try:
          await message.delete()
-  except Exception:
-         pass
+  except Exception as e:
+         logger.debug(f"[end] Failed to delete command message in {message.chat.id}: {e}")
   # Use global BLOCK list (already loaded at startup) - no DB query needed
   if message.from_user.id in BLOCK:
        return
@@ -397,8 +397,8 @@ async def button_skip_handler(client: Client, callback_query: CallbackQuery):
 
             try:
                 await rich_edit(callback_query, rich_note(Messages.QUEUE_EMPTY_STREAM_ENDED), reply_markup=None)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[skip_callback] Failed to edit panel to queue-empty in {chat_id}: {e}")
 
             await callback_query.answer(Messages.QUEUE_EMPTY_STREAM_ENDED, show_alert=False)
 
@@ -426,7 +426,7 @@ async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
     if not user or user.id in BLOCK:
         await callback_query.answer(Messages.NO_PERM_SKIP, show_alert=True)
         return
-    if user.id != OWNER_ID and user.id not in SUDO and not await allow_play(user.id):
+    if not is_bot_owner(user.id) and user.id not in SUDO and not await allow_play(user.id):
         await callback_query.answer(Messages.RATE_LIMITED, show_alert=True)
         return
 
@@ -492,8 +492,8 @@ async def button_playnow_handler(client: Client, callback_query: CallbackQuery):
 async def loop_handler_func(client, message):
     try:
         await message.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[loop] Failed to delete command message in {message.chat.id}: {e}")
     # Use global BLOCK list (already loaded at startup) - no DB query needed
     if message.from_user.id in BLOCK:
         return
@@ -585,8 +585,8 @@ async def loop_handler_func(client, message):
 async def skip_handler_func(client, message):
   try:
          await message.delete()
-  except Exception:
-         pass
+  except Exception as e:
+         logger.debug(f"[skip] Failed to delete command message in {message.chat.id}: {e}")
   # Use global BLOCK list (already loaded at startup) - no DB query needed
   if message.from_user.id in BLOCK:
        return
@@ -611,8 +611,8 @@ async def skip_handler_func(client, message):
        try:
           if active_cp:
               await active_cp.pause(chat_id)
-       except Exception:
-          pass
+       except Exception as e:
+          logger.debug(f"[skip] Could not pause assistant before skip in {chat_id}: {e}")
        await join_call(
             next['message'],
             next['title'],
@@ -755,7 +755,7 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
     if not user or user.id in BLOCK:
         await callback_query.answer(Messages.ADMIN_RESTRICTED_ACTION, show_alert=True)
         return
-    if user.id != OWNER_ID and user.id not in SUDO and not await allow_play(user.id):
+    if not is_bot_owner(user.id) and user.id not in SUDO and not await allow_play(user.id):
         await callback_query.answer(Messages.RATE_LIMITED, show_alert=True)
         return
 
@@ -774,8 +774,8 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
             rich_note(Messages.PLAYING_SUGGESTION.format(vid)),
             reply_markup=None,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[Suggest] Failed to edit suggestion card for {vid} in {chat_id}: {e}")
 
     try:
         state.add_to_history(chat_id, vid)
@@ -819,8 +819,8 @@ async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery)
     try:
         if active_cp:
             await active_cp.leave_call(chat_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[Suggest] Failed to leave call in {chat_id}: {e}")
 
     await remove_active_chat(client, chat_id)
     state.queues.pop(chat_id, None)
@@ -833,8 +833,8 @@ async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery)
             rich_note(Messages.STREAM_ENDED),
             reply_markup=None,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[Suggest] Failed to edit suggestion card to stream-ended in {chat_id}: {e}")
 
     await callback_query.answer(Messages.STREAM_ENDED, show_alert=False)
 
@@ -867,8 +867,8 @@ async def suggestion_toggle_handler(client: Client, callback_query: CallbackQuer
                         new_row.append(btn)
                 rows.append(new_row)
             await callback_query.message.edit_reply_markup(InlineKeyboardMarkup(rows))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[Suggest] Failed to refresh autoplay button in {chat_id}: {e}")
 
 
 def _autoplay_panel(status_str: str) -> str:

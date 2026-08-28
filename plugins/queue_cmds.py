@@ -42,8 +42,8 @@ async def queue_command(client, message):
             linked = (await client.get_chat(chat_id)).linked_chat
             if linked and (is_channel or state.queues.get(linked.id)):
                 chat_id = linked.id
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[queue] Linked chat lookup failed for {chat_id}: {e}")
     queue_list = state.queues.get(chat_id, [])
     items = queue_list[:20]
     if not items:
@@ -64,8 +64,8 @@ async def queue_command(client, message):
                         raw_title = res[0]
                     if res[1] and res[1] != "N/A":
                         dur = res[1]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[queue] Failed to read resolved metadata for queue item {idx}: {e}")
 
         title = trim_title(raw_title) if raw_title else "Unknown"
         duration = str(dur) if dur and str(dur).lower() not in ("none", "n/a", "") else "-"
@@ -101,8 +101,8 @@ async def shuffle_queue(client, message):
             linked = (await client.get_chat(chat_id)).linked_chat
             if linked and (is_channel or state.queues.get(linked.id)):
                 chat_id = linked.id
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[shuffle] Linked chat lookup failed for {chat_id}: {e}")
     async with state.lock(chat_id):
         q = state.queues.get(chat_id)
         if not q or len(q) < 2:
@@ -144,8 +144,8 @@ async def mentionall(client, message):
             usrtxt = ""
     try:
         spam_chats.remove(chat_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[tagall] Failed to clear tagall state for {chat_id}: {e}")
 
 
 @Client.on_message(filters.command("cancel") & filters.group)
@@ -156,8 +156,8 @@ async def cancel_spam(client, message):
     else:
         try:
             spam_chats.remove(message.chat.id)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[cancel] Failed to clear tagall state for {message.chat.id}: {e}")
         return await rich_reply(message, rich_note(Messages.DISMISS_MENTION), ephemeral=True, client=client)
 
 
@@ -171,8 +171,8 @@ async def delete_message_handler(client, message):
             await message.reply_to_message.delete()
             # Optionally, delete the command message as well
             await message.delete()
-        except MessageDeleteForbidden:
-              pass
+        except MessageDeleteForbidden as e:
+            logger.debug(f"[del] Not permitted to delete message(s) in chat {message.chat.id}: {e}")
         except Exception as e:
             logger.error(f"[del] Failed to delete message: {e}")
             await rich_reply(message, rich_note(Messages.ERROR_DEL_MSG), ephemeral=True, client=client)

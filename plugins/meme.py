@@ -333,8 +333,8 @@ async def memify(client, message):
                 ephemeral=True,
                 client=client,
             )
-        except Exception:
-            pass
+        except Exception as notify_error:
+            logger.debug(f"[memify] Failure notice could not be sent in chat {message.chat.id}: {notify_error}")
     finally:
         # Both the download and the rendered meme must go even when
         # send_sticker raises (file too large, forbidden, flood wait) --
@@ -342,14 +342,14 @@ async def memify(client, message):
         if meme and os.path.exists(meme):
             try:
                 os.remove(meme)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"[memify] Could not remove rendered meme {meme}: {e}")
         if os.path.exists(file):
             try:
                 os.remove(file)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug(f"[memify] Could not remove downloaded source {file}: {e}")
     try:
         await message.delete()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[memify] Could not delete command message {message.id} in chat {message.chat.id}: {e}")

@@ -14,10 +14,10 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ChatType, ButtonStyle
 
-from config import OWNER_ID, ggg, StartTime
+from config import OWNER_ID, StartTime
 from tools import (
-    state, clients, SUDO, assistants, calls, assistant_info,
-    get_admin_ids, get_readable_time, convert_bytes,
+    state, clients, assistants, calls, assistant_info,
+    get_readable_time, convert_bytes, is_bot_operator,
     get_assistant, set_assistant, change_assistant,
     get_call_client, get_assistant_count,
 )
@@ -114,12 +114,7 @@ async def pingme(client, message):
 @Client.on_message(filters.command("ac"))
 async def active_chats_info(client, message):
     uid = message.from_user.id if message.from_user else None
-    is_auth = (
-        uid in get_admin_ids(f"{ggg}/admin.txt")
-        or str(OWNER_ID) == str(uid)
-        or (uid and uid in SUDO)
-    )
-    if not is_auth:
+    if not is_bot_operator(uid):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     all_active = set()
@@ -128,8 +123,8 @@ async def active_chats_info(client, message):
             try:
                 c_list = await cp.calls
                 all_active.update(c_list)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"[ac] Could not list active calls for assistant {ast_idx}: {e}")
 
     if not all_active and state.active:
         all_active.update(state.active)
@@ -167,12 +162,7 @@ async def active_chats_info(client, message):
 @Client.on_message(filters.command(["assistants", "userbot", "userbots"]))
 async def assistants_info_handler(client, message):
     uid = message.from_user.id if message.from_user else None
-    is_auth = (
-        uid in get_admin_ids(f"{ggg}/admin.txt")
-        or str(OWNER_ID) == str(uid)
-        or (uid and uid in SUDO)
-    )
-    if not is_auth:
+    if not is_bot_operator(uid):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     if not assistants:
@@ -242,16 +232,16 @@ async def callback_change_assistant(client, callback_query):
             _assistant_panel(ast_idx, name),
             reply_markup=InlineKeyboardMarkup(_assistant_buttons(ast_idx)),
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[change_ast] Assistant panel edit failed for chat {chat_id} (assistant {ast_idx}): {e}")
     await callback_query.answer(f"Switched group assistant to Assistant {ast_idx}!", show_alert=False)
 
 
-# ── /leaveall (Owner / Sudo Only) ─────────────────────────────────────────────
+# ── /leaveall (Owner / Admin / Sudo Only) ─────────────────────────────────────
 @Client.on_message(filters.command("leaveall"))
 async def leave_all_handler(client, message):
     uid = message.from_user.id if message.from_user else None
-    if str(OWNER_ID) != str(uid) and (not uid or uid not in SUDO):
+    if not is_bot_operator(uid):
         return await rich_reply(message, rich_note(Messages.OWNER_SUDO_CMD), ephemeral=True, client=client)
 
     total_left = 0
@@ -341,8 +331,8 @@ async def now_playing(client, message):
             filled = int(pct * 10)
             bar = "▓" * filled + "░" * (10 - filled)
             progress_text = f"<code>{elapsed} {bar} {duration}</code>"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"[nowplaying] Could not build progress bar for chat {chat_id} (duration '{duration}'): {e}")
 
     mention = by.mention() if by and hasattr(by, "mention") else str(by or "Unknown")
     mode_label = f"{EmojiTag.MUSIC_NOTE} Audio" if mode == "audio" else f"{EmojiTag.PLAY} Video"

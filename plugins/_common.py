@@ -138,17 +138,16 @@ def _is_admin_member_status(status):
         ChatMemberStatus.OWNER.value,
         ChatMemberStatus.ADMINISTRATOR.value,
     )
+
 async def is_authorized(client, chat_id, user_id, allow_auth_users=True):
     """May this user drive transport controls in this chat?
 
-    Owner / sudo / bot-admin / chat-AUTH user / Telegram chat admin. The shared
+    Owner / admin / sudo / chat-AUTH user / Telegram chat admin. The shared
     answer behind @admin_only() and any handler that needs the same call plus an
     exemption of its own. In-memory checks first; the cached get_chat_member
     round-trip only happens when none of them matched.
     """
-    if user_id in get_admin_ids(f"{ggg}/admin.txt"):
-        return True
-    if str(OWNER_ID) == str(user_id) or user_id in SUDO:
+    if is_bot_operator(user_id):
         return True
     if allow_auth_users and user_id in AUTH.get(str(chat_id), []):
         return True
@@ -216,8 +215,8 @@ def admin_only():
                                 linked = (await client.get_chat(chat_id)).linked_chat
                                 if linked:
                                     target_id = linked.id
-                            except Exception:
-                                pass
+                            except Exception as linked_error:
+                                logger.debug(f"[admin_only] Linked-chat lookup failed for cskip in chat {chat_id}: {linked_error}")
                         song = state.playing.get(target_id)
                         if song and getattr(song.get("by"), "id", None) == user_id:
                             logger.info(f"User {user_id} authorized for {func.__name__} (song owner)")
@@ -564,8 +563,8 @@ async def _build_group_stats_cards(client, message):
     members_count = None
     try:
         members_count = await client.get_chat_members_count(chat_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"[status] Member count lookup failed for chat {chat_id}: {e}")
 
     # Per-chat play counts: play_count is the authoritative all-time total,
     # play_dates (added later) is what makes the windowed views possible.

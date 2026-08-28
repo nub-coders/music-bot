@@ -50,8 +50,8 @@ async def dend(client, update, channel_id= None):
             if call_py:
                 try:
                     await call_py.leave_call(chat_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[dend] Failed to leave call for empty queue in {chat_id}: {e}")
             await remove_active_chat(client, chat_id)
             state.queues.pop(chat_id, None)
             state.playing.pop(chat_id, None)
@@ -176,7 +176,7 @@ async def play_handler_func(client, message):
         return
 
     # Throttle rapid /play spam per user (owner/sudo exempt).
-    if message.from_user.id != OWNER_ID and message.from_user.id not in SUDO:
+    if not is_bot_owner(message.from_user.id) and message.from_user.id not in SUDO:
         if not await allow_play(message.from_user.id):
             await rich_reply(message, rich_note(Messages.RATE_LIMITED), ephemeral=True, client=client)
             return
@@ -605,8 +605,8 @@ async def play_handler_func(client, message):
                 _bg(massage.delete())
                 try:
                     await message.delete()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[play] Failed to delete command message {message.id} in {message.chat.id}: {e}")
 
 
     else:
