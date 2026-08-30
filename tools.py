@@ -1500,12 +1500,10 @@ trigger_suggestions = _trigger_suggestions
 
 
 async def end(client, update):
-    if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None):
-        db_task(collection.update_one(
-            {"bot_id": clients["bot"].me.id},
-            {"$push": {'dates': {"$each": [datetime.datetime.now()], "$slice": -5000}}},
-            upsert=True
-        ))
+    # No `dates` push here: `join_call` already records one entry per song start,
+    # and this handler fires at the end of every track (then calls `join_call`
+    # for the next one), so pushing here counted each song twice and disagreed
+    # with the per-chat `play_count` that /stats shows on the same card.
     try:
         chat_id = update.chat_id
         state.cancel_suggest(chat_id)

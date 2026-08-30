@@ -224,6 +224,15 @@ def rich_caption(html_text: str) -> str:
     return _plain_fallback(html_text)
 
 
+_VERBATIM_BLOCK_RE = re.compile(
+    r'(<(?:table|pre)\b[\s\S]*?</(?:table|pre)>)', re.I
+)
+_BR_CONVERT_RE = re.compile(
+    r'(?<!<br/>)(?<!<br>)(?<!</p>)(?<!</h2>)(?<!</h1>)(?<!</h3>)(?<!</h4>)(?<!</h5>)(?<!</h6>)(?<!</blockquote>)(?<!</summary>)(?<!</details>)(?<!</table>)(?<!</pre>)(?<!</li>)(?<!</ul>)(?<!</ol>)(?<!<hr/>)(?<!<hr>)\n',
+    re.I,
+)
+
+
 def _normalize_html(html_text: str) -> str:
     """Normalize HTML for Telegram API & InputRichMessage.
     Fixes unquoted attributes like href=tg://user?id=123 -> href="tg://user?id=123"
@@ -233,7 +242,7 @@ def _normalize_html(html_text: str) -> str:
     """
     if not html_text:
         return ""
-    text = str(html_text)
+    text = str(html_text).replace("\r\n", "\n")
     try:
         from utils.premium_emoji import PREMIUM_EMOJI, _upgrade_unicode_emoji, strip_custom_emoji_text
         text = _upgrade_unicode_emoji(text) if PREMIUM_EMOJI else strip_custom_emoji_text(text)
@@ -242,9 +251,20 @@ def _normalize_html(html_text: str) -> str:
     text = re.sub(r'href=([^\s">]+)', r'href="\1"', text)
 
     # Convert line breaks to <br/> outside table tags and pre tags to avoid line collapsing in rich HTML
-    if not re.search(r"<(?:table|pre)\b", text, re.I):
-        text = re.sub(r'(?<!<br/>)(?<!<br>)(?<!</p>)(?<!</h2>)(?<!</h1>)(?<!</h3>)(?<!</blockquote>)\n', '<br/>\n', text, flags=re.I)
-    return text
+    parts = _VERBATIM_BLOCK_RE.split(text)
+    for i in range(0, len(parts), 2):
+        if not parts[i]:
+            continue
+        if i > 0 and parts[i].startswith("\n"):
+            leading_nl = ""
+            content = parts[i]
+            while content.startswith("\n"):
+                leading_nl += "\n"
+                content = content[1:]
+            parts[i] = leading_nl + _BR_CONVERT_RE.sub("<br/>\n", content)
+        else:
+            parts[i] = _BR_CONVERT_RE.sub("<br/>\n", parts[i])
+    return "".join(parts)
 
 
 def _plain_fallback(html_text: str) -> str:
@@ -270,6 +290,7 @@ def _plain_fallback(html_text: str) -> str:
         text,
         flags=re.I,
     )
+    text = re.sub(r"<br\s*/?>\n?", "\n", text, flags=re.I)
     text = re.sub(r"[ \t]{2,}", "  ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

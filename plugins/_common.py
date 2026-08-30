@@ -419,7 +419,7 @@ async def _build_stats_cards(client, bot_id):
     it runs once per command and all three cards come out of it.
 
     ``dates`` is never pruned here: it is already bounded by the ``$slice: -5000``
-    on every ``$push`` (see :func:`tools.join_call` / :func:`tools.end`), and the
+    on the ``$push`` in :func:`tools.join_call` (one entry per song start), and the
     old 24h ``$pull`` would have destroyed the history the Week/Overall views read.
 
     Returns ``{period: html}``, or ``{}`` when nothing is stored yet.
