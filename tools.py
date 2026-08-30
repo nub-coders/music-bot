@@ -21,7 +21,10 @@ from pymediainfo import MediaInfo
 
 
 from config import *
-from youtube import extract_video_id, get_stream, get_video_stream, get_related_suggestions, handle_youtube
+from youtube import extract_video_id, get_stream, get_video_stream, get_related_suggestions, handle_youtube, evict_stream_cache
+from utils.pytgcalls_patch import apply_pytgcalls_patch
+
+apply_pytgcalls_patch()
 from database import (
     user_sessions, db_task, collection,
     get_chat_assistant as db_get_chat_assistant,
@@ -922,6 +925,11 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                     "groupcall_already_discarded",
                 ))
             )
+            is_timeout_err = (
+                isinstance(play_err, (asyncio.TimeoutError, TimeoutError))
+                or "timeouterror" in play_err_str
+                or "timed out" in play_err_str
+            )
             retried = False
             if is_gc_err:
                 _userbot_client = assistants.get(ast_num) or clients.get("session")
@@ -945,6 +953,26 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                         retried = True
                     except Exception as create_err:
                         logger.debug(f"[join_call] Auto-starting voice chat failed in {chat_id}: {create_err}")
+            elif is_timeout_err and youtube_link:
+                logger.warning(f"[join_call] Playback stream timed out for {youtube_link[:60]}...; evicting cache and re-extracting fresh stream URL")
+                evict_stream_cache(youtube_link, mode=mode)
+                try:
+                    fresh_stream = await get_stream_url(youtube_link, mode=mode)
+                    if fresh_stream and fresh_stream != stream_source:
+                        stream_source = fresh_stream
+                        logger.info(f"[join_call] Retrying play with fresh stream URL for chat {chat_id}")
+                        await call_py.play(
+                            chat_id,
+                            MediaStream(
+                                stream_source,
+                                AudioQuality.STUDIO,
+                                VideoQuality.HD_720p,
+                                video_flags=audio_flags,
+                            ),
+                        )
+                        retried = True
+                except Exception as retry_err:
+                    logger.warning(f"[join_call] Retry play with fresh stream URL failed in {chat_id}: {retry_err}")
 
             if not retried:
                 raise play_err
@@ -1214,6 +1242,10 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             if "bot" in clients and clients["bot"]:
                 msg = Messages.NO_ACTIVE_VC_CHANNEL if is_channel else Messages.NO_ACTIVE_VC
                 await rich_send(clients["bot"], ui_chat_id, rich_note(msg))
+        elif isinstance(e, (TimeoutError, asyncio.TimeoutError)) or "timeouterror" in err_str or "timed out" in err_str:
+            logger.warning(f"[join_call] Stream connection timed out for chat {chat_id}: {e}")
+            if "bot" in clients and clients["bot"]:
+                await rich_send(clients["bot"], ui_chat_id, rich_note(Messages.ERROR_STREAM))
         else:
             logger.error(f"[join_call] Error playing media in chat {chat_id}: {str(e)}", exc_info=True)
             if "bot" in clients and clients["bot"]:

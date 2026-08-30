@@ -83,7 +83,7 @@ async def test_no_playable_format_returns_error(monkeypatch, chain_exhausted):
 
 async def test_search_timeout_returns_error(monkeypatch, chain_exhausted):
     def _hang(query):
-        threading.Event().wait(30)
+        threading.Event().wait(0.5)
         return _entry()
 
     monkeypatch.setattr(youtube, "_ytdlp_search_first_sync", _hang)

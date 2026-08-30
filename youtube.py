@@ -346,6 +346,23 @@ async def _write_cache(url: str, stream_url: str, prefix: str = ""):
     # the write. _write_cache_sync swallows and logs its own failures.
     await asyncio.to_thread(_write_cache_sync, url, stream_url, prefix)
 
+
+def evict_stream_cache(url: str, mode: str = "audio"):
+    """Evict stream cache for a given URL across memory and disk caches."""
+    if not url:
+        return
+    _STREAM_CACHE.pop((mode, url), None)
+    _MEM_CACHE.pop((mode, url), None)
+    prefix = f"{mode}_"
+    try:
+        path = _cache_path(url, prefix)
+        if os.path.exists(path):
+            os.remove(path)
+            logger.info(f"[CACHE EVICT] Evicted cache for {prefix}{url[:80]}")
+    except Exception as e:
+        logger.debug(f"[CACHE EVICT] Could not remove disk cache file: {e}")
+
+
 async def _kill_process(process):
     """Kill and reap a yt-dlp child process.
 

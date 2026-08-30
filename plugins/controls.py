@@ -185,16 +185,26 @@ async def seek_handler_func(client, message):
                 return
 
             ffmpeg_params = f"-ss {to_seek} -to {duration_str}" if duration_seconds > 0 else f"-ss {to_seek}"
-            await active_cp.play(
-                chat_id,
-                MediaStream(
-                    stream_url,
-                    AudioQuality.STUDIO,
-                    VideoQuality.HD_720p,
-                    video_flags=audio_flags,
-                    ffmpeg_parameters=ffmpeg_params,
-                ),
-            )
+            try:
+                await active_cp.play(
+                    chat_id,
+                    MediaStream(
+                        stream_url,
+                        AudioQuality.STUDIO,
+                        VideoQuality.HD_720p,
+                        video_flags=audio_flags,
+                        ffmpeg_parameters=ffmpeg_params,
+                    ),
+                )
+            except Exception as seek_err:
+                logger.warning(f"[seek] Failed to seek stream in {chat_id}: {seek_err}")
+                await rich_reply(
+                    message,
+                    rich_note(Messages.ERROR_STREAM),
+                    ephemeral=True,
+                    client=client,
+                )
+                return
 
             # Update played time based on command
             if is_forward:
