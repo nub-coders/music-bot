@@ -57,6 +57,7 @@ from utils.rich_ui import *  # noqa: F403  (rich_send/rich_reply/rich_edit/rich_
 from database import (
     push_to_array, pull_from_array, set_fields, collection, user_sessions, db_task,
     remove_chat_assistant as db_remove_chat_assistant, get_top_chats, get_chat_playback,
+    get_total_play_count,
     get_user_playlists, get_playlist, get_playlist_by_name, create_playlist, rename_playlist,
     delete_playlist, add_track_to_playlist, remove_track_from_playlist,
 )
@@ -418,9 +419,12 @@ async def _build_stats_cards(client, bot_id):
     every stored chat) and is period-independent apart from the play count, so
     it runs once per command and all three cards come out of it.
 
-    ``dates`` is never pruned here: it is already bounded by the ``$slice: -5000``
+    ``dates`` drives the windowed views only. It is bounded by the ``$slice: -5000``
     on the ``$push`` in :func:`tools.join_call` (one entry per song start), and the
-    old 24h ``$pull`` would have destroyed the history the Week/Overall views read.
+    old 24h ``$pull`` would have destroyed the history the Week view reads. Overall
+    instead sums every chat's all-time ``play_count``, so it agrees with the Top 10
+    Groups table rendered on the same card rather than being silently limited to
+    however far back ``dates`` happens to reach.
 
     Returns ``{period: html}``, or ``{}`` when nothing is stored yet.
     """
@@ -433,11 +437,12 @@ async def _build_stats_cards(client, bot_id):
     dates = user_data.get('dates', [])
     users = user_data.get('users', [])
 
+    total_plays = await get_total_play_count()
     play_counts = {}
     for period in _STATS_PERIODS:
         threshold, _ = _stats_period_meta(period, started)
         play_counts[period] = (
-            len(dates) if threshold is None else len([d for d in dates if d >= threshold])
+            total_plays if threshold is None else len([d for d in dates if d >= threshold])
         )
 
     top_groups_table = await _build_top_groups_table(client)
@@ -477,8 +482,7 @@ async def _build_stats_cards(client, bot_id):
         extra = ""
         if period == "overall":
             extra += (
-                f"{EmojiTag.INFO} Overall covers the last "
-                f"{rich_code('5000')} recorded plays.\n"
+                f"{EmojiTag.INFO} Overall is the all-time total across every chat.\n"
             )
 
         rows = [

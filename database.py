@@ -118,6 +118,29 @@ async def get_top_chats(limit: int = 10) -> list:
 
 
 
+async def get_total_play_count() -> int:
+    """Sum every chat's all-time ``play_count``.
+
+    The bot-wide Overall figure on /stats. ``collection.dates`` cannot answer this:
+    it is capped at the last 5000 pushes and only reaches back to whenever
+    ``play_dates`` shipped, which left Overall lower than the Top 10 Groups table
+    on the same card. ``play_count`` is incremented once per song and never
+    trimmed, so summing it is consistent with that table by construction.
+
+    Returns 0 on failure, which the caller renders as "no data" rather than
+    reporting a wrong total.
+    """
+    try:
+        cursor = chat_playback.aggregate([
+            {"$group": {"_id": None, "total": {"$sum": "$play_count"}}},
+        ])
+        async for doc in cursor:
+            return int(doc.get("total", 0) or 0)
+    except Exception as e:
+        logger.warning(f"[db] get_total_play_count error: {e}")
+    return 0
+
+
 async def get_chat_assistant(chat_id: int) -> int | None:
     """Retrieve the assigned assistant index (1..5) for a chat from MongoDB."""
     try:
