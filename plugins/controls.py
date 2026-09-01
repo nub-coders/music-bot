@@ -24,6 +24,14 @@ async def _resolve_ctrl_chat_id(client, update, is_channel: bool) -> int:
                 return linked.id
         except Exception as e:
             logger.warning(f"Failed to get linked chat for {chat.id}: {e}")
+    else:
+        try:
+            if not await is_active_chat(client, chat.id) and chat.id not in state.suggest_tasks and chat.id not in state.playing and chat.id not in state.last_played:
+                linked = (await client.get_chat(chat.id)).linked_chat
+                if linked and (await is_active_chat(client, linked.id) or linked.id in state.suggest_tasks or linked.id in state.playing or linked.id in state.last_played):
+                    return linked.id
+        except Exception:
+            pass
     return chat.id
 
 
@@ -758,7 +766,7 @@ async def pause_handler_func(client, message):
 
 # ── Suggestion & Autoplay Callbacks / Commands ───────────────────────────────
 
-@Client.on_callback_query(filters.regex(r"^sgplay_"))
+@Client.on_callback_query(filters.regex(r"^c?sgplay_"))
 async def suggestion_play_handler(client: Client, callback_query: CallbackQuery):
     """Play a suggested video immediately in audio mode."""
     user = callback_query.from_user
@@ -769,7 +777,8 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
         await callback_query.answer(Messages.RATE_LIMITED, show_alert=True)
         return
 
-    chat_id = callback_query.message.chat.id
+    is_channel = callback_query.data.startswith("csgplay_")
+    chat_id = await _resolve_ctrl_chat_id(client, callback_query, is_channel)
     vid = callback_query.data.split("sgplay_", 1)[1]
     url = f"https://www.youtube.com/watch?v={vid}"
 
@@ -793,7 +802,7 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
         yt_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
         last_info = state.last_played.get(chat_id) or {}
-        chat_obj = last_info.get("chat") or callback_query.message.chat
+        chat_obj = last_info.get("chat") or (chat_id if is_channel else callback_query.message.chat)
         await join_call(
             callback_query.message,
             "Suggested Track",
@@ -813,7 +822,7 @@ async def suggestion_play_handler(client: Client, callback_query: CallbackQuery)
         await rich_answer(callback_query, rich_note(Messages.ERROR_OCCURRED), client=client)
 
 
-@Client.on_callback_query(filters.regex(r"^sgstop$"))
+@Client.on_callback_query(filters.regex(r"^c?sgstop$"))
 @admin_only()
 async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery):
     """Stop suggestion countdown and leave voice chat."""
@@ -822,7 +831,8 @@ async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery)
         await callback_query.answer(Messages.NO_PERM_END_SESSION, show_alert=True)
         return
 
-    chat_id = callback_query.message.chat.id
+    is_channel = callback_query.data == "csgstop"
+    chat_id = await _resolve_ctrl_chat_id(client, callback_query, is_channel)
     state.cancel_suggest(chat_id)
     active_cp = get_call_client(chat_id) or clients.get("call_py")
 
@@ -849,11 +859,12 @@ async def suggestion_stop_handler(client: Client, callback_query: CallbackQuery)
     await callback_query.answer(Messages.STREAM_ENDED, show_alert=False)
 
 
-@Client.on_callback_query(filters.regex(r"^sgtoggle$"))
+@Client.on_callback_query(filters.regex(r"^c?sgtoggle$"))
 @admin_only()
 async def suggestion_toggle_handler(client: Client, callback_query: CallbackQuery):
     """Toggle autoplay on/off from suggestion card."""
-    chat_id = callback_query.message.chat.id
+    is_channel = callback_query.data == "csgtoggle"
+    chat_id = await _resolve_ctrl_chat_id(client, callback_query, is_channel)
     current = state.is_autoplay_enabled(chat_id)
     new_state = not current
     state.set_autoplay(chat_id, new_state)
@@ -867,12 +878,13 @@ async def suggestion_toggle_handler(client: Client, callback_query: CallbackQuer
         orig_markup = callback_query.message.reply_markup
         if orig_markup and orig_markup.inline_keyboard:
             rows = []
+            prefix = "c" if is_channel else ""
             for row in orig_markup.inline_keyboard:
                 new_row = []
                 for btn in row:
-                    if btn.callback_data == "sgtoggle":
+                    if btn.callback_data in ("sgtoggle", "csgtoggle"):
                         new_txt = "🔄 ᴀᴜᴛᴏᴘʟᴀʏ: ON" if new_state else "⏸ ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
-                        new_row.append(InlineKeyboardButton(new_txt, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS))
+                        new_row.append(InlineKeyboardButton(new_txt, callback_data=f"{prefix}sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS))
                     else:
                         new_row.append(btn)
                 rows.append(new_row)
@@ -908,19 +920,20 @@ def _autoplay_panel(status_str: str) -> str:
     )
 
 
-@Client.on_message(filters.command(["autoplay", "suggest"]))
+@Client.on_message(filters.command(["autoplay", "cautoplay", "suggest", "csuggest"]))
 async def autoplay_command_handler(client: Client, message):
     """View or toggle autoplay status. Members can view; only admins and auth users can switch."""
     if message.from_user and message.from_user.id in BLOCK:
         return
 
-    chat_id = message.chat.id
+    is_channel = message.command[0].lower() in ("cautoplay", "csuggest")
+    chat_id = await _resolve_ctrl_chat_id(client, message, is_channel)
     user_id = message.from_user.id if message.from_user else None
     parts = message.text.split()
     current = state.is_autoplay_enabled(chat_id)
     status_str = "<b>ᴇɴᴀʙʟᴇᴅ</b>" if current else "<b>ᴅɪsᴀʙʟᴇᴅ</b>"
 
-    is_admin = await is_authorized(client, chat_id, user_id, allow_auth_users=True) if user_id else False
+    is_admin = await is_authorized(client, message.chat.id, user_id, allow_auth_users=True) if user_id else False
 
     if len(parts) > 1:
         arg = parts[1].lower()

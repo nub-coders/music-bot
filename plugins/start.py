@@ -373,7 +373,7 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
             (f"{EmojiTag.NEXT} <mark><code>/seek &lt;sec&gt;</code></mark> <code>/cseek</code>", "ᴊᴜᴍᴘ ꩖ᴏʀᴡᴀʀᴅ"),
             (f"{EmojiTag.BACK} <mark><code>/seekback &lt;sec&gt;</code></mark> <code>/cseekback</code>", "ᴊᴜᴍᴘ ʙᴀᴄᴋᴡᴀʀᴅ"),
             (f"{EmojiTag.LOOP} <mark><code>/loop &lt;1-20&gt;</code></mark> <code>/cloop</code>", "ʀᴇᴘᴇᴀᴛ ᴄᴜʀʀᴇɴᴛ sᴏɴɢ"),
-            (f"{EmojiTag.SETTINGS} <mark><code>/autoplay [on|off]</code></mark>", "ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs"),
+            (f"{EmojiTag.SETTINGS} <mark><code>/autoplay [on|off]</code></mark> <code>/cautoplay</code>", "ᴛᴏɢɢʟᴇ ᴀᴜᴛᴏᴘʟᴀʏ &amp; sᴜɢɢᴇsᴛɪᴏɴs"),
         ],
         open=True,
     )

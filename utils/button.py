@@ -239,13 +239,14 @@ class Buttons:
         ]])
 
     @staticmethod
-    def suggestion_markup(suggestions: list = None, autoplay_enabled: bool = True):
+    def suggestion_markup(suggestions: list = None, autoplay_enabled: bool = True, channel_mode: bool = False):
         """Generates the markup for related video suggestions card controls."""
+        prefix = 'c' if channel_mode else ''
         autoplay_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ON" if autoplay_enabled else "ᴀᴜᴛᴏᴘʟᴀʏ: OFF"
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("sᴛᴏᴘ", callback_data="sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
-                InlineKeyboardButton(autoplay_text, callback_data="sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
+                InlineKeyboardButton("sᴛᴏᴘ", callback_data=f"{prefix}sgstop", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.STOP),
+                InlineKeyboardButton(autoplay_text, callback_data=f"{prefix}sgtoggle", style=ButtonStyle.DEFAULT, icon_custom_emoji_id=Emoji.SETTINGS),
             ],
             [
                 InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close", style=ButtonStyle.DANGER, icon_custom_emoji_id=Emoji.CLOSE),

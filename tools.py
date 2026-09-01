@@ -193,6 +193,7 @@ class QueueEntry:
     _track_id: object = None
     _yt_task: object = None
     queue_msg: object = None
+    ui_chat_id: object = None
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -790,9 +791,9 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
     """Join voice call and start streaming"""
     original_title = title
     title = trim_title(title)
-    if not hasattr(chat, "id") and hasattr(message, "chat") and hasattr(message.chat, "id"):
+    if chat is None and hasattr(message, "chat") and hasattr(message.chat, "id"):
         chat = message.chat
-    chat_id = getattr(chat, "id", chat)
+    chat_id = getattr(chat, "id", chat) if chat is not None else getattr(getattr(message, "chat", None), "id", None)
     logger.debug(f"[join_call] Title trimmed from: {original_title} -> {title}")
     logger.info(f"[join_call] Starting join_call for chat {chat_id} (Title: {title}, Mode: {mode})")
 
@@ -996,6 +997,7 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             "mode": mode,
             "thumb": thumb,
             "assistant_num": ast_num,
+            "ui_chat_id": ui_chat_id,
         }
         state.played[chat_id] = int(time.time())
         state.last_played[chat_id] = state.playing[chat_id]
@@ -1304,6 +1306,25 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
         countdown_sec = 10
         autoplay_enabled = state.is_autoplay_enabled(chat_id)
 
+        last_msg = last_song.get("message") if isinstance(last_song, (dict, QueueEntry)) else None
+        last_chat_obj = last_song.get("chat") if isinstance(last_song, (dict, QueueEntry)) else None
+
+        ui_chat_id = None
+        if isinstance(last_song, (dict, QueueEntry)) and last_song.get("ui_chat_id"):
+            ui_chat_id = last_song.get("ui_chat_id")
+        elif last_msg and hasattr(last_msg, "chat") and last_msg.chat:
+            ui_chat_id = last_msg.chat.id
+        elif chat_id in state.now_playing and state.now_playing[chat_id]:
+            np = state.now_playing[chat_id]
+            if hasattr(np, "chat") and np.chat:
+                ui_chat_id = np.chat.id
+
+        if not ui_chat_id:
+            ui_chat_id = chat_id
+
+        is_channel = (ui_chat_id != chat_id) or (getattr(last_chat_obj, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))
+        prefix = 'c' if is_channel else ''
+
         # Build Rich Message blocks with title callback buttons in bordered table
         table_rows = [
             [
@@ -1343,7 +1364,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                     "type": "button",
                     "button": {
                         "text": btn_text,
-                        "callback_data": f"sgplay_{vid}",
+                        "callback_data": f"{prefix}sgplay_{vid}",
                     },
                 }
                 if vid
@@ -1404,11 +1425,11 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             },
         ]
 
-        keyboard = Buttons.suggestion_markup(suggestions[:5], autoplay_enabled=autoplay_enabled)
+        keyboard = Buttons.suggestion_markup(suggestions[:5], autoplay_enabled=autoplay_enabled, channel_mode=is_channel)
 
         sent_msg = await rich_send_blocks(
             bot,
-            chat_id,
+            ui_chat_id,
             blocks,
             reply_markup=keyboard,
         )
@@ -1422,7 +1443,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 card_text = Messages.SUGGESTION_CARD_NO_AUTOPLAY.format(items_text)
             sent_msg = await rich_send(
                 bot,
-                chat_id,
+                ui_chat_id,
                 card_text,
                 reply_markup=keyboard,
             )
@@ -1446,24 +1467,26 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
                 if top_vid:
                     state.add_to_history(chat_id, top_vid)
 
-                try:
-                    await rich_edit(
-                        sent_msg,
-                        rich_note(Messages.AUTOPLAYING_TITLE.format(trim_title(top_title))),
-                        reply_markup=None,
-                        client=bot,
-                    )
-                except Exception as e:
-                    logger.debug(f"[Suggest] Editing the suggestion card to the autoplay notice failed for chat {chat_id}: {e}")
+                if sent_msg:
+                    try:
+                        await rich_edit(
+                            sent_msg,
+                            rich_note(Messages.AUTOPLAYING_TITLE.format(trim_title(top_title))),
+                            reply_markup=None,
+                            client=bot,
+                        )
+                    except Exception as e:
+                        logger.debug(f"[Suggest] Editing the suggestion card to the autoplay notice failed for chat {chat_id}: {e}")
 
                 yt_task = asyncio.create_task(handle_youtube(top_url))
                 yt_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
                 by_user = "AUTO"
-                chat_obj = last_song.get("chat") or getattr(sent_msg, 'chat', None)
+                call_msg = sent_msg or last_msg
+                chat_obj = last_chat_obj or chat_id
                 ast_num = state.get_chat_assistant(chat_id)
                 await join_call(
-                    sent_msg,
+                    call_msg,
                     top_title,
                     top_url,
                     chat_obj,

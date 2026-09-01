@@ -639,6 +639,7 @@ async def put_queue(
     track_id = track_id or uuid.uuid4().hex[:12]
     safe_chat = chat if (chat and hasattr(chat, "id")) else getattr(message, "chat", chat)
     chat_id = getattr(safe_chat, "id", safe_chat)
+    ui_chat_id = message.chat.id if (message and hasattr(message, "chat") and message.chat) else chat_id
     put = QueueEntry(
         message=message,
         title=trim_title(title),
@@ -652,6 +653,7 @@ async def put_queue(
         stream_url=stream_url,
         _track_id=track_id,
         _yt_task=yt_task,
+        ui_chat_id=ui_chat_id,
     )
     if forceplay:
         async with state.lock(chat_id):
