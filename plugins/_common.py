@@ -75,29 +75,52 @@ logger = logging.getLogger(__name__)
 _admin_member_cache = {}
 
 
-async def _build_top_groups_table(client) -> str:
-    """Build the Top 10 Groups table sorted by song play count."""
-    top_chats = await get_top_chats(10)
-    if not top_chats:
+async def _chat_title(client, chat_id) -> str:
+    """Display name for a chat id, falling back to the id when it can't be fetched."""
+    try:
+        chat_obj = await client.get_chat(chat_id)
+        title = getattr(chat_obj, "title", None) or getattr(chat_obj, "first_name", None) or f"Chat {chat_id}"
+        return rich_esc(title)
+    except Exception:
+        return f"<i>[ID: {rich_code(chat_id)}]</i>"
+
+
+def _render_top_groups_table(ranking, titles, period_label: str) -> str:
+    """Top 10 Groups table for one period. Empty string when nothing qualifies."""
+    if not ranking:
         return ""
 
-    rows = []
-    for rank, (cid, count) in enumerate(top_chats, 1):
-        try:
-            chat_obj = await client.get_chat(cid)
-            title = getattr(chat_obj, "title", None) or getattr(chat_obj, "first_name", None) or f"Chat {cid}"
-            name_str = rich_esc(title)
-        except Exception:
-            name_str = f"<i>[ID: {rich_code(cid)}]</i>"
-        rows.append((custom_digits(rank), name_str, rich_code(count)))
-
-    if not rows:
-        return ""
-
+    rows = [
+        (custom_digits(rank), titles.get(cid) or f"<i>[ID: {rich_code(cid)}]</i>", rich_code(count))
+        for rank, (cid, count) in enumerate(ranking, 1)
+    ]
     return (
-        rich_heading(f"{EmojiTag.CROWN} ᴛᴏᴘ 10 ɢʀᴏᴜᴘs (sᴏɴɢs ᴘʟᴀʏᴇᴅ)", 2)
+        rich_heading(f"{EmojiTag.CROWN} ᴛᴏᴘ 10 ɢʀᴏᴜᴘs (sᴏɴɢs ᴘʟᴀʏᴇᴅ — {period_label})", 2)
         + rich_table(["#", "ɢʀᴏᴜᴘ", "ᴘʟᴀʏs"], rows)
     )
+
+
+async def _build_top_groups_tables(client, cutoffs: dict) -> dict:
+    """``{period: html}`` — one leaderboard per period.
+
+    The all-time table used to be built once and pasted onto all three cards, so
+    switching period changed a single number and left the largest block of the
+    card identical — it read as if every period reported the same data. Each
+    period now ranks by the plays inside its own window.
+
+    Titles are resolved once for the union of every ranking, so the extra periods
+    cost aggregations rather than repeated ``get_chat`` calls.
+    """
+    rankings = {period: await get_top_chats(10, since=cutoff) for period, cutoff in cutoffs.items()}
+
+    titles = {}
+    for cid in {cid for ranking in rankings.values() for cid, _ in ranking}:
+        titles[cid] = await _chat_title(client, cid)
+
+    return {
+        period: _render_top_groups_table(ranking, titles, _stats_period_meta(period)[1])
+        for period, ranking in rankings.items()
+    }
 
 
 def clean_alert(text: str) -> str:
@@ -361,14 +384,37 @@ _STATS_CARD_MAX = 200
 
 
 def _stats_period_meta(period: str, reference: datetime.datetime = None):
-    """Map a period key to its (threshold, label). A ``None`` threshold means
-    "no window" — count everything."""
+    """Map a period key to its ``(cutoff, label)``.
+
+    ``cutoff`` is an epoch second so it compares directly against the
+    ``play_dates`` entries every windowed figure is counted from. ``None`` means
+    "no window" — count everything.
+    """
     reference = reference or datetime.datetime.now()
     if period == "24h":
-        return reference - datetime.timedelta(hours=24), "24h"
+        return (reference - datetime.timedelta(hours=24)).timestamp(), "24h"
     if period == "week":
-        return reference - datetime.timedelta(weeks=1), "Week"
+        return (reference - datetime.timedelta(weeks=1)).timestamp(), "Week"
     return None, "Overall"
+
+
+def _stats_cutoffs(reference: datetime.datetime = None) -> dict:
+    """``{period: cutoff}`` for every /stats period, sharing one reference time."""
+    reference = reference or datetime.datetime.now()
+    return {period: _stats_period_meta(period, reference)[0] for period in _STATS_PERIODS}
+
+
+def _windowed_play_counts(total_plays: int, play_dates, cutoffs: dict) -> dict:
+    """``{period: plays}`` for one chat's ``play_dates``.
+
+    ``play_dates`` holds one epoch per song start, so a window is just the entries
+    at or after its cutoff; the unwindowed period reports the all-time
+    ``play_count`` instead, which is not capped the way the array is.
+    """
+    return {
+        period: (total_plays if cutoff is None else sum(1 for t in play_dates if t >= cutoff))
+        for period, cutoff in cutoffs.items()
+    }
 
 
 def stats_cards_put(chat_id, message_id, cards):
@@ -416,36 +462,33 @@ async def _build_stats_cards(client, bot_id):
     """Collect bot-wide stats once and render the card for every period.
 
     Collection is the expensive half (a Mongo read plus a chat-type pass over
-    every stored chat) and is period-independent apart from the play count, so
+    every stored chat) and is period-independent apart from the play figures, so
     it runs once per command and all three cards come out of it.
 
-    ``dates`` drives the windowed views only. It is bounded by the ``$slice: -5000``
-    on the ``$push`` in :func:`tools.join_call` (one entry per song start), and the
-    old 24h ``$pull`` would have destroyed the history the Week view reads. Overall
-    instead sums every chat's all-time ``play_count``, so it agrees with the Top 10
-    Groups table rendered on the same card rather than being silently limited to
-    however far back ``dates`` happens to reach.
+    Every play figure — windowed and all-time, total and per-group ranking — comes
+    from ``chat_playback``: ``play_dates`` for the windows, ``play_count`` for
+    all-time. The windowed totals used to be counted from a separate bot-wide
+    ``collection.dates`` array, so the periods on a single card were sourced from
+    two places that could disagree (and read 0 whenever that array was missing
+    while ``play_count`` still showed plays).
 
     Returns ``{period: html}``, or ``{}`` when nothing is stored yet.
     """
     started = datetime.datetime.now()
 
-    user_data = await collection.find_one({"bot_id": bot_id})
-    if not user_data:
-        return {}
-
-    dates = user_data.get('dates', [])
+    user_data = await collection.find_one({"bot_id": bot_id}) or {}
     users = user_data.get('users', [])
 
-    total_plays = await get_total_play_count()
-    play_counts = {}
-    for period in _STATS_PERIODS:
-        threshold, _ = _stats_period_meta(period, started)
-        play_counts[period] = (
-            total_plays if threshold is None else len([d for d in dates if d >= threshold])
-        )
+    cutoffs = _stats_cutoffs(started)
+    play_counts = {period: await get_total_play_count(since=cutoff) for period, cutoff in cutoffs.items()}
 
-    top_groups_table = await _build_top_groups_table(client)
+    # The bot doc holds the chat roster, not the play history. Missing it is only
+    # "nothing stored yet" when no chat has ever played either -- otherwise report
+    # the plays we do have rather than claiming there is no data at all.
+    if not user_data and not play_counts["overall"]:
+        return {}
+
+    top_groups_tables = await _build_top_groups_tables(client, cutoffs)
 
     u = g = sg = c = 0
     chat_type_cache = dict(user_data.get('chat_type_cache', {}))
@@ -484,6 +527,11 @@ async def _build_stats_cards(client, bot_id):
             extra += (
                 f"{EmojiTag.INFO} Overall is the all-time total across every chat.\n"
             )
+        else:
+            extra += (
+                f"{EmojiTag.INFO} {period_label} counts only plays recorded in that window, "
+                "and ranks the table the same way.\n"
+            )
 
         rows = [
             (f"{EmojiTag.USER} Private Chats", rich_code(u)),
@@ -492,11 +540,13 @@ async def _build_stats_cards(client, bot_id):
             (f"{EmojiTag.BROADCAST} Channels", rich_code(c)),
             (f"{EmojiTag.MUSIC_NOTE} Songs Played ({period_label})", rich_code(play_counts[period])),
         ]
+        if period != "overall":
+            rows.append((f"{EmojiTag.MUSIC_NOTE} Songs Played (All Time)", rich_code(play_counts["overall"])))
 
         cards[period] = (
             rich_heading(f"{EmojiTag.STATS} Bot Statistics ({period_label})", 1)
             + rich_table(["Metric", "Count"], rows)
-            + top_groups_table
+            + top_groups_tables[period]
             + _stats_footer(client, started, "Performance Summary", extra)
         )
 
@@ -571,18 +621,13 @@ async def _build_group_stats_cards(client, message):
         logger.debug(f"[status] Member count lookup failed for chat {chat_id}: {e}")
 
     # Per-chat play counts: play_count is the authoritative all-time total,
-    # play_dates (added later) is what makes the windowed views possible.
+    # play_dates holds one epoch per song start and is what makes the windows
+    # possible. Both come from the same write, so they cannot disagree.
     playback_doc = await get_chat_playback(chat_id)
     total_plays = int(playback_doc.get("play_count", 0) or 0)
     play_dates = playback_doc.get("play_dates", [])
-    play_counts = {}
-    for period in _STATS_PERIODS:
-        threshold, _ = _stats_period_meta(period, started)
-        if threshold is None:
-            play_counts[period] = total_plays
-        else:
-            cutoff = threshold.timestamp()
-            play_counts[period] = len([t for t in play_dates if t >= cutoff])
+    cutoffs = _stats_cutoffs(started)
+    play_counts = _windowed_play_counts(total_plays, play_dates, cutoffs)
 
     base_rows = [
         (f"{EmojiTag.USERS} ɢʀᴏᴜᴘ ɴᴀᴍᴇ", rich_esc(message.chat.title or "This Group")),
@@ -600,21 +645,21 @@ async def _build_group_stats_cards(client, message):
         (f"{EmojiTag.GLOBE} ʟᴀɴɢᴜᴀɢᴇ", lang_text),
     ])
 
-    top_groups_table = await _build_top_groups_table(client)
+    top_groups_tables = await _build_top_groups_tables(client, cutoffs)
 
     cards = {}
     for period in _STATS_PERIODS:
-        threshold, period_label = _stats_period_meta(period, started)
+        cutoff, period_label = _stats_period_meta(period, started)
         rows = base_rows + [
             (f"{EmojiTag.STATS} sᴏɴɢs ᴘʟᴀʏᴇᴅ ({period_label})", rich_code(play_counts[period])),
         ]
-        if threshold is not None:
+        if cutoff is not None:
             rows.append((f"{EmojiTag.MUSIC_NOTE} sᴏɴɢs ᴘʟᴀʏᴇᴅ (ᴀʟʟ ᴛɪᴍᴇ)", rich_code(total_plays)))
 
         cards[period] = (
             rich_heading(f"{EmojiTag.STATS} ɢʀᴏᴜᴘ sᴛᴀᴛɪsᴛɪᴄs ({period_label})", 1)
             + rich_kv_table(rows)
-            + top_groups_table
+            + top_groups_tables[period]
             + _stats_footer(client, started, "Group Performance Summary")
         )
 

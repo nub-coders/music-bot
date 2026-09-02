@@ -1004,16 +1004,15 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         # Persist alongside the in-memory value: the auto-leave sweep needs to
         # tell "idle" from "unknown" after a restart, and state.played is
         # process-local. Fire-and-forget so playback never waits on Mongo.
+        #
+        # This is also the only place a song start is recorded for /stats:
+        # set_last_played bumps play_count and appends to play_dates, which every
+        # /stats figure (24h / Week / Overall, per group and bot-wide) is derived
+        # from. A second bot-wide `collection.dates` array used to be pushed here
+        # for the windowed views only; two sources for the same number is how the
+        # periods ended up disagreeing, so it is gone.
         db_task(db_set_last_played(chat_id, state.played[chat_id]))
         logger.debug(f"[join_call] Playing status updated, timestamp: {state.played[chat_id]}")
-
-        if "bot" in clients and clients["bot"] and getattr(clients["bot"], "me", None):
-            logger.debug(f"[join_call] Scheduling playtime save to database for bot {clients['bot'].me.id}")
-            db_task(collection.update_one(
-                {"bot_id": clients["bot"].me.id},
-                {"$push": {"dates": {"$each": [datetime.datetime.now()], "$slice": -5000}}},
-                upsert=True
-            ))
 
         logger.debug("[join_call] Creating inline keyboard for playback controls")
         is_channel = (ui_chat_id != chat_id) or (getattr(chat, 'type', None) in (ChatType.CHANNEL, "ChatType.CHANNEL"))

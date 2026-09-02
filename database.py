@@ -61,9 +61,15 @@ async def set_last_played(chat_id: int, ts: int):
     played" and the auto-leave sweep cannot tell idle from unknown. Persisting it
     lets idle reclamation survive reboots.
 
-    ``play_dates`` keeps the individual epochs (capped at the last 1000) so
-    /stats can report a per-group play count for a chosen window; ``play_count``
-    stays the authoritative all-time total, since it predates this array.
+    ``play_dates`` keeps the individual epochs and is the single source for every
+    windowed figure /stats reports (per-group counts, the bot-wide totals and the
+    Top Groups ranking); ``play_count`` stays the authoritative all-time total,
+    since it predates this array.
+
+    The cap is also the only bound on the window we can answer: a group that
+    plays more than ``$slice`` songs inside a period loses the older end of its
+    own history, which flattens the windowed counts toward each other. 5000
+    covers a week at ~700 songs a day and costs tens of KB per chat.
     """
     try:
         await chat_playback.update_one(
@@ -71,7 +77,7 @@ async def set_last_played(chat_id: int, ts: int):
             {
                 "$set": {"last_played": int(ts)},
                 "$inc": {"play_count": 1},
-                "$push": {"play_dates": {"$each": [int(ts)], "$slice": -1000}},
+                "$push": {"play_dates": {"$each": [int(ts)], "$slice": -5000}},
             },
             upsert=True,
         )
@@ -102,38 +108,82 @@ async def get_all_last_played() -> dict:
     return out
 
 
-async def get_top_chats(limit: int = 10) -> list:
-    """Retrieve top chats sorted by play_count descending."""
+def _windowed_plays_expr(since: float) -> dict:
+    """Aggregation expression: how many ``play_dates`` entries are at/after ``since``.
+
+    Kept in one place so the windowed ranking and the windowed total can never
+    drift apart — a card that ranks groups one way and totals them another is
+    what made the /stats periods disagree with each other.
+    """
+    return {
+        "$size": {
+            "$filter": {
+                "input": {"$ifNull": ["$play_dates", []]},
+                "as": "ts",
+                "cond": {"$gte": ["$$ts", since]},
+            }
+        }
+    }
+
+
+async def get_top_chats(limit: int = 10, since: float | None = None) -> list:
+    """Top chats by songs played, as ``[(chat_id, plays), ...]``.
+
+    ``since`` is an epoch cutoff. Without it the ranking is the all-time
+    ``play_count``. With it, chats are ranked by how many plays fall inside the
+    window and chats with none are dropped — the table used to be all-time on
+    every card, so switching the /stats period left the whole leaderboard
+    unchanged and the card looked identical for 24h, Week and Overall.
+    """
     top_list = []
     try:
-        cursor = chat_playback.find({}, {"chat_id": 1, "play_count": 1}).sort("play_count", -1).limit(limit)
+        if since is None:
+            cursor = chat_playback.find({}, {"chat_id": 1, "play_count": 1}).sort("play_count", -1).limit(limit)
+            async for doc in cursor:
+                cid = doc.get("chat_id")
+                cnt = doc.get("play_count", 0)
+                if cid is not None:
+                    top_list.append((int(cid), int(cnt)))
+            return top_list
+
+        cursor = chat_playback.aggregate([
+            {"$project": {"chat_id": 1, "plays": _windowed_plays_expr(since)}},
+            {"$match": {"plays": {"$gt": 0}}},
+            {"$sort": {"plays": -1}},
+            {"$limit": int(limit)},
+        ])
         async for doc in cursor:
             cid = doc.get("chat_id")
-            cnt = doc.get("play_count", 0)
             if cid is not None:
-                top_list.append((int(cid), int(cnt)))
+                top_list.append((int(cid), int(doc.get("plays", 0) or 0)))
     except Exception as e:
         logger.warning(f"[db] get_top_chats error: {e}")
     return top_list
 
 
 
-async def get_total_play_count() -> int:
-    """Sum every chat's all-time ``play_count``.
+async def get_total_play_count(since: float | None = None) -> int:
+    """Bot-wide songs played, all-time or within a window.
 
-    The bot-wide Overall figure on /stats. ``collection.dates`` cannot answer this:
-    it is capped at the last 5000 pushes and only reaches back to whenever
-    ``play_dates`` shipped, which left Overall lower than the Top 10 Groups table
-    on the same card. ``play_count`` is incremented once per song and never
-    trimmed, so summing it is consistent with that table by construction.
+    Without ``since`` this sums every chat's all-time ``play_count``, which is
+    incremented once per song and never trimmed, so it agrees with the all-time
+    Top Groups table by construction.
+
+    With ``since`` it counts ``play_dates`` entries across every chat — the same
+    array the per-group card and the windowed ranking read. The windowed figure
+    used to come from a separate bot-wide ``collection.dates`` array instead,
+    which is why the periods on one card could contradict each other (and read 0
+    whenever that array was missing while ``play_count`` still showed plays).
 
     Returns 0 on failure, which the caller renders as "no data" rather than
     reporting a wrong total.
     """
     try:
-        cursor = chat_playback.aggregate([
-            {"$group": {"_id": None, "total": {"$sum": "$play_count"}}},
-        ])
+        if since is None:
+            pipeline = [{"$group": {"_id": None, "total": {"$sum": "$play_count"}}}]
+        else:
+            pipeline = [{"$group": {"_id": None, "total": {"$sum": _windowed_plays_expr(since)}}}]
+        cursor = chat_playback.aggregate(pipeline)
         async for doc in cursor:
             return int(doc.get("total", 0) or 0)
     except Exception as e:
@@ -182,9 +232,19 @@ async def _bg_db_task(coro):
         logger.warning(f"[bg_db] Low-priority DB write failed: {e}")
 
 
+# Strong references to in-flight background writes. The event loop only holds a
+# weak reference to a task, so a fire-and-forget `create_task` result can be
+# garbage-collected before it runs and the write disappears with no error --
+# exactly the way a /stats figure can silently stop being recorded.
+_bg_db_tasks = set()
+
+
 def db_task(coro):
     """Schedule a MongoDB write as a low-priority background task."""
-    asyncio.create_task(_bg_db_task(coro))
+    task = asyncio.create_task(_bg_db_task(coro))
+    _bg_db_tasks.add(task)
+    task.add_done_callback(_bg_db_tasks.discard)
+    return task
 
 
 async def push_to_array(collection, filter, field, value, upsert=False):
