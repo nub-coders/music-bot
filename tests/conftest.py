@@ -54,3 +54,119 @@ def fake_client():
         me = _Me()
 
     return _Client()
+
+
+# ── Reusable Platform Scraper Fixtures ────────────────────────────────────────
+
+@pytest.fixture
+def apple_music_track_html():
+    """Mock Apple Music HTML layout for a single track page."""
+    return """<!DOCTYPE html>
+<html>
+<head>
+    <meta property="og:title" content="Blinding Lights - Song by The Weeknd on Apple Music" />
+    <meta property="og:description" content="Listen to Blinding Lights by The Weeknd on Apple Music. 2020. Duration: 3:20." />
+</head>
+<body>
+    <div class="songs-list-row__song-name">Blinding Lights</div>
+</body>
+</html>"""
+
+
+@pytest.fixture
+def apple_music_playlist_html():
+    """Mock Apple Music HTML layout for a playlist page with multiple track rows."""
+    return """<!DOCTYPE html>
+<html>
+<head>
+    <meta property="og:title" content="Today's Hits - Playlist by Apple Music on Apple Music" />
+    <meta property="og:description" content="The biggest songs in music right now." />
+</head>
+<body>
+    <div class="songs-list-row">
+        <span class="songs-list-row__song-name">As It Was</span>
+    </div>
+    <div class="songs-list-row">
+        <span class="songs-list-row__song-name">Heat Waves</span>
+    </div>
+    <div class="songs-list-row">
+        <span class="songs-list-row__song-name">Stay</span>
+    </div>
+</body>
+</html>"""
+
+
+@pytest.fixture
+def apple_music_empty_playlist_html():
+    """Mock Apple Music HTML layout with no track rows."""
+    return """<!DOCTYPE html>
+<html>
+<head>
+</head>
+<body>
+    <div class="empty-state">No songs available</div>
+</body>
+</html>"""
+
+
+@pytest.fixture
+def odesli_response_with_youtube():
+    """Mock Odesli API response containing direct YouTube stream link."""
+    return {
+        "entityUniqueId": "AMAZON_SONG::B07XQ7Y123",
+        "userCountry": "US",
+        "entitiesByUniqueId": {
+            "AMAZON_SONG::B07XQ7Y123": {
+                "id": "B07XQ7Y123",
+                "type": "song",
+                "title": "Bohemian Rhapsody",
+                "artistName": "Queen",
+                "thumbnailUrl": "https://m.media-amazon.com/images/I/51abc.jpg"
+            }
+        },
+        "linksByPlatform": {
+            "youtube": {
+                "url": "https://www.youtube.com/watch?v=fJ9rUzIMcZQ"
+            },
+            "amazonMusic": {
+                "url": "https://music.amazon.com/albums/B07XQ7Y123"
+            }
+        }
+    }
+
+
+@pytest.fixture
+def odesli_response_without_youtube():
+    """Mock Odesli API response lacking a direct YouTube stream link."""
+    return {
+        "entityUniqueId": "AMAZON_SONG::B07XQ7Y456",
+        "userCountry": "US",
+        "entitiesByUniqueId": {
+            "AMAZON_SONG::B07XQ7Y456": {
+                "id": "B07XQ7Y456",
+                "type": "song",
+                "title": "Stairway to Heaven",
+                "artistName": "Led Zeppelin"
+            }
+        },
+        "linksByPlatform": {}
+    }
+
+
+@pytest.fixture
+def jiosaavn_track_json():
+    """Mock JioSaavn API track response with multiple bitrate download links."""
+    return {
+        "id": "saavn_track_001",
+        "song": "Kesariya",
+        "singers": "Arijit Singh, Pritam",
+        "duration": "268",
+        "image": "https://c.saavncdn.com/123/Kesariya-Hindi-2022-50x50.jpg",
+        "download_url": [
+            {"quality": "12kbps", "link": "https://aac.saavncdn.com/123/kesariya_12.mp4"},
+            {"quality": "48kbps", "link": "https://aac.saavncdn.com/123/kesariya_48.mp4"},
+            {"quality": "96kbps", "link": "https://aac.saavncdn.com/123/kesariya_96.mp4"},
+            {"quality": "160kbps", "link": "https://aac.saavncdn.com/123/kesariya_160.mp4"},
+            {"quality": "320kbps", "link": "https://aac.saavncdn.com/123/kesariya_320.mp4"}
+        ]
+    }

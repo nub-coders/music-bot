@@ -107,3 +107,77 @@ async def test_trigger_suggestions_sends_to_ui_chat_id():
 
     # Must send to the group chat ID, NOT the channel ID where the bot is not a member!
     assert sent_blocks_chat_id == [group_id]
+
+
+@pytest.mark.asyncio
+async def test_trigger_suggestions_table_has_no_artist_column():
+    channel_id = -1002896180369
+    group_id = -1001111111111
+
+    last_msg = MagicMock()
+    last_msg.chat.id = group_id
+    last_song = {
+        "yt_link": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "title": "Never Gonna Give You Up",
+        "chat": MagicMock(id=channel_id),
+        "message": last_msg,
+        "ui_chat_id": group_id,
+    }
+
+    mock_client = MagicMock()
+    mock_bot = MagicMock()
+
+    captured_blocks = []
+
+    async def fake_rich_send_blocks(bot, target_chat_id, blocks, **kwargs):
+        captured_blocks.extend(blocks)
+        mock_msg = MagicMock()
+        mock_msg.chat.id = target_chat_id
+        return mock_msg
+
+    with patch("tools.get_related_suggestions", new=AsyncMock(return_value=[{
+        "video_id": "test1234567",
+        "title": "Suggested Song",
+        "artist": "Should Not Be A Column",
+        "duration": "3:00",
+    }])):
+        with patch("tools.clients", {"bot": mock_bot}):
+            with patch("tools.rich_send_blocks", side_effect=fake_rich_send_blocks):
+                with patch("asyncio.sleep", new=AsyncMock()):
+                    state.set_autoplay(channel_id, False)
+                    await _trigger_suggestions(mock_client, channel_id, last_song)
+
+    table_block = next(b for b in captured_blocks if b.get("type") == "table")
+    headers = [cell["text"] for cell in table_block["cells"][0]]
+    assert headers == ["#", "ᴛɪᴛʟᴇ", "ʟᴇɴɢᴛʜ"]
+    assert "ᴀʀᴛɪsᴛ" not in headers
+    # Row cells check (3 columns: number, title button, length)
+    row = table_block["cells"][1]
+    assert len(row) == 3
+
+    # Also test fallback path when rich_send_blocks returns None
+    captured_text = []
+
+    async def fake_rich_send(bot, target_chat_id, text, **kwargs):
+        captured_text.append(text)
+        mock_msg = MagicMock()
+        mock_msg.chat.id = target_chat_id
+        return mock_msg
+
+    with patch("tools.get_related_suggestions", new=AsyncMock(return_value=[{
+        "video_id": "test1234567",
+        "title": "Suggested Song",
+        "artist": "Should Not Be A Column",
+        "duration": "3:00",
+    }])):
+        with patch("tools.clients", {"bot": mock_bot}):
+            with patch("tools.rich_send_blocks", return_value=None):
+                with patch("tools.rich_send", side_effect=fake_rich_send):
+                    with patch("asyncio.sleep", new=AsyncMock()):
+                        state.set_autoplay(channel_id, False)
+                        await _trigger_suggestions(mock_client, channel_id, last_song)
+
+    assert len(captured_text) == 1
+    assert "ᴀʀᴛɪsᴛ" not in captured_text[0]
+    assert "Should Not Be A Column" not in captured_text[0]
+

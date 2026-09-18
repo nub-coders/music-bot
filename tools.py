@@ -1329,14 +1329,12 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             [
                 {"text": "#", "is_header": True, "align": "center"},
                 {"text": "ᴛɪᴛʟᴇ", "is_header": True, "align": "left"},
-                {"text": "ᴀʀᴛɪsᴛ", "is_header": True, "align": "left"},
                 {"text": "ʟᴇɴɢᴛʜ", "is_header": True, "align": "center"},
             ]
         ]
         plain_lines = []
         for idx, item in enumerate(suggestions[:5], 1):
             s_title = trim_title(item.get("title", "Unknown"))
-            s_artist = item.get("artist", "")
             s_dur = item.get("duration", "")
             vid = item.get("video_id")
 
@@ -1373,14 +1371,12 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
             table_rows.append([
                 {"text": num_cell, "align": "center"},
                 {"text": title_cell, "align": "left"},
-                {"text": {"type": "italic", "text": s_artist} if s_artist else "", "align": "left"},
                 {"text": {"type": "code", "text": s_dur} if s_dur else "", "align": "center"},
             ])
 
             plain_lines.append((
                 keycaps(idx),
                 f"{EmojiTag.PLAY} <b>{rich_esc(s_title)}</b>",
-                f"<i>{rich_esc(s_artist)}</i>" if s_artist else "",
                 rich_code(s_dur) if s_dur else "",
             ))
 
@@ -1435,7 +1431,7 @@ async def _trigger_suggestions(client, chat_id: int, last_song: dict):
 
         if not sent_msg:
             # Fallback to HTML table
-            items_text = rich_table(["#", "ᴛɪᴛʟᴇ", "ᴀʀᴛɪsᴛ", "ʟᴇɴɢᴛʜ"], plain_lines)
+            items_text = rich_table(["#", "ᴛɪᴛʟᴇ", "ʟᴇɴɢᴛʜ"], plain_lines)
             if autoplay_enabled:
                 card_text = Messages.SUGGESTION_CARD.format(items_text, countdown_sec)
             else:

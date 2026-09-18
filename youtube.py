@@ -20,12 +20,12 @@ os.makedirs(_CACHE_DIR, exist_ok=True)
 # Separate caches for permanent search mappings and expiring stream URLs
 _SEARCH_CACHE: dict = {}  # query -> video_id (long-lived)
 _STREAM_CACHE: dict = {}  # (mode, url) -> (stream_url, expire_timestamp)
-_MAX_SEARCH_CACHE_SIZE = 1000
-_MAX_STREAM_CACHE_SIZE = 500
+_MAX_SEARCH_CACHE_SIZE = 5000
+_MAX_STREAM_CACHE_SIZE = 3000
 
 # Unified dict for backward compatibility with callers/tests accessing _MEM_CACHE
 _MEM_CACHE: dict = {}
-_MAX_MEM_CACHE_SIZE = 500
+_MAX_MEM_CACHE_SIZE = 5000
 
 
 def _mem_cache_get(key):
