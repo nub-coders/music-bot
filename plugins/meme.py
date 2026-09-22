@@ -1,5 +1,7 @@
 """plugins/meme.py — /kang sticker stealing and /mmf meme text."""
 
+from pyrogram.raw.functions.stickers import CreateStickerSet, AddStickerToSet
+from pyrogram.raw.types import InputDocument, InputStickerSetItem
 from plugins._common import *  # noqa: F401,F403
 
 
@@ -20,23 +22,20 @@ def _sticker_added_card(packname: str) -> str:
 
 _STICKER_FAILED = (
     f"{EmojiTag.ERROR} <b>꩖ᴀɪʟᴇᴅ ᴛᴏ ᴀᴅᴅ sᴛɪᴄᴋᴇʀ.</b> "
-    "ᴜsᴇ @Stickers ᴛᴏ ᴀᴅᴅ ɪᴛ ᴍᴀɴᴜᴀʟʟʏ."
+    "ᴜsᴇ ᴛʜᴇ ᴘᴀᴄᴋ ʟɪɴᴋ ᴛᴏ ᴀᴅᴅ ɪᴛ ᴍᴀɴᴜᴀʟʟʏ."
 )
 
 
 @Client.on_message(filters.command("kang"))
 async def kang(client, message):
-    client = clients['session']
     user = message.from_user
-    # NOTE: `client` above is the *user session*, not the bot. These replies must
-    # keep coming from the bot, so let rich_reply resolve message._client itself.
     if not user:
-       return await rich_reply(message, rich_note(Messages.USE_COMMAND_AS_USER), ephemeral=True)
+        return await rich_reply(message, rich_note(Messages.USE_COMMAND_AS_USER), ephemeral=True)
     replied = message.reply_to_message
     if not replied or not replied.media:
         return await rich_reply(message, rich_note(Messages.REPLY_TO_MEDIA), ephemeral=True)
 
-    Nub = await rich_reply(message, rich_note(Messages.STICKER_LONG), client=client)
+    Nub = await rich_reply(message, rich_note(Messages.STICKER_LONG))
     media_ = None
     emoji_ = None
     is_anim = False
@@ -47,10 +46,8 @@ async def kang(client, message):
         resize = True
     elif replied.document and "image" in replied.document.mime_type:
         resize = True
-        replied.document.file_name
     elif replied.document and "tgsticker" in replied.document.mime_type:
         is_anim = True
-        replied.document.file_name
     elif replied.document and "video" in replied.document.mime_type:
         resize = True
         is_video = True
@@ -157,17 +154,14 @@ async def kang(client, message):
         packname = f"Sticker_u{user.id}_v{pack}"
         custom_packnick = f"{u_name} Sticker Pack"
         packnick = f"{custom_packnick} Vol.{pack}"
-        cmd = "/newpack"
         if resize:
             media_ = await resize_media(media_, is_video, ff_vid)
         if is_anim:
             packname += "_animated"
             packnick += " (Animated)"
-            cmd = "/newanimated"
         if is_video:
             packname += "_video"
             packnick += " (Video)"
-            cmd = "/newvideo"
         exist = False
         while True:
             try:
@@ -182,116 +176,66 @@ async def kang(client, message):
             limit = 50 if (is_video or is_anim) else 120
             if exist.set.count >= limit:
                 pack += 1
-                packname = f"a{user.id}_by_userge_{pack}"
+                packname = f"Sticker_u{user.id}_v{pack}"
                 packnick = f"{custom_packnick} Vol.{pack}"
                 if is_anim:
-                    packname += f"_anim{pack}"
-                    packnick += f" (Animated){pack}"
+                    packname += "_animated"
+                    packnick += " (Animated)"
                 if is_video:
-                    packname += f"_video{pack}"
-                    packnick += f" (Video){pack}"
+                    packname += "_video"
+                    packnick += " (Video)"
                 await rich_edit(
                     Nub,
                     rich_note(f"{EmojiTag.INFO} Creating a new sticker pack {rich_code(pack)} — the previous pack is full."),
                 )
                 continue
             break
-        if exist is not False:
-            try:
-                await client.send_message("stickers", "/addsticker", link_preview_options=None)
-            except YouBlockedUser:
-                await client.unblock_user("stickers")
-                await client.send_message("stickers", "/addsticker", link_preview_options=None)
-            except Exception as e:
-                logger.error(f"[kang] Sticker pack step failed: {e}")
-                return await rich_edit(Nub, rich_note(f"{EmojiTag.ERROR} <b>ERROR:</b> Failed to create the sticker. Please try again."))
-            await asyncio.sleep(2)
-            await client.send_message("stickers", packname, link_preview_options=None)
-            await asyncio.sleep(2)
-            limit = "50" if is_anim else "120"
-            while limit in await get_response(message, client):
-                pack += 1
-                packname = f"a{user.id}_by_{user.username}_{pack}"
-                packnick = f"{custom_packnick} vol.{pack}"
-                if is_anim:
-                    packname += "_anim"
-                    packnick += " (Animated)"
-                if is_video:
-                    packname += "_video"
-                    packnick += " (Video)"
-                    await Nub.edit(
-                    f"`Creating a New Sticker Pack {pack} Because the Sticker Pack is Full`"
+
+    # ── Add the sticker via direct MTProto RPCs on the user session ──
+    try:
+        emoji_str = str(emoji_) if emoji_ is not None else "✨"
+        if isinstance(emoji_, int):
+            logger.info(
+                "[kang] Custom emoji id %s converted to string for MTProto layer.",
+                emoji_,
+            )
+        sticker_doc = await client.save_file(media_)
+        sticker = InputStickerSetItem(
+            document=InputDocument(
+                id=sticker_doc.id,
+                access_hash=getattr(sticker_doc, "access_hash", 0),
+                file_reference=getattr(sticker_doc, "file_reference", b"") or b"",
+            ),
+            emoji=emoji_str,
+        )
+        if exist:
+            await client.invoke(
+                AddStickerToSet(
+                    stickerset=InputStickerSetShortName(short_name=packname),
+                    sticker=sticker,
                 )
-                await client.send_message("stickers", packname, link_preview_options=None)
-                await asyncio.sleep(2)
-                if await get_response(message, client) == "Invalid pack selected.":
-                    await client.send_message("stickers", cmd, link_preview_options=None)
-                    await asyncio.sleep(2)
-                    await client.send_message("stickers", packnick, link_preview_options=None)
-                    await asyncio.sleep(2)
-                    await client.send_document("stickers", media_)
-                    await asyncio.sleep(2)
-                    await client.send_message("Stickers", emoji_, link_preview_options=None)
-                    await asyncio.sleep(2)
-                    await client.send_message("Stickers", "/publish", link_preview_options=None)
-                    await asyncio.sleep(2)
-                    if is_anim:
-                        await client.send_message(
-                            "Stickers", f"<{packnick}>", parse_mode=enums.ParseMode.MARKDOWN,
-                        link_preview_options=None)
-                        await asyncio.sleep(2)
-                    await client.send_message("Stickers", "/skip", link_preview_options=None)
-                    await asyncio.sleep(2)
-                    await client.send_message("Stickers", packname, link_preview_options=None)
-                    await asyncio.sleep(2)
-                    await rich_edit(Nub, _sticker_added_card(packname))
-            await client.send_document("stickers", media_)
-            await asyncio.sleep(2)
-            if (
-                await get_response(message, client)
-                == "Sorry, the file type is invalid."
-            ):
-                await rich_edit(Nub, rich_note(_STICKER_FAILED))
-                return
-            await client.send_message("Stickers", emoji_, link_preview_options=None)
-            await asyncio.sleep(2)
-            await client.send_message("Stickers", "/done", link_preview_options=None)
+            )
         else:
             await rich_edit(Nub, rich_note(Messages.CREATING_STICKER_PACK))
-            try:
-                await client.send_message("Stickers", cmd, link_preview_options=None)
-            except YouBlockedUser:
-                await client.unblock_user("stickers")
-                await client.send_message("stickers", "/addsticker", link_preview_options=None)
-            await asyncio.sleep(2)
-            await client.send_message("Stickers", packnick, link_preview_options=None)
-            await asyncio.sleep(2)
-            await client.send_document("stickers", media_)
-            await asyncio.sleep(2)
-            if (
-                await get_response(message, client)
-                == "Sorry, the file type is invalid."
-            ):
-                await rich_edit(Nub, rich_note(_STICKER_FAILED))
-                return
-            await client.send_message("Stickers", emoji_, link_preview_options=None)
-            await asyncio.sleep(2)
-            await client.send_message("Stickers", "/publish", link_preview_options=None)
-            await asyncio.sleep(2)
-            if is_anim:
-                await client.send_message("Stickers", f"<{packnick}>", link_preview_options=None)
-                await asyncio.sleep(2)
-            await client.send_message("Stickers", "/skip", link_preview_options=None)
-            await asyncio.sleep(2)
-            await client.send_message("Stickers", packname, link_preview_options=None)
-            await asyncio.sleep(2)
+            await client.invoke(
+                CreateStickerSet(
+                    user_id=client.me.raw,
+                    title=packnick,
+                    short_name=packname,
+                    stickers=[sticker],
+                    masks=False,
+                    emojis=False,
+                    text_color=False,
+                )
+            )
         await rich_edit(Nub, _sticker_added_card(packname))
-        if os.path.exists(str(media_)):
-            os.remove(media_)
+    except Exception as e:
+        logger.error(f"[kang] Failed to add sticker: {e}")
+        await rich_edit(Nub, rich_note(_STICKER_FAILED))
+        return
 
-
-async def get_response(message, client):
-    return [x async for x in client.get_chat_history("Stickers", limit=1)][0].text
+    if os.path.exists(str(media_)):
+        os.remove(media_)
 
 
 @Client.on_message(filters.command("mmf"))

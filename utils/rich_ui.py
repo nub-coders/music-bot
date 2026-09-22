@@ -35,7 +35,7 @@ import logging
 import re
 
 from pyrogram.enums import ParseMode
-from pyrogram.types import InputRichMessage, ReplyParameters
+from pyrogram.types import EphemeralMessageParameters, InputRichMessage, ReplyParameters
 
 logger = logging.getLogger("pyrogram")
 
@@ -340,12 +340,19 @@ async def rich_send(
 
     if RICH_AVAILABLE and (receiver_user_id or _has_rich_only_tags(html_text)):
         try:
+            ephemeral_params = (
+                EphemeralMessageParameters(
+                    receiver_user_id=receiver_user_id,
+                    callback_query_id=str(callback_query_id) if callback_query_id is not None else None,
+                )
+                if receiver_user_id
+                else None
+            )
             return await client.send_rich_message(
                 chat_id=chat_id,
                 rich_message=_input_rich(html_text),
                 reply_markup=reply_markup,
-                receiver_user_id=receiver_user_id,
-                callback_query_id=callback_query_id,
+                ephemeral_message_parameters=ephemeral_params,
                 reply_parameters=reply_parameters,
                 message_thread_id=message_thread_id,
                 disable_notification=disable_notification,
@@ -374,6 +381,150 @@ async def rich_send(
         return None
 
 
+def _dict_to_rich_text(node) -> "RichText":
+    """Convert a dict-based text entity (or plain str / list) to a Kurigram RichText object.
+
+    Supports the Bot API JSON text-entity formats used by callers of
+    ``rich_send_blocks``:
+
+    * plain ``str`` → passed through (Kurigram accepts ``str`` as ``RichText``)
+    * ``list``      → ``[_dict_to_rich_text(item) for item in list]``
+    * ``{"type": "bold", "text": ...}``            → ``RichTextBold``
+    * ``{"type": "italic", "text": ...}``           → ``RichTextItalic``
+    * ``{"type": "code", "text": ...}``             → ``RichTextCode``
+    * ``{"type": "custom_emoji", ...}``             → ``RichTextCustomEmoji``
+    * ``{"type": "text_mention", "text": ..., "user": {...}}`` → ``RichTextTextMention``
+    * ``{"type": "button", "button": {...}}``       → ``RichTextButton``
+    """
+    from pyrogram.types import (
+        RichMessageButton,
+        RichTextBold,
+        RichTextCode,
+        RichTextCustomEmoji,
+        RichTextItalic,
+        RichTextTextMention,
+        RichTextButton,
+        User,
+    )
+
+    if isinstance(node, str):
+        return node
+    if isinstance(node, list):
+        return [_dict_to_rich_text(item) for item in node]
+    if not isinstance(node, dict):
+        return str(node)
+
+    t = node.get("type", "")
+
+    if t == "bold":
+        return RichTextBold(text=_dict_to_rich_text(node["text"]))
+    if t == "italic":
+        return RichTextItalic(text=_dict_to_rich_text(node["text"]))
+    if t == "code":
+        return RichTextCode(text=_dict_to_rich_text(node["text"]))
+    if t == "custom_emoji":
+        return RichTextCustomEmoji(
+            custom_emoji_id=str(node["custom_emoji_id"]),
+            alternative_text=node.get("alternative_text", ""),
+        )
+    if t == "text_mention":
+        user_data = node.get("user", {})
+        user = User(
+            id=user_data.get("id", 0),
+            first_name=user_data.get("first_name"),
+            is_bot=user_data.get("is_bot", False),
+        )
+        return RichTextTextMention(
+            text=_dict_to_rich_text(node["text"]),
+            user=user,
+        )
+    if t == "button":
+        btn_data = node["button"]
+        return RichTextButton(
+            button=RichMessageButton(
+                text=_dict_to_rich_text(btn_data["text"]),
+                callback_data=btn_data.get("callback_data"),
+                url=btn_data.get("url"),
+            ),
+        )
+
+    # Unknown entity type — return raw text if present, else empty string.
+    return _dict_to_rich_text(node.get("text", ""))
+
+
+def _dict_to_block(block_dict: dict) -> "InputRichBlock":
+    """Convert a dict-based block (Bot API JSON format) to a Kurigram InputRichBlock.
+
+    Supports block types used by callers:
+
+    * ``heading``    → ``InputRichBlockSectionHeading``
+    * ``paragraph``  → ``InputRichBlockParagraph``
+    * ``blockquote`` → ``InputRichBlockBlockQuotation``
+    * ``photo``      → ``InputRichBlockPhoto``
+    * ``table``      → ``InputRichBlockTable``
+    """
+    import os
+
+    from pyrogram.types import (
+        InputMediaPhoto,
+        InputRichBlockBlockQuotation,
+        InputRichBlockParagraph,
+        InputRichBlockPhoto,
+        InputRichBlockSectionHeading,
+        InputRichBlockTable,
+        RichBlockTableCell,
+    )
+
+    t = block_dict.get("type", "")
+
+    if t == "heading":
+        return InputRichBlockSectionHeading(
+            text=_dict_to_rich_text(block_dict["text"]),
+            size=block_dict.get("size", 2),
+        )
+
+    if t == "paragraph":
+        return InputRichBlockParagraph(
+            text=_dict_to_rich_text(block_dict["text"]),
+        )
+
+    if t == "blockquote":
+        inner_blocks = [_dict_to_block(b) for b in block_dict.get("blocks", [])]
+        return InputRichBlockBlockQuotation(blocks=inner_blocks)
+
+    if t == "photo":
+        photo_data = block_dict.get("photo", {})
+        media_src = photo_data.get("media", "")
+        # attach://thumb is a placeholder for local file upload; the actual
+        # file is supplied via the media_file= kwarg and wired up by the
+        # caller (_build_photo_blocks_with_media).  URL photos pass through
+        # directly.
+        return InputRichBlockPhoto(photo=InputMediaPhoto(media=media_src))
+
+    if t == "table":
+        cells_data = block_dict.get("cells", [])
+        cells = []
+        for row_data in cells_data:
+            row = []
+            for cell_data in row_data:
+                if isinstance(cell_data, dict):
+                    row.append(RichBlockTableCell(
+                        text=_dict_to_rich_text(cell_data.get("text", "")),
+                        align=cell_data.get("align"),
+                    ))
+                else:
+                    row.append(RichBlockTableCell(text=_dict_to_rich_text(cell_data)))
+            cells.append(row)
+        return InputRichBlockTable(
+            cells=cells,
+            is_bordered=block_dict.get("is_bordered"),
+        )
+
+    # Fallback: treat unknown block as a paragraph with its text (if any).
+    text = block_dict.get("text", "")
+    return InputRichBlockParagraph(text=_dict_to_rich_text(text))
+
+
 async def rich_send_blocks(
     client,
     chat_id: int | str,
@@ -384,94 +535,72 @@ async def rich_send_blocks(
     receiver_user_id=None,
     media_file=None,
 ):
-    """Send a structured Rich Message using Bot API 10.3 Block entities (supporting RichTextButton callbacks and local file upload)."""
+    """Send a structured Rich Message using Kurigram's native InputRichBlock types.
+
+    ``blocks`` is a list of dicts in Bot API JSON block format — they are
+    converted to typed ``InputRichBlock`` objects internally.  ``media_file``
+    (a local path) is wired into the first ``photo`` block as an
+    ``InputMediaPhoto`` so Kurigram handles the upload through MTProto.
+    """
+    if not RICH_AVAILABLE:
+        return None
+
     try:
-        from config import BOT_TOKEN
-        token = getattr(client, "bot_token", None) or BOT_TOKEN
-        if token:
-            payload = {
-                "chat_id": chat_id,
-                "rich_message": {"blocks": blocks},
-            }
-            if receiver_user_id:
-                payload["ephemeral_message_parameters"] = {"receiver_user_id": receiver_user_id}
-            if reply_markup and hasattr(reply_markup, "inline_keyboard"):
-                payload["reply_markup"] = {
-                    "inline_keyboard": [
-                        [
-                            {
-                                k: v
-                                for k, v in {
-                                    "text": getattr(btn, "text", ""),
-                                    "callback_data": getattr(btn, "callback_data", None),
-                                    "url": getattr(btn, "url", None),
-                                    "icon_custom_emoji_id": str(getattr(btn, "icon_custom_emoji_id", "")) if getattr(btn, "icon_custom_emoji_id", None) else None,
-                                    "style": getattr(btn.style, "value", str(btn.style)) if getattr(btn, "style", None) else None,
-                                }.items()
-                                if v is not None
-                            }
-                            for btn in row
-                        ]
-                        for row in reply_markup.inline_keyboard
-                    ]
-                }
-            if reply_parameters and hasattr(reply_parameters, "message_id"):
-                payload["reply_parameters"] = {"message_id": reply_parameters.message_id}
+        import os
 
-            import httpx
-            import json
-            import os
-            from pyrogram import types, enums
-            async with httpx.AsyncClient(timeout=15.0) as http_client:
-                has_local = bool(media_file and isinstance(media_file, str) and os.path.exists(media_file))
-                if has_local:
-                    form_data = {
-                        "chat_id": str(chat_id),
-                        "rich_message": json.dumps(payload["rich_message"]),
-                    }
-                    if "reply_markup" in payload:
-                        form_data["reply_markup"] = json.dumps(payload["reply_markup"])
-                    if "reply_parameters" in payload:
-                        form_data["reply_parameters"] = json.dumps(payload["reply_parameters"])
-                    if "ephemeral_message_parameters" in payload:
-                        form_data["ephemeral_message_parameters"] = json.dumps(payload["ephemeral_message_parameters"])
+        # Wire local media file into the photo block's InputMediaPhoto.
+        has_local = bool(
+            media_file and isinstance(media_file, str) and os.path.exists(media_file)
+        )
 
-                    with open(media_file, "rb") as f:
-                        files = {"thumb": (os.path.basename(media_file), f.read(), "image/jpeg")}
-                        resp = await http_client.post(
-                            f"https://api.telegram.org/bot{token}/sendRichMessage",
-                            data=form_data,
-                            files=files,
-                        )
-                else:
-                    resp = await http_client.post(
-                        f"https://api.telegram.org/bot{token}/sendRichMessage",
-                        json=payload,
-                    )
+        typed_blocks = []
+        for b in blocks:
+            if not isinstance(b, dict):
+                continue
+            # Swap "attach://thumb" placeholder with the actual local path.
+            if has_local and b.get("type") == "photo":
+                photo_data = b.get("photo", {})
+                if photo_data.get("media", "").startswith("attach://"):
+                    b = {**b, "photo": {**photo_data, "media": media_file}}
+            typed_blocks.append(_dict_to_block(b))
 
-                if resp.status_code != 200 and any(b.get("type") == "photo" for b in blocks if isinstance(b, dict)):
-                    # If Telegram fails to download image URL (400), retry with text blocks
-                    clean_blocks = [b for b in blocks if isinstance(b, dict) and b.get("type") != "photo"]
-                    payload["rich_message"]["blocks"] = clean_blocks
-                    resp = await http_client.post(
-                        f"https://api.telegram.org/bot{token}/sendRichMessage",
-                        json=payload,
-                    )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("ok"):
-                        msg_id = data["result"]["message_id"]
-                        peer_id = chat_id if isinstance(chat_id, int) else 0
-                        return types.Message(
-                            id=msg_id,
-                            chat=types.Chat(id=peer_id, type=enums.ChatType.SUPERGROUP, client=client),
-                            reply_markup=reply_markup,
-                            client=client,
-                        )
-                else:
-                    logger.warning(f"[rich_send_blocks] Bot API {resp.status_code}: {resp.text}")
+        if not typed_blocks:
+            return None
+
+        ephemeral_params = (
+            EphemeralMessageParameters(receiver_user_id=receiver_user_id)
+            if receiver_user_id
+            else None
+        )
+
+        result = await client.send_rich_message(
+            chat_id=chat_id,
+            rich_message=InputRichMessage(blocks=typed_blocks),
+            reply_markup=reply_markup,
+            reply_parameters=reply_parameters,
+            ephemeral_message_parameters=ephemeral_params,
+        )
+        if result is not None:
+            return result
+
+        # Photo failed (Telegram couldn't download URL) — retry without photo blocks.
+        if any(isinstance(b, dict) and b.get("type") == "photo" for b in blocks):
+            clean_blocks = [
+                _dict_to_block(b) for b in blocks
+                if isinstance(b, dict) and b.get("type") != "photo"
+            ]
+            if clean_blocks:
+                result = await client.send_rich_message(
+                    chat_id=chat_id,
+                    rich_message=InputRichMessage(blocks=clean_blocks),
+                    reply_markup=reply_markup,
+                    reply_parameters=reply_parameters,
+                    ephemeral_message_parameters=ephemeral_params,
+                )
+                return result
+
     except Exception as e:
-        logger.debug(f"[rich_send_blocks] direct Bot API block send failed: {e}")
+        logger.debug(f"[rich_send_blocks] native block send failed: {e}")
 
     return None
 

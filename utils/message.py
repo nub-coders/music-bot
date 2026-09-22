@@ -222,6 +222,7 @@ class Messages:
     NO_OPERATIONAL_DATA = f"{EmojiTag.INFO} <b>ɴᴏ ᴏᴘᴇʀᴀᴛɪᴏɴᴀʟ ᴅᴀᴛᴀ ꜰᴏᴜɴᴅ ꜰᴏʀ ᴛʜɪs ʙᴏᴛ.</b>"
 
     STICKER_NO_NAME = f"{EmojiTag.WARNING} <b>sᴛɪᴄᴋᴇʀ ʜᴀs ɴᴏ ᴠᴀʟɪᴅ ɴᴀᴍᴇ.</b>"
+    STICKER_DOWNLOAD_FAILED = f"{EmojiTag.ERROR} <b>ғᴀɪʟᴇᴅ ᴛᴏ ᴅᴏᴡɴʟᴏᴀᴅ sᴛɪᴄᴋᴇʀ.**\n<i>ᴘʟᴇᴀsᴇ ᴛʀʏ ᴀɢᴀɪɴ ᴏʀ ᴄʜᴇᴄᴋ ʏᴏᴜʀ ɴᴇᴛᴡᴏʀᴋ ᴄᴏɴɴᴇᴄᴛɪᴏɴ.</i>"
     UNSUPPORTED_FILE = f"{EmojiTag.WARNING} <b>ᴜɴsᴜᴘᴘᴏʀᴛᴇᴅ ꜰɪʟᴇ ᴛʏᴘᴇ.</b>"
     REPLY_TO_MEDIA = f"{EmojiTag.INFO} <b>ʀᴇᴘʟʏ ᴛᴏ ᴘʜᴏᴛᴏ/ɢɪꜰ/sᴛɪᴄᴋᴇʀ ᴍᴇᴅɪᴀ ꜰɪʀsᴛ.</b>"
     CREATING_STICKER_PACK = f"{EmojiTag.KANG} <b>ᴄʀᴇᴀᴛɪɴɢ ᴀ ɴᴇᴡ sᴛɪᴄᴋᴇʀ ᴘᴀᴄᴋ...</b>"
