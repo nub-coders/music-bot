@@ -725,12 +725,12 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     # Fast Path 1: ytube API (/info) if configured and breaker is closed
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            api_url = f"{BASE_URL}/info?q={url}&mode=video"
+            api_url = f"{BASE_URL}/info?q={url}"
             logger.info(f"[API CALL] ytube video API -> {api_url}")
             print(f"[API CALL] ytube video API -> {api_url}", flush=True)
             resp = await get_http_client().get(
                 f"{BASE_URL}/info",
-                params={"q": url, "mode": "video"},
+                params={"q": url},
                 headers={"Authorization": f"Bearer {API_TOKEN}"},
             )
             if resp.status_code == 200:
@@ -830,16 +830,11 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             api_url = f"{BASE_URL}/info?q={query}"
-            if mode == "video":
-                api_url += "&mode=video"
             logger.info(f"[API CALL] ytube /info API -> {api_url}")
             print(f"[API CALL] ytube /info API -> {api_url}", flush=True)
-            params = {"q": query}
-            if mode == "video":
-                params["mode"] = "video"
             resp = await get_http_client().get(
                 f"{BASE_URL}/info",
-                params=params,
+                params={"q": query},
                 headers={"Authorization": f"Bearer {API_TOKEN}"},
             )
             if resp.status_code == 200:
