@@ -11,7 +11,7 @@ numpy==2.5.1
 opencv-python-headless==5.0.0.93
 Pillow==12.3.0
 psutil==7.2.2
-py-tgcalls==2.3.3
+py-tgcalls
 pymediainfo==7.0.1
 python-magic==0.4.27
 yt-dlp[default]

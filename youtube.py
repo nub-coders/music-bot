@@ -245,6 +245,9 @@ async def youtube_search(query: str, limit: int = 1):
         "type": "video",
         "key": api_key,
     }
+    search_api_url = f"{SEARCH_URL}?q={query}&type=video&part=snippet&maxResults={limit}"
+    logger.info(f"[API CALL] YouTube Data API Search -> {search_api_url}")
+    print(f"[API CALL] YouTube Data API Search -> {search_api_url}", flush=True)
     search_res = await client.get(SEARCH_URL, params=search_params)
     if search_res.status_code != 200:
         return []
@@ -258,6 +261,9 @@ async def youtube_search(query: str, limit: int = 1):
         "id": ",".join(video_ids),
         "key": api_key,
     }
+    details_api_url = f"{DETAILS_URL}?id={','.join(video_ids)}&part=contentDetails,statistics"
+    logger.info(f"[API CALL] YouTube Data API Details -> {details_api_url}")
+    print(f"[API CALL] YouTube Data API Details -> {details_api_url}", flush=True)
     detail_res = await client.get(DETAILS_URL, params=details_params)
     if detail_res.status_code != 200:
         return []
@@ -426,7 +432,8 @@ async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
     elapsed = round(time.time() - start, 2)
     if process.returncode == 0 and stdout:
         stream_url = stdout.decode().strip().split("\n")[0]
-        logger.info(f"[YT-DLP] ✅ Success ({elapsed}s) — {stream_url[:100]}...")
+        logger.info(f"[YT-DLP] ✅ Success ({elapsed}s) — {stream_url}")
+        print(f"[DIRECT URL] yt-dlp extracted stream URL: {stream_url}", flush=True)
         return stream_url
     stderr_text = stderr.decode().strip() if stderr else "no stderr"
     logger.error(f"[YT-DLP] ❌ Failed (exit={process.returncode}, {elapsed}s) — {url}")
@@ -492,6 +499,8 @@ def _innertube_extract_vid(url_or_query: str) -> str | None:
 
 async def _post_innertube_async(endpoint: str, payload: dict, client: dict = INNERTUBE_CLIENT_ANDROID, headers: dict = INNERTUBE_HEADERS_ANDROID) -> dict:
     url = f"https://youtubei.googleapis.com/youtubei/v1/{endpoint}?key={INNERTUBE_KEY}"
+    logger.info(f"[API CALL] Innertube {endpoint} -> {url}")
+    print(f"[API CALL] Innertube {endpoint} -> {url}", flush=True)
     body = {"context": {"client": client}, **payload}
     http = get_http_client()
     resp = await http.post(url, json=body, headers=headers)
@@ -595,6 +604,9 @@ async def resolve_innertube(argument: str, mode: str = "audio") -> dict | None:
             logger.warning(f"[Innertube] No muxed stream URL found for {vid}")
             return None
 
+        logger.info(f"[DIRECT URL] Innertube resolved stream URL: {stream_url}")
+        print(f"[DIRECT URL] Innertube resolved stream URL: {stream_url}", flush=True)
+
 
         title = details.get("title", "N/A")
         duration_sec = int(details.get("lengthSeconds", 0))
@@ -643,7 +655,8 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
     innertube_data = await resolve_innertube(url, mode="audio")
     if innertube_data and innertube_data.get("stream_url"):
         stream = innertube_data["stream_url"]
-        logger.info(f"[AUDIO] ✅ Innertube success — {stream[:100]}...")
+        logger.info(f"[AUDIO] ✅ Innertube success — {stream}")
+        print(f"[DIRECT URL] Audio stream URL (Innertube): {stream}", flush=True)
         _mem_cache_set(("audio", url), stream)
         await _write_cache(url, stream, prefix="audio_")
         return stream
@@ -651,7 +664,9 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
     # Fast Path 2: ytube API (/info) if configured and breaker is closed
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            logger.debug(f"[AUDIO] Trying ytube API for stream URL '{url}'")
+            api_url = f"{BASE_URL}/info?q={url}"
+            logger.info(f"[API CALL] ytube audio API -> {api_url}")
+            print(f"[API CALL] ytube audio API -> {api_url}", flush=True)
             resp = await get_http_client().get(
                 f"{BASE_URL}/info",
                 params={"q": url},
@@ -661,7 +676,8 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
                 data = resp.json()
                 if data.get("stream_url"):
                     stream = data["stream_url"]
-                    logger.info(f"[AUDIO] ✅ ytube API success — {stream[:100]}...")
+                    logger.info(f"[AUDIO] ✅ ytube API success — {stream}")
+                    print(f"[DIRECT URL] Audio stream URL (ytube API): {stream}", flush=True)
                     _api_record_success()
                     _mem_cache_set(("audio", url), stream)
                     await _write_cache(url, stream, prefix="audio_")
@@ -678,6 +694,8 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         cookies,
     )
     if stream:
+        logger.info(f"[DIRECT URL] Audio stream URL (yt-dlp): {stream}")
+        print(f"[DIRECT URL] Audio stream URL (yt-dlp): {stream}", flush=True)
         _mem_cache_set(("audio", url), stream)
         await _write_cache(url, stream, prefix="audio_")
     else:
@@ -700,7 +718,8 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     innertube_data = await resolve_innertube(url, mode="video")
     if innertube_data and innertube_data.get("stream_url"):
         stream = innertube_data["stream_url"]
-        logger.info(f"[VIDEO] ✅ Innertube success — {stream[:100]}...")
+        logger.info(f"[VIDEO] ✅ Innertube success — {stream}")
+        print(f"[DIRECT URL] Video stream URL (Innertube): {stream}", flush=True)
         _mem_cache_set(("video", url), stream)
         await _write_cache(url, stream, prefix="video_")
         return stream
@@ -708,7 +727,9 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     # Fast Path 2: ytube API (/info) if configured and breaker is closed
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            logger.debug(f"[VIDEO] Trying ytube API for video stream URL '{url}'")
+            api_url = f"{BASE_URL}/info?q={url}&mode=video"
+            logger.info(f"[API CALL] ytube video API -> {api_url}")
+            print(f"[API CALL] ytube video API -> {api_url}", flush=True)
             resp = await get_http_client().get(
                 f"{BASE_URL}/info",
                 params={"q": url, "mode": "video"},
@@ -718,7 +739,8 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
                 data = resp.json()
                 if data.get("stream_url"):
                     stream = data["stream_url"]
-                    logger.info(f"[VIDEO] ✅ ytube API video success — {stream[:100]}...")
+                    logger.info(f"[VIDEO] ✅ ytube API video success — {stream}")
+                    print(f"[DIRECT URL] Video stream URL (ytube API): {stream}", flush=True)
                     _api_record_success()
                     _mem_cache_set(("video", url), stream)
                     await _write_cache(url, stream, prefix="video_")
@@ -735,6 +757,8 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         cookies,
     )
     if stream:
+        logger.info(f"[DIRECT URL] Video stream URL (yt-dlp): {stream}")
+        print(f"[DIRECT URL] Video stream URL (yt-dlp): {stream}", flush=True)
         _mem_cache_set(("video", url), stream)
         await _write_cache(url, stream, prefix="video_")
     else:
@@ -777,7 +801,8 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     """Get video info using ytube API, Innertube resolution, or local search fallback."""
     # Direct stream URL handling (bypasses ytube API completely)
     if is_direct_stream_url(query):
-        logger.info(f"[youtube.get_video_info] Bypassing API for direct stream URL: '{query[:80]}...'")
+        logger.info(f"[DIRECT URL] Direct stream URL requested: {query}")
+        print(f"[DIRECT URL] Direct stream URL requested: {query}", flush=True)
         details = await get_video_details(query)
         if details and "error" not in details:
             return (
@@ -795,7 +820,8 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
 
     # Primary: Fast Innertube direct resolution
     try:
-        logger.debug(f"[youtube.get_video_info] Trying direct Innertube resolution for '{query}' (mode={mode})")
+        logger.info(f"[API CALL] Resolving via Innertube for query: '{query}' (mode={mode})")
+        print(f"[API CALL] Resolving via Innertube for query: '{query}' (mode={mode})", flush=True)
         innertube_res = await resolve_innertube(query, mode=mode)
         if innertube_res and innertube_res.get("stream_url"):
             logger.info(f"[youtube.get_video_info] Innertube direct success: title='{innertube_res.get('title')}'")
@@ -816,7 +842,9 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     # Fallback: use the ytube /info API endpoint (skipped while the breaker is open)
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            logger.debug(f"[youtube.get_video_info] Using ytube /info API for '{query}'")
+            api_url = f"{BASE_URL}/info?q={query}"
+            logger.info(f"[API CALL] ytube /info API -> {api_url}")
+            print(f"[API CALL] ytube /info API -> {api_url}", flush=True)
             resp = await get_http_client().get(
                 f"{BASE_URL}/info",
                 params={"q": query},
@@ -825,7 +853,9 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
             if resp.status_code == 200:
                 data = resp.json()
                 if data.get("stream_url") and data.get("title"):
-                    logger.info(f"[youtube.get_video_info] ytube API success: title='{data.get('title')}'")
+                    stream_url = data.get("stream_url")
+                    logger.info(f"[DIRECT URL] ytube API stream URL: {stream_url}")
+                    print(f"[DIRECT URL] ytube API stream URL: {stream_url}", flush=True)
                     _api_record_success()
                     return (
                         data.get('title', 'N/A'),
@@ -834,7 +864,7 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
                         data.get('youtube_link', 'N/A'),
                         data.get('channel_name', 'N/A'),
                         data.get('views', '0'),
-                        data.get('stream_url', 'N/A'),
+                        stream_url,
                         data.get('thumbnail', 'N/A'),
                         'ytube',
                     )
@@ -1245,7 +1275,8 @@ async def get_video_details(video_id):
 
     # Direct stream URL resolution (bypasses YouTube API and external ytube API)
     if is_direct_stream_url(video_id):
-        logger.info(f"[youtube.get_video_details] Handling direct stream URL: '{video_id[:80]}...'")
+        logger.info(f"[DIRECT URL] Handling direct stream URL: {video_id}")
+        print(f"[DIRECT URL] Handling direct stream URL: {video_id}", flush=True)
 
         # SSRF gate. Anyone in the group can pass a URL here, and everything
         # below fetches it -- so reject loopback / private / link-local targets
@@ -1436,6 +1467,8 @@ async def get_video_details(video_id):
         if not stream_url or stream_url == 'N/A':
             logger.error(f"[youtube.get_video_details] yt-dlp returned no playable format for '{video_id}'")
             return {'error': 'No playable audio/video stream found for that track.'}
+        logger.info(f"[DIRECT URL] yt-dlp resolved stream URL: {stream_url}")
+        print(f"[DIRECT URL] yt-dlp resolved stream URL: {stream_url}", flush=True)
 
         # Prepare details dictionary
         details = {
@@ -1617,6 +1650,8 @@ async def get_related_suggestions(argument: str, limit: int = 5, exclude_ids: se
         try:
             http = get_http_client()
             url = f"https://music.youtube.com/youtubei/v1/next?key={INNERTUBE_KEY}"
+            logger.info(f"[API CALL] YouTube Music Radio API -> {url} (videoId={vid})")
+            print(f"[API CALL] YouTube Music Radio API -> {url} (videoId={vid})", flush=True)
             body = {
                 "context": {"client": INNERTUBE_CLIENT_REMIX},
                 "videoId": vid,

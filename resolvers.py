@@ -4,10 +4,13 @@ Supports Apple Music, Amazon Music (Odesli API), JioSaavn, SoundCloud, and plain
 """
 import asyncio
 import html
+import logging
 import re
 import urllib.parse
 from html.parser import HTMLParser
 import aiohttp
+
+logger = logging.getLogger(__name__)
 
 
 # ── Custom Exceptions ─────────────────────────────────────────────────────────
@@ -233,6 +236,8 @@ async def resolve_apple_music(url: str, session: aiohttp.ClientSession = None) -
         session = aiohttp.ClientSession()
         close_session = True
 
+    logger.info(f"[API CALL] Apple Music request: {url}")
+    print(f"[API CALL] Apple Music request: {url}", flush=True)
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
             if resp.status in (404, 429):
@@ -309,6 +314,8 @@ async def resolve_amazon_music(url: str, session: aiohttp.ClientSession = None) 
         session = aiohttp.ClientSession()
         close_session = True
 
+    logger.info(f"[API CALL] Amazon Music / Odesli API: {odesli_api_url}")
+    print(f"[API CALL] Amazon Music / Odesli API: {odesli_api_url}", flush=True)
     try:
         async with session.get(odesli_api_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
             if resp.status in (404, 429):
@@ -419,6 +426,8 @@ async def resolve_jiosaavn(url: str, session: aiohttp.ClientSession = None) -> d
         session = aiohttp.ClientSession()
         close_session = True
 
+    logger.info(f"[API CALL] JioSaavn API: {api_url}")
+    print(f"[API CALL] JioSaavn API: {api_url}", flush=True)
     try:
         async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
             if resp.status in (404, 429):
@@ -435,6 +444,9 @@ async def resolve_jiosaavn(url: str, session: aiohttp.ClientSession = None) -> d
             await session.close()
 
     parsed = parse_jiosaavn_json(json_data)
+    if parsed.get("stream_url"):
+        logger.info(f"[DIRECT URL] JioSaavn stream URL: {parsed['stream_url']}")
+        print(f"[DIRECT URL] JioSaavn stream URL: {parsed['stream_url']}", flush=True)
 
     return {
         "provider": "jiosaavn",

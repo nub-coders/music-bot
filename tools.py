@@ -22,9 +22,6 @@ from pymediainfo import MediaInfo
 
 from config import *
 from youtube import extract_video_id, get_stream, get_video_stream, get_related_suggestions, handle_youtube, evict_stream_cache
-from utils.pytgcalls_patch import apply_pytgcalls_patch
-
-apply_pytgcalls_patch()
 from database import (
     user_sessions, db_task, collection,
     get_chat_assistant as db_get_chat_assistant,
@@ -53,12 +50,19 @@ async def get_stream_url(youtube_url: str, mode: str = "audio"):
     """
     youtube_pattern = r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
     if not re.match(youtube_pattern, youtube_url):
-        logger.info(f"Not a YouTube URL, returning as-is: {youtube_url[:50]}...")
+        logger.info(f"[DIRECT URL] Not a YouTube URL, returning as-is: {youtube_url}")
+        print(f"[DIRECT URL] Non-YouTube direct stream URL: {youtube_url}", flush=True)
         return youtube_url
 
     if mode == "video":
-        return await get_video_stream(youtube_url)
-    return await get_stream(youtube_url)
+        res = await get_video_stream(youtube_url)
+    else:
+        res = await get_stream(youtube_url)
+
+    if res:
+        logger.info(f"[DIRECT URL] Resolved {mode} stream URL: {res}")
+        print(f"[DIRECT URL] Resolved {mode} stream URL: {res}", flush=True)
+    return res
 
 
 from state import state  # state.queues / playing / played / active now live on this store
@@ -867,20 +871,23 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
             logger.debug(f"[join_call] chat={chat_id} title='{title}' mode={mode} position={position} thumb={'set' if thumb else 'None'}")
         if stream_url:
             stream_source = stream_url
-            logger.info(f"[join_call] Using provided stream URL: {stream_source[:100]}... (len={len(stream_source)})")
+            logger.info(f"[DIRECT URL] Using provided stream URL: {stream_source}")
+            print(f"[DIRECT URL] Using provided stream URL: {stream_source}", flush=True)
         elif youtube_link:
             logger.info(f"[join_call] Extracting stream URL from YouTube link: {youtube_link} (mode={mode})")
+            print(f"[PLAY] Extracting stream URL from YouTube link: {youtube_link} (mode={mode})", flush=True)
             stream_source = await get_stream_url(youtube_link, mode=mode)
             if not stream_source:
                 logger.warning("[join_call] Failed to extract stream URL, falling back to youtube_link")
                 stream_source = youtube_link
             else:
-                logger.info(f"[join_call] Successfully extracted stream URL: {stream_source[:100]}... (len={len(stream_source)})")
+                logger.info(f"[DIRECT URL] Successfully extracted stream URL: {stream_source}")
+                print(f"[DIRECT URL] Successfully extracted stream URL: {stream_source}", flush=True)
         else:
             logger.warning("[join_call] No stream_url or youtube_link provided")
             stream_source = None
 
-        logger.debug(f"[join_call] Final stream source resolved: {stream_source[:120]}..." if stream_source else "[join_call] Final stream source resolved: None")
+        logger.debug(f"[join_call] Final stream source resolved: {stream_source}" if stream_source else "[join_call] Final stream source resolved: None")
         if not stream_source:
             logger.error(f"[join_call] No stream source provided (neither stream_url nor youtube_link) for chat {chat_id}")
             if "bot" in clients and clients["bot"]:
@@ -900,7 +907,8 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
         if not call_py:
             call_py = clients.get("call_py")
 
-        logger.info(f"[join_call] Attempting to play: {title} via Assistant {ast_num} from {stream_source[:100]}... in chat {chat_id}")
+        logger.info(f"[PLAYING DIRECT URL] Attempting to play: {title} via Assistant {ast_num} from {stream_source} in chat {chat_id}")
+        print(f"[PLAYING DIRECT URL] Assistant {ast_num} -> {stream_source}", flush=True)
         logger.debug(f"[join_call] Calling call_py.play (Assistant {ast_num}); audio_flags={audio_flags}")
 
         _jc_t0 = time.perf_counter()
@@ -955,13 +963,14 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                     except Exception as create_err:
                         logger.debug(f"[join_call] Auto-starting voice chat failed in {chat_id}: {create_err}")
             elif is_timeout_err and youtube_link:
-                logger.warning(f"[join_call] Playback stream timed out for {youtube_link[:60]}...; evicting cache and re-extracting fresh stream URL")
+                logger.warning(f"[join_call] Playback stream timed out for {youtube_link}; evicting cache and re-extracting fresh stream URL")
                 evict_stream_cache(youtube_link, mode=mode)
                 try:
                     fresh_stream = await get_stream_url(youtube_link, mode=mode)
                     if fresh_stream and fresh_stream != stream_source:
                         stream_source = fresh_stream
-                        logger.info(f"[join_call] Retrying play with fresh stream URL for chat {chat_id}")
+                        logger.info(f"[RETRY PLAYING DIRECT URL] Retrying play with fresh stream URL for chat {chat_id}: {stream_source}")
+                        print(f"[RETRY PLAYING DIRECT URL] Assistant {ast_num} retrying -> {stream_source}", flush=True)
                         await call_py.play(
                             chat_id,
                             MediaStream(

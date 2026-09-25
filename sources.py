@@ -51,6 +51,8 @@ def is_youtube_playlist(url: str) -> bool:
 
 
 def _extract_playlist_sync(url: str):
+    logger.info(f"[API CALL / EXTRACT] Extracting playlist: {url}")
+    print(f"[API CALL / EXTRACT] Extracting playlist: {url}", flush=True)
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -116,8 +118,11 @@ async def _spotify_token(http: httpx.AsyncClient) -> str:
         if _token["value"] and time.time() < _token["expires_at"]:
             return _token["value"]
         auth = base64.b64encode(f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}".encode()).decode()
+        token_url = "https://accounts.spotify.com/api/token"
+        logger.info(f"[API CALL] Spotify Token API -> {token_url}")
+        print(f"[API CALL] Spotify Token API -> {token_url}", flush=True)
         r = await http.post(
-            "https://accounts.spotify.com/api/token",
+            token_url,
             data={"grant_type": "client_credentials"},
             headers={"Authorization": f"Basic {auth}"},
         )
@@ -147,7 +152,10 @@ async def _resolve_spotify(url: str):
         headers = {"Authorization": f"Bearer {token}"}
 
         if kind == "track":
-            r = await http.get(f"https://api.spotify.com/v1/tracks/{sid}", headers=headers)
+            track_url = f"https://api.spotify.com/v1/tracks/{sid}"
+            logger.info(f"[API CALL] Spotify API Track -> {track_url}")
+            print(f"[API CALL] Spotify API Track -> {track_url}", flush=True)
+            r = await http.get(track_url, headers=headers)
             r.raise_for_status()
             q = _track_query(r.json())
             return [q] if q else []
@@ -162,6 +170,8 @@ async def _resolve_spotify(url: str):
 
         out, next_url, params = [], base, {"limit": 50}
         while next_url and len(out) < MAX_PLAYLIST_ITEMS:
+            logger.info(f"[API CALL] Spotify API {kind} -> {next_url}")
+            print(f"[API CALL] Spotify API {kind} -> {next_url}", flush=True)
             r = await http.get(next_url, headers=headers, params=params)
             r.raise_for_status()
             page = r.json()

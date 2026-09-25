@@ -193,6 +193,8 @@ async def seek_handler_func(client, message):
                 return
 
             ffmpeg_params = f"-ss {to_seek} -to {duration_str}" if duration_seconds > 0 else f"-ss {to_seek}"
+            logger.info(f"[SEEK PLAYING DIRECT URL] Seeking in chat {chat_id}: {stream_url}")
+            print(f"[SEEK PLAYING DIRECT URL] Seeking in chat {chat_id}: {stream_url}", flush=True)
             try:
                 await active_cp.play(
                     chat_id,

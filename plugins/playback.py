@@ -5,6 +5,7 @@ import datetime as _dt
 
 from plugins._common import *  # noqa: F401,F403
 from sources import resolve_sources
+from youtube import is_direct_stream_url
 
 
 def _bg(coro):
@@ -195,6 +196,13 @@ async def play_handler_func(client, message):
     has_media = bool(message.reply_to_message and message.reply_to_message.media)
     input_parts = (message.text or message.caption or "").split(maxsplit=1)
     raw_query = input_parts[1].strip() if len(input_parts) > 1 else ""
+
+    if raw_query:
+        logger.info(f"[PLAY COMMAND] Received query/URL: {raw_query}")
+        print(f"[PLAY COMMAND] Received query/URL: {raw_query}", flush=True)
+        if is_direct_stream_url(raw_query):
+            logger.info(f"[DIRECT URL] User input is a direct stream URL: {raw_query}")
+            print(f"[DIRECT URL] User input is a direct stream URL: {raw_query}", flush=True)
 
     if not has_media and not raw_query:
         await rich_reply(
