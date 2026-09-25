@@ -651,17 +651,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         return cached
     logger.info("[AUDIO] No cache, extracting fresh stream...")
 
-    # Fast Path 1: Innertube direct resolution
-    innertube_data = await resolve_innertube(url, mode="audio")
-    if innertube_data and innertube_data.get("stream_url"):
-        stream = innertube_data["stream_url"]
-        logger.info(f"[AUDIO] ✅ Innertube success — {stream}")
-        print(f"[DIRECT URL] Audio stream URL (Innertube): {stream}", flush=True)
-        _mem_cache_set(("audio", url), stream)
-        await _write_cache(url, stream, prefix="audio_")
-        return stream
-
-    # Fast Path 2: ytube API (/info) if configured and breaker is closed
+    # Fast Path 1: ytube API (/info) if configured and breaker is closed
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             api_url = f"{BASE_URL}/info?q={url}"
@@ -686,6 +676,16 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
         except Exception as e:
             logger.warning(f"[AUDIO] ytube API extraction failed: {e}")
             _api_record_failure()
+
+    # Fast Path 2: Innertube direct resolution
+    innertube_data = await resolve_innertube(url, mode="audio")
+    if innertube_data and innertube_data.get("stream_url"):
+        stream = innertube_data["stream_url"]
+        logger.info(f"[AUDIO] ✅ Innertube success — {stream}")
+        print(f"[DIRECT URL] Audio stream URL (Innertube): {stream}", flush=True)
+        _mem_cache_set(("audio", url), stream)
+        await _write_cache(url, stream, prefix="audio_")
+        return stream
 
     logger.warning("[AUDIO] Innertube & API extraction returned None, falling back to yt-dlp...")
     stream = await _run_yt_dlp(
@@ -714,17 +714,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         return cached
     logger.info("[VIDEO] No cache, extracting fresh stream...")
 
-    # Fast Path 1: Innertube direct resolution (muxed / video stream)
-    innertube_data = await resolve_innertube(url, mode="video")
-    if innertube_data and innertube_data.get("stream_url"):
-        stream = innertube_data["stream_url"]
-        logger.info(f"[VIDEO] ✅ Innertube success — {stream}")
-        print(f"[DIRECT URL] Video stream URL (Innertube): {stream}", flush=True)
-        _mem_cache_set(("video", url), stream)
-        await _write_cache(url, stream, prefix="video_")
-        return stream
-
-    # Fast Path 2: ytube API (/info) if configured and breaker is closed
+    # Fast Path 1: ytube API (/info) if configured and breaker is closed
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             api_url = f"{BASE_URL}/info?q={url}&mode=video"
@@ -749,6 +739,16 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
         except Exception as e:
             logger.warning(f"[VIDEO] ytube API video extraction failed: {e}")
             _api_record_failure()
+
+    # Fast Path 2: Innertube direct resolution (muxed / video stream)
+    innertube_data = await resolve_innertube(url, mode="video")
+    if innertube_data and innertube_data.get("stream_url"):
+        stream = innertube_data["stream_url"]
+        logger.info(f"[VIDEO] ✅ Innertube success — {stream}")
+        print(f"[DIRECT URL] Video stream URL (Innertube): {stream}", flush=True)
+        _mem_cache_set(("video", url), stream)
+        await _write_cache(url, stream, prefix="video_")
+        return stream
 
     logger.warning("[VIDEO] Innertube & API extraction returned None, falling back to yt-dlp...")
     stream = await _run_yt_dlp(
@@ -818,36 +818,20 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
             )
         return (None,) * 9
 
-    # Primary: Fast Innertube direct resolution
-    try:
-        logger.info(f"[API CALL] Resolving via Innertube for query: '{query}' (mode={mode})")
-        print(f"[API CALL] Resolving via Innertube for query: '{query}' (mode={mode})", flush=True)
-        innertube_res = await resolve_innertube(query, mode=mode)
-        if innertube_res and innertube_res.get("stream_url"):
-            logger.info(f"[youtube.get_video_info] Innertube direct success: title='{innertube_res.get('title')}'")
-            return (
-                innertube_res.get('title', 'N/A'),
-                innertube_res.get('video_id', 'N/A'),
-                innertube_res.get('duration', '0'),
-                innertube_res.get('youtube_link', 'N/A'),
-                innertube_res.get('channel_name', 'N/A'),
-                innertube_res.get('views', '0'),
-                innertube_res.get('stream_url', 'N/A'),
-                innertube_res.get('thumbnail', 'N/A'),
-                'innertube',
-            )
-    except Exception as e:
-        logger.warning(f"[youtube.get_video_info] Innertube direct resolution failed: {e}")
-
-    # Fallback: use the ytube /info API endpoint (skipped while the breaker is open)
+    # Primary: ytube /info API endpoint (api > innertube > ytdlp)
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
             api_url = f"{BASE_URL}/info?q={query}"
+            if mode == "video":
+                api_url += "&mode=video"
             logger.info(f"[API CALL] ytube /info API -> {api_url}")
             print(f"[API CALL] ytube /info API -> {api_url}", flush=True)
+            params = {"q": query}
+            if mode == "video":
+                params["mode"] = "video"
             resp = await get_http_client().get(
                 f"{BASE_URL}/info",
-                params={"q": query},
+                params=params,
                 headers={"Authorization": f"Bearer {API_TOKEN}"},
             )
             if resp.status_code == 200:
@@ -868,11 +852,32 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
                         data.get('thumbnail', 'N/A'),
                         'ytube',
                     )
-            logger.warning(f"[youtube.get_video_info] ytube API returned status {resp.status_code}, falling back")
+            logger.warning(f"[youtube.get_video_info] ytube API returned status {resp.status_code}, falling back to Innertube")
             _api_record_failure()
         except Exception as e:
-            logger.warning(f"[youtube.get_video_info] ytube API failed: {e}, falling back")
+            logger.warning(f"[youtube.get_video_info] ytube API failed: {e}, falling back to Innertube")
             _api_record_failure()
+
+    # Secondary: Fast Innertube direct resolution
+    try:
+        logger.info(f"[API CALL] Resolving via Innertube for query: '{query}' (mode={mode})")
+        print(f"[API CALL] Resolving via Innertube for query: '{query}' (mode={mode})", flush=True)
+        innertube_res = await resolve_innertube(query, mode=mode)
+        if innertube_res and innertube_res.get("stream_url"):
+            logger.info(f"[youtube.get_video_info] Innertube direct success: title='{innertube_res.get('title')}'")
+            return (
+                innertube_res.get('title', 'N/A'),
+                innertube_res.get('video_id', 'N/A'),
+                innertube_res.get('duration', '0'),
+                innertube_res.get('youtube_link', 'N/A'),
+                innertube_res.get('channel_name', 'N/A'),
+                innertube_res.get('views', '0'),
+                innertube_res.get('stream_url', 'N/A'),
+                innertube_res.get('thumbnail', 'N/A'),
+                'innertube',
+            )
+    except Exception as e:
+        logger.warning(f"[youtube.get_video_info] Innertube direct resolution failed: {e}")
 
     # Fallback: local YouTube Data API search + stream extraction
     try:
