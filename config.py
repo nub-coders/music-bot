@@ -127,7 +127,10 @@ YOUTUBE_API_KEYS = os.getenv("YOUTUBE_API_KEYS", "")
 # External ytube proxy API (optional)
 YTUBE_API_TOKEN   = os.getenv("YTUBE_API_TOKEN") or os.getenv("YT_API_TOKEN", None)
 YT_API_TOKEN      = YTUBE_API_TOKEN
-YTUBE_API_BASE_URL = os.getenv("YTUBE_API_BASE_URL") or os.getenv("NUB_YT_API_BASE_URL", "https://api.nubcoders.com")
+_raw_base = (os.getenv("YTUBE_API_BASE_URL") or os.getenv("NUB_YT_API_BASE_URL") or "https://api.nubcoders.com").strip()
+if _raw_base and not _raw_base.startswith(("http://", "https://")):
+    _raw_base = f"https://{_raw_base}"
+YTUBE_API_BASE_URL = _raw_base.rstrip("/") if _raw_base else "https://api.nubcoders.com"
 NUB_YT_API_BASE_URL = YTUBE_API_BASE_URL
 
 # Optional path to a Netscape-format cookies.txt for yt-dlp (age-restricted / region-locked
