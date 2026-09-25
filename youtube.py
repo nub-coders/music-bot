@@ -154,10 +154,12 @@ from config import (
 from url_guard import check_url as check_stream_url
 
 if BASE_URL:
-    BASE_URL = BASE_URL.strip()
-    if BASE_URL and not BASE_URL.startswith(("http://", "https://")):
-        BASE_URL = f"https://{BASE_URL}"
-    BASE_URL = BASE_URL.rstrip("/")
+    _b_clean = BASE_URL.encode("ascii", "ignore").decode().strip().strip("'\"`")
+    _m = re.search(r'(https?://[^\s\'"<>]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?::\d+)?[^\s\'"<>]*)', _b_clean)
+    _b_dom = _m.group(1).strip() if _m else _b_clean.strip()
+    if _b_dom and not _b_dom.startswith(("http://", "https://")):
+        _b_dom = f"https://{_b_dom}"
+    BASE_URL = _b_dom.rstrip("/")
 
 SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 DETAILS_URL = "https://www.googleapis.com/youtube/v3/videos"

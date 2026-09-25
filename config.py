@@ -124,13 +124,18 @@ DB_NAME   = os.getenv("DB_NAME", "musicbot")
 # Leave blank → yt-dlp only (no view counts / channel info from Data API)
 YOUTUBE_API_KEYS = os.getenv("YOUTUBE_API_KEYS", "")
 
+import re as _re
+
 # External ytube proxy API (optional)
 YTUBE_API_TOKEN   = os.getenv("YTUBE_API_TOKEN") or os.getenv("YT_API_TOKEN", None)
 YT_API_TOKEN      = YTUBE_API_TOKEN
-_raw_base = (os.getenv("YTUBE_API_BASE_URL") or os.getenv("NUB_YT_API_BASE_URL") or "https://api.nubcoders.com").strip()
-if _raw_base and not _raw_base.startswith(("http://", "https://")):
-    _raw_base = f"https://{_raw_base}"
-YTUBE_API_BASE_URL = _raw_base.rstrip("/") if _raw_base else "https://api.nubcoders.com"
+_raw_base = (os.getenv("YTUBE_API_BASE_URL") or os.getenv("NUB_YT_API_BASE_URL") or "https://api.nubcoders.com")
+_raw_cleaned = _raw_base.encode("ascii", "ignore").decode().strip().strip("'\"`")
+_m = _re.search(r'(https?://[^\s\'"<>]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?::\d+)?[^\s\'"<>]*)', _raw_cleaned)
+_domain = _m.group(1).strip() if _m else _raw_cleaned.strip()
+if _domain and not _domain.startswith(("http://", "https://")):
+    _domain = f"https://{_domain}"
+YTUBE_API_BASE_URL = _domain.rstrip("/") if _domain else "https://api.nubcoders.com"
 NUB_YT_API_BASE_URL = YTUBE_API_BASE_URL
 
 # Optional path to a Netscape-format cookies.txt for yt-dlp (age-restricted / region-locked
