@@ -35,7 +35,13 @@ import logging
 import re
 
 from pyrogram.enums import ParseMode
-from pyrogram.types import EphemeralMessageParameters, InputRichMessage, ReplyParameters
+from pyrogram.types import (
+    EphemeralMessageParameters,
+    InputRichBlock,
+    InputRichMessage,
+    ReplyParameters,
+    RichText,
+)
 
 logger = logging.getLogger("pyrogram")
 

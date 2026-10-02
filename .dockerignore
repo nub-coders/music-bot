@@ -1,0 +1,33 @@
+# Credentials and local identity/state must be supplied at runtime.
+**/.env
+**/.env.*
+!**/.env.example
+**/cookies*.txt
+**/*cookies*.json
+**/*.session
+**/*.session-*
+**/admin.txt
+user_*/
+.mozilla/
+
+# Repository metadata, local environments, and generated output.
+.git/
+.github/
+.claude/
+.venv/
+venv/
+env/
+**/__pycache__/
+**/*.py[cod]
+**/*.log
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.coverage*
+htmlcov/
+cache/
+scratch/
+downloads/
+build/
+dist/
+**/*.egg-info/

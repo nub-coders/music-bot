@@ -9,11 +9,9 @@ The check resolves the hostname and validates *every* address the resolver
 returns, so a public name deliberately pointed at 127.0.0.1 is rejected too.
 Only globally-routable unicast addresses are allowed.
 
-ponytail: resolution here and the later connect are separate lookups, so a
-determined attacker with control of a low-TTL DNS record can still win a rebind
-race. Closing that needs pinning the validated IP into the connection (a custom
-httpx transport / yt-dlp --source-address), which is a bigger change; this blocks
-the entire practical attack surface of someone pasting a metadata URL into chat.
+Network consumers must use public_addresses at connection time and connect to
+one of the returned IP literals. A preflight check alone does not prevent DNS
+rebinding or redirects to a private address.
 """
 import asyncio
 import ipaddress
@@ -72,19 +70,22 @@ def check_ip(value: str) -> str | None:
         return "unparseable address"
 
 
-def check_url_shape(url: str) -> str | None:
+def check_url_shape(url: str, *, allow_private: bool = False) -> str | None:
     """Scheme/host validation that needs no DNS. Returns a reason or None."""
     if not isinstance(url, str) or not url.strip():
         return "empty URL"
     try:
         parsed = urlparse(url)
-    except Exception:
+        port = parsed.port
+        host = (parsed.hostname or "").strip().lower().rstrip(".")
+    except ValueError:
         return "unparseable URL"
 
     if parsed.scheme.lower() not in ALLOWED_SCHEMES:
         return f"unsupported scheme '{parsed.scheme}'"
 
-    host = (parsed.hostname or "").strip().lower().rstrip(".")
+    if port is not None and not 0 < port <= 65535:
+        return "invalid port"
     if not host:
         return "URL has no host"
     if host in BLOCKED_HOSTNAMES:
@@ -97,7 +98,7 @@ def check_url_shape(url: str) -> str | None:
         ipaddress.ip_address(host)
     except ValueError:
         return None
-    return check_ip(host)
+    return None if allow_private else check_ip(host)
 
 
 async def resolve_all(host: str, port: int) -> list[str]:
@@ -117,13 +118,7 @@ async def check_url(url: str, *, allow_private: bool = False) -> str | None:
     intentionally stream from a LAN media server. Scheme and hostname blocking
     still apply.
     """
-    shape_problem = check_url_shape(url)
-    if allow_private:
-        # Still refuse non-HTTP schemes and metadata hostnames; only the address
-        # ranges are the operator's business.
-        if shape_problem and not shape_problem.endswith("address"):
-            return shape_problem
-        return None
+    shape_problem = check_url_shape(url, allow_private=allow_private)
     if shape_problem:
         return shape_problem
 
@@ -140,20 +135,32 @@ async def check_url(url: str, *, allow_private: bool = False) -> str | None:
 
     port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
     try:
-        addresses = await resolve_all(host, port)
+        await public_addresses(host, port, allow_private=allow_private)
     except asyncio.TimeoutError:
         return f"DNS lookup for '{host}' timed out"
     except Exception as e:
         return f"DNS lookup for '{host}' failed: {e}"
 
-    if not addresses:
-        return f"'{host}' did not resolve"
+    return None
 
+
+async def public_addresses(host: str, port: int, *, allow_private: bool = False) -> list[str]:
+    """Resolve once, reject mixed public/private answers, return IPs to connect to."""
+    literal_host = f"[{host}]" if ":" in host else host
+    reason = check_url_shape(f"http://{literal_host}:{port}/", allow_private=allow_private)
+    if reason:
+        raise ValueError(reason)
+    try:
+        addresses = [str(ipaddress.ip_address(host))]
+    except ValueError:
+        addresses = await resolve_all(host, port)
+    if not addresses:
+        raise ValueError(f"'{host}' did not resolve")
     for address in addresses:
         reason = check_ip(address)
-        if reason:
-            return f"'{host}' resolves to {address} ({reason})"
-    return None
+        if reason and not allow_private:
+            raise ValueError(f"'{host}' resolves to a {reason}")
+    return list(dict.fromkeys(addresses))
 
 
 async def is_url_allowed(url: str, *, allow_private: bool = False) -> bool:

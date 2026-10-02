@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 import logging
+from media_guard import get_media_proxy
 logger = logging.getLogger(__name__)
 
 _session = None
@@ -559,7 +560,7 @@ async def get_thumb(title, duration, thumbnail, channel=None, views=None, videoi
             image_path = "thumbnail.png"
             session = _get_session()
             try:
-                async with session.get(thumbnail) as resp:
+                async with session.get(thumbnail, proxy=await get_media_proxy()) as resp:
                     if resp.status == 200:
                         os.makedirs("cache", exist_ok=True)
                         # random_id is a deterministic hash (so the rendered card can be

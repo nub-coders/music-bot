@@ -430,6 +430,8 @@ async def playlist_confirm_delete_callback(client: Client, callback_query: Callb
 
 async def _play_playlist_tracks(client: Client, message_or_cb, playlist: dict, shuffle: bool = False, video_mode: bool = False, channel_mode: bool = False):
     """Core logic to queue and play all tracks from a playlist into the group's voice chat."""
+    if not await allow_play_request(client, message_or_cb):
+        return
     chat = message_or_cb.message.chat if isinstance(message_or_cb, CallbackQuery) else message_or_cb.chat
     by_user = message_or_cb.from_user
 

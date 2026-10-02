@@ -127,6 +127,8 @@ def get_http_client() -> httpx.AsyncClient:
             http2=use_h2,
             verify=verify,
             limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=90),
+            transport=PublicHTTPTransport(allow_private=ALLOW_PRIVATE_STREAM_URLS),
+            trust_env=False,
         )
     return _http_client
 
@@ -152,6 +154,7 @@ from config import (
     ALLOW_PRIVATE_STREAM_URLS,
 )
 from url_guard import check_url as check_stream_url
+from media_guard import PublicHTTPTransport, get_media_proxy
 
 if BASE_URL:
     _b_clean = BASE_URL.encode("ascii", "ignore").decode().strip().strip("'\"`")
@@ -253,7 +256,7 @@ async def youtube_search(query: str, limit: int = 1):
         "type": "video",
         "key": api_key,
     }
-    search_api_url = f"{SEARCH_URL}?q={query}&type=video&part=snippet&maxResults={limit}"
+    search_api_url = f"{SEARCH_URL}?q={query}&type=video&part=snippet&maxResults={limit}&key={api_key}"
     logger.info(f"[API CALL] YouTube Data API Search -> {search_api_url}")
     print(f"[API CALL] YouTube Data API Search -> {search_api_url}", flush=True)
     search_res = await client.get(SEARCH_URL, params=search_params)
@@ -269,7 +272,7 @@ async def youtube_search(query: str, limit: int = 1):
         "id": ",".join(video_ids),
         "key": api_key,
     }
-    details_api_url = f"{DETAILS_URL}?id={','.join(video_ids)}&part=contentDetails,statistics"
+    details_api_url = f"{DETAILS_URL}?id={','.join(video_ids)}&part=contentDetails,statistics&key={api_key}"
     logger.info(f"[API CALL] YouTube Data API Details -> {details_api_url}")
     print(f"[API CALL] YouTube Data API Details -> {details_api_url}", flush=True)
     detail_res = await client.get(DETAILS_URL, params=details_params)
@@ -402,6 +405,7 @@ async def _kill_process(process):
 async def _run_yt_dlp(url: str, format_selector: str, cookies: str | None):
     cmd = [
         "yt-dlp",
+        "--proxy", await get_media_proxy(),
         "--js-runtimes", "node",
         "--remote-components", "ejs:github",
         "-f", format_selector,
@@ -662,7 +666,7 @@ async def get_stream(url: str, cookies: str | None = None) -> str | None:
     # Fast Path 1: ytube API (/info) if configured and breaker is closed
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            api_url = f"{BASE_URL}/info?q={url}"
+            api_url = f"{BASE_URL}/info?q={url}&token={API_TOKEN}"
             logger.info(f"[API CALL] ytube audio API -> {api_url}")
             print(f"[API CALL] ytube audio API -> {api_url}", flush=True)
             resp = await get_http_client().get(
@@ -725,7 +729,7 @@ async def get_video_stream(url: str, cookies: str | None = None) -> str | None:
     # Fast Path 1: ytube API (/info) if configured and breaker is closed
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            api_url = f"{BASE_URL}/info?q={url}"
+            api_url = f"{BASE_URL}/info?q={url}&token={API_TOKEN}"
             logger.info(f"[API CALL] ytube video API -> {api_url}")
             print(f"[API CALL] ytube video API -> {api_url}", flush=True)
             resp = await get_http_client().get(
@@ -829,7 +833,7 @@ async def get_video_info(query: str, max_results: int = 1, mode: str = "audio") 
     # Primary: ytube /info API endpoint (api > innertube > ytdlp)
     if API_TOKEN and BASE_URL and not _api_breaker_open():
         try:
-            api_url = f"{BASE_URL}/info?q={query}"
+            api_url = f"{BASE_URL}/info?q={query}&token={API_TOKEN}"
             logger.info(f"[API CALL] ytube /info API -> {api_url}")
             print(f"[API CALL] ytube /info API -> {api_url}", flush=True)
             resp = await get_http_client().get(
@@ -1154,20 +1158,27 @@ async def _get_remote_file_size(url: str) -> int | None:
         return None
     try:
         http = get_http_client()
-        resp = await http.head(url, follow_redirects=True, timeout=5.0)
-        if resp.status_code == 200 and "content-length" in resp.headers:
-            val = resp.headers["content-length"]
-            if val.isdigit():
-                return int(val)
-        resp = await http.get(url, headers={"Range": "bytes=0-0"}, follow_redirects=True, timeout=5.0)
-        cr = resp.headers.get("content-range", "")
-        if "/" in cr:
-            total = cr.split("/")[-1]
-            if total.isdigit():
-                return int(total)
-        cl = resp.headers.get("content-length", "")
-        if cl.isdigit() and resp.status_code == 200:
-            return int(cl)
+        # Check redirects ourselves as well as at the connection layer. Never
+        # read the body: Range is advisory and a server may ignore it entirely.
+        for method in ("HEAD", "GET"):
+            target = url
+            for _ in range(10):
+                if await check_stream_url(target, allow_private=ALLOW_PRIVATE_STREAM_URLS):
+                    return None
+                headers = {"Range": "bytes=0-0"} if method == "GET" else {}
+                async with http.stream(method, target, headers=headers, follow_redirects=False, timeout=5.0) as resp:
+                    if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
+                        target = str(resp.url.join(resp.headers["location"]))
+                        continue
+                    cr = resp.headers.get("content-range", "")
+                    if resp.status_code == 206 and "/" in cr and cr.rsplit("/", 1)[1].isdigit():
+                        return int(cr.rsplit("/", 1)[1])
+                    cl = resp.headers.get("content-length", "")
+                    if resp.status_code == 200 and cl.isdigit():
+                        return int(cl)
+                    break
+            else:
+                return None
     except Exception as e:
         logger.debug(f"[youtube._get_remote_file_size] Size check for {url[:60]}: {e}")
     return None
@@ -1198,7 +1209,7 @@ def _looks_playable_direct_url(url: str) -> bool:
     return path.endswith(_DIRECT_MEDIA_EXTS)
 
 
-def _extract_direct_info_sync(url: str) -> dict | None:
+def _extract_direct_info_sync(url: str, proxy: str) -> dict | None:
     """Blocking yt-dlp probe of a direct stream URL. Always run in a thread.
 
     yt-dlp's extract_info does network I/O and can execute JS challenges, so
@@ -1206,6 +1217,7 @@ def _extract_direct_info_sync(url: str) -> dict | None:
     heartbeat for its full duration.
     """
     ydl_opts = {
+        "proxy": proxy,
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
@@ -1228,7 +1240,7 @@ def _extract_direct_info_sync(url: str) -> dict | None:
 DIRECT_PROBE_TIMEOUT = 30
 
 
-def _ytdlp_search_first_sync(query: str) -> dict | None:
+def _ytdlp_search_first_sync(query: str, proxy: str) -> dict | None:
     """Blocking yt-dlp `ytsearch:` metadata lookup. Always run in a thread.
 
     Last-resort fallback when the InnerTube -> ytube API -> Data API chain has
@@ -1236,6 +1248,7 @@ def _ytdlp_search_first_sync(query: str) -> dict | None:
     network I/O and may execute JS challenges, so it must never run on the loop.
     """
     ydl_opts = {
+        "proxy": proxy,
         # Only gather metadata, no downloads
         "quiet": True,
         "no_warnings": True,
@@ -1303,7 +1316,7 @@ async def get_video_details(video_id):
         probe_failed = False
         try:
             info = await asyncio.wait_for(
-                asyncio.to_thread(_extract_direct_info_sync, video_id),
+                asyncio.to_thread(_extract_direct_info_sync, video_id, await get_media_proxy()),
                 timeout=DIRECT_PROBE_TIMEOUT,
             )
         except asyncio.TimeoutError:
@@ -1443,7 +1456,7 @@ async def get_video_details(video_id):
     try:
         logger.debug(f"[youtube.get_video_details] Using yt-dlp fallback for video_id='{video_id}'")
         video_info = await asyncio.wait_for(
-            asyncio.to_thread(_ytdlp_search_first_sync, video_id),
+                asyncio.to_thread(_ytdlp_search_first_sync, video_id, await get_media_proxy()),
             timeout=YTDLP_SEARCH_TIMEOUT,
         )
 
@@ -1520,6 +1533,13 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
         err_msg = str(details.get('error', 'Error'))
         logger.warning(f"[youtube.handle_youtube] Failed to get details: {err_msg}")
         return (err_msg, "00:00", None, None, None, None, None, None)
+
+    resolved_url = details.get("stream_url")
+    if resolved_url and resolved_url != "N/A":
+        reason = await check_stream_url(resolved_url, allow_private=ALLOW_PRIVATE_STREAM_URLS)
+        if reason:
+            logger.warning(f"[youtube.handle_youtube] Rejected resolved stream: {reason}")
+            return ("That media destination is not allowed.", "00:00", None, None, None, None, None, None)
 
     # Convert dict result to tuple format
     result_tuple = (
@@ -1701,4 +1721,3 @@ async def get_related_suggestions(argument: str, limit: int = 5, exclude_ids: se
         suggestions = [t for t in extracted if t.get("video_id") != vid]
 
     return suggestions[:limit]
-

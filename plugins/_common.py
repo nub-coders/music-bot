@@ -154,6 +154,16 @@ mime = magic.Magic(mime=True)
 
 # ── shared helpers ──
 
+async def allow_play_request(client, update):
+    """Apply the same user restrictions to commands and playlist callbacks."""
+    user = getattr(update, "from_user", None)
+    if not user or user.id in BLOCK:
+        return False
+    if not is_bot_owner(user.id) and user.id not in SUDO and not await allow_play(user.id):
+        await rich_reply(update, rich_note(Messages.RATE_LIMITED), ephemeral=True, client=client)
+        return False
+    return True
+
 def _chat_type_value(chat_type):
     return getattr(chat_type, "value", chat_type)
 def _is_admin_member_status(status):

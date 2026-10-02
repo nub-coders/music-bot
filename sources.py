@@ -27,6 +27,7 @@ import yt_dlp
 
 from youtube import format_duration
 from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, YT_COOKIES_FILE
+from media_guard import get_media_proxy
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +51,11 @@ def is_youtube_playlist(url: str) -> bool:
     return "v=" not in url or "/playlist" in url
 
 
-def _extract_playlist_sync(url: str):
+def _extract_playlist_sync(url: str, proxy: str):
     logger.info(f"[API CALL / EXTRACT] Extracting playlist: {url}")
     print(f"[API CALL / EXTRACT] Extracting playlist: {url}", flush=True)
     opts = {
+        "proxy": proxy,
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
@@ -89,7 +91,7 @@ async def resolve_sources(argument: str):
             logger.error(f"[sources] Spotify resolution failed, treating as single query: {e}")
     if is_youtube_playlist(argument):
         try:
-            items = await asyncio.to_thread(_extract_playlist_sync, argument)
+            items = await asyncio.to_thread(_extract_playlist_sync, argument, await get_media_proxy())
             if items:
                 logger.info(f"[sources] Expanded playlist into {len(items)} track(s)")
                 return items

@@ -390,9 +390,13 @@ async def main():
             await close_http_client()
         except Exception as e:
             logger.warning(f"Error closing youtube HTTP client: {e}")
+        try:
+            from media_guard import close_media_proxy
+            await close_media_proxy()
+        except Exception as e:
+            logger.warning(f"Error closing media proxy: {e}")
 
 # Run the main function
 if __name__ == "__main__":
     asyncio.run(main())
-
 

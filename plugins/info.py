@@ -29,6 +29,7 @@ from utils.rich_ui import (
     rich_kv_table, rich_note, rich_reply, rich_table,
 )
 from database import user_sessions, collection
+from plugins._common import BLOCK, is_authorized
 
 logger = logging.getLogger(__name__)
 
@@ -195,12 +196,21 @@ async def assistants_info_handler(client, message):
 
 
 # ── /changeassistant / /assistant ─────────────────────────────────────────────
+async def _can_change_assistant(client, update, chat_id):
+    user = getattr(update, "from_user", None)
+    if not user or user.id in BLOCK:
+        return False
+    return await is_authorized(client, chat_id, user.id, allow_auth_users=False)
+
+
 @Client.on_message(filters.command(["changeassistant", "changeast", "assistant"]))
 async def change_assistant_handler(client, message):
     if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
         return await rich_reply(message, rich_note(Messages.GROUP_ONLY), ephemeral=True, client=client)
 
     chat_id = message.chat.id
+    if not await _can_change_assistant(client, message, chat_id):
+        return await rich_reply(message, rich_note(Messages.ADMIN_RESTRICTED_CMD), ephemeral=True, client=client)
     current_num, userbot, call_py = await get_assistant(chat_id)
     cur_info = assistant_info.get(current_num, {})
     cur_name = cur_info.get("name") or (getattr(userbot.me, "first_name", f"Assistant {current_num}") if userbot else f"Assistant {current_num}")
@@ -216,12 +226,19 @@ async def change_assistant_handler(client, message):
 @Client.on_callback_query(filters.regex(r"^change_ast_(\d+)$"))
 async def callback_change_assistant(client, callback_query):
     chat_id = callback_query.message.chat.id
+    if not await _can_change_assistant(client, callback_query, chat_id):
+        return await callback_query.answer("Only admins can change the assistant.", show_alert=True)
     ast_idx = int(callback_query.matches[0].group(1))
 
     if ast_idx not in assistants:
         return await callback_query.answer("Assistant not found.", show_alert=True)
 
-    await set_assistant(chat_id, ast_idx)
+    # Use the playback lock to keep the idle check and assignment atomic with
+    # the next playback claim. Do not redirect controls away from a live call.
+    async with state.lock(chat_id):
+        if chat_id in state.active or chat_id in state.playing:
+            return await callback_query.answer("End playback before changing the assistant.", show_alert=True)
+        await set_assistant(chat_id, ast_idx)
     target_ast = assistants[ast_idx]
     info = assistant_info.get(ast_idx, {})
     name = info.get("name") or getattr(target_ast.me, "first_name", f"Assistant {ast_idx}")
@@ -381,4 +398,3 @@ async def lang_info_handler(client, message):
         + rich_note(f"{EmojiTag.INFO} <i>ᴜsᴇ</i> {rich_code('/setlang <code>')} <i>ᴛᴏ ᴄʜᴀɴɢᴇ (ᴀᴅᴍɪɴ ᴏɴʟʏ)</i>")
     )
     await rich_reply(message, text, client=client)
-
