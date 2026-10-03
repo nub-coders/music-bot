@@ -13,6 +13,8 @@ RUN curl -fsSL https://deno.land/install.sh | sh && \
 # Configure git with rebase true
 RUN git config --global pull.rebase true
 
+WORKDIR /app
+
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

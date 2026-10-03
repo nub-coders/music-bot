@@ -1,0 +1,24 @@
+services:
+  bot:
+    build: .
+    image: nub-music-bot:latest
+    container_name: nub-music-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ${HOME:-/root}/.mozilla/firefox:/root/.mozilla/firefox:ro
+      - ${HOME:-/root}/.config/mozilla/firefox:/root/.config/mozilla/firefox:ro
+      - ${HOME:-/root}/.var/app/org.mozilla.firefox/.mozilla/firefox:/root/.var/app/org.mozilla.firefox/.mozilla/firefox:ro
+      - ./cookies.txt:/app/cookies.txt
+    networks:
+      - web
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  web:
+    external: true
