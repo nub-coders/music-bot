@@ -259,15 +259,20 @@ async def user_client_start_handler(client, message):
        elif os.path.exists(logo_path_jpg):
            logo = logo_path_jpg
        else:
-           logo = await gvarstatus(client.me.id, "LOGO") or (await client.download_media(client.me.photo.big_file_id, logo_path_jpg) if client.me.photo else "music.jpg")
+           logo = await gvarstatus(client.me.id, "LOGO")
+           if isinstance(logo, str) and not safe_media_path(logo):
+               logo = None
+           if not logo:
+               logo = await client.download_media(client.me.photo.big_file_id, logo_path_jpg) if client.me.photo else "music.jpg"
 
        alive_logo = logo
        if type(logo) is bytes:
-           alive_logo = logo_path_jpg
-           with open(alive_logo, "wb") as fimage:
-               fimage.write(base64.b64decode(logo))
-           if 'video' in mime.from_file(alive_logo):
-               alive_logo = rename_file(alive_logo, logo_path_mp4)
+           if safe_media_path(logo_path_jpg):
+               with open(logo_path_jpg, "wb") as fimage:
+                   fimage.write(base64.b64decode(logo))
+               alive_logo = rename_file(logo_path_jpg, logo_path_mp4) if 'video' in mime.from_file(logo_path_jpg) else logo_path_jpg
+           else:
+               alive_logo = "music.jpg"
 
        greet_message = await gvarstatus(client.me.id, "WELCOME") or Messages.DEFAULT_START_MESSAGE
 

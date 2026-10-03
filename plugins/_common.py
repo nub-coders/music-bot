@@ -154,6 +154,26 @@ mime = magic.Magic(mime=True)
 
 # ── shared helpers ──
 
+MEDIA_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".mp4")
+
+
+def safe_media_path(path):
+    """True only for a media file path that stays inside the bot's working tree.
+
+    Gvar-stored values (LOGO etc.) are later used as filesystem paths, so a
+    tampered value must not be allowed to point outside the project directory.
+    """
+    if not isinstance(path, str) or not path.strip():
+        return False
+    try:
+        real = os.path.realpath(path)
+        root = os.path.realpath(os.getcwd())
+    except OSError:
+        return False
+    if os.path.commonpath([real, root]) != root:
+        return False
+    return real.lower().endswith(MEDIA_EXTENSIONS)
+
 async def allow_play_request(client, update):
     """Apply the same user restrictions to commands and playlist callbacks."""
     user = getattr(update, "from_user", None)

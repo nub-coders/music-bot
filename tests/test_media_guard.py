@@ -189,3 +189,20 @@ async def test_ffprobe_redirect_cannot_reach_private_origin(allow_localhost, mon
         await proxy.close()
         server.close()
         await server.wait_closed()
+
+
+def test_safe_media_path():
+    from plugins._common import safe_media_path
+
+    assert not safe_media_path(None)
+    assert not safe_media_path("")
+    assert not safe_media_path("   ")
+    assert not safe_media_path(123)
+    assert not safe_media_path("/etc/passwd")
+    assert not safe_media_path("../../secret.jpg")
+    assert not safe_media_path("config.py")
+    assert not safe_media_path("dangerous.sh")
+    assert safe_media_path("music.jpg")
+    assert safe_media_path("cache/sample.png")
+    assert safe_media_path("downloads/track.mp4")
+

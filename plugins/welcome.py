@@ -195,6 +195,8 @@ async def set_welcome_handler(client, message):
             else:
                 # Fallback to old methods
                 logo = await gvarstatus(sender_id, "LOGO")
+                if isinstance(logo, str) and not safe_media_path(logo):
+                    logo = None
                 if not logo and client.me.photo:
                     photos = await client.get_profile_photos("me")
                     if photos:
@@ -206,11 +208,12 @@ async def set_welcome_handler(client, message):
 
             alive_logo = logo
             if isinstance(logo, bytes):
-                alive_logo = logo_path_jpg
-                with open(alive_logo, "wb") as fimage:
-                    fimage.write(base64.b64decode(logo))
-                if 'video' in mime.from_file(alive_logo):
-                    alive_logo = rename_file(alive_logo, logo_path_mp4)
+                if safe_media_path(logo_path_jpg):
+                    with open(logo_path_jpg, "wb") as fimage:
+                        fimage.write(base64.b64decode(logo))
+                    alive_logo = rename_file(logo_path_jpg, logo_path_mp4) if 'video' in mime.from_file(logo_path_jpg) else logo_path_jpg
+                else:
+                    alive_logo = "music.jpg"
 
             user_mention = message.from_user.mention() if message.from_user else "user"
             raw_welcome = await gvarstatus(sender_id, "WELCOME") or Messages.DEFAULT_START_MESSAGE
