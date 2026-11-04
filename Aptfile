@@ -1,4 +1,5 @@
-ffmpeg
+# FFmpeg and ffprobe come from the dedicated buildpack in app.json.
+# APT extraction skips the setup needed by Ubuntu's FFmpeg shared libraries.
 ca-certificates
 libmediainfo0v5
 libmagic1
