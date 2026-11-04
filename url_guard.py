@@ -1,13 +1,8 @@
-"""SSRF guard for user-supplied stream URLs.
+"""HTTP(S) stream URL validation with optional public-only address checks.
 
-`/play <url>` lets any group member hand an arbitrary URL to yt-dlp and to the
-bot's HTTP client. Without a check that reaches cloud metadata endpoints
-(169.254.169.254, metadata.google.internal), loopback admin ports, and anything
-else on the host's private network -- from a Telegram group, by anyone.
-
-The check resolves the hostname and validates *every* address the resolver
-returns, so a public name deliberately pointed at 127.0.0.1 is rejected too.
-Only globally-routable unicast addresses are allowed.
+Playback passes allow_private=True so local and private-network media servers
+work automatically. Public-only consumers validate every resolved address and
+accept only globally-routable unicast addresses.
 
 Network consumers must use public_addresses at connection time and connect to
 one of the returned IP literals. A preflight check alone does not prevent DNS
@@ -88,10 +83,11 @@ def check_url_shape(url: str, *, allow_private: bool = False) -> str | None:
         return "invalid port"
     if not host:
         return "URL has no host"
-    if host in BLOCKED_HOSTNAMES:
-        return f"blocked hostname '{host}'"
-    if host.endswith((".localhost", ".internal", ".local")):
-        return f"blocked internal hostname '{host}'"
+    if not allow_private:
+        if host in BLOCKED_HOSTNAMES:
+            return f"blocked hostname '{host}'"
+        if host.endswith((".localhost", ".internal", ".local")):
+            return f"blocked internal hostname '{host}'"
 
     # A bare IP in the URL needs no resolution.
     try:
@@ -115,8 +111,8 @@ async def check_url(url: str, *, allow_private: bool = False) -> str | None:
     """Full check: shape, then DNS. Returns a rejection reason, or None if allowed.
 
     `allow_private=True` skips address validation entirely, for deployments that
-    intentionally stream from a LAN media server. Scheme and hostname blocking
-    still apply.
+    intentionally stream from a LAN media server. Scheme, host syntax, and port
+    validation still apply.
     """
     shape_problem = check_url_shape(url, allow_private=allow_private)
     if shape_problem:

@@ -1,9 +1,10 @@
 """Guard network connections made by HTTPX, yt-dlp, and FFmpeg.
 
-HTTPX uses a backend that connects to validated IP literals while retaining the
+HTTPX uses a backend that connects to resolved IP literals while retaining the
 original hostname for Host and TLS SNI. Subprocesses use a loopback HTTP proxy;
 every HTTP request and HTTPS CONNECT is checked independently, including those
-caused by redirects or playlist entries. No external proxy or credentials needed.
+caused by redirects or playlist entries. Playback supports public and private
+destinations automatically. No external proxy or credentials needed.
 """
 
 import asyncio
@@ -196,8 +197,7 @@ _proxy = None
 async def get_media_proxy():
     global _proxy
     if _proxy is None:
-        from config import ALLOW_PRIVATE_STREAM_URLS
-        _proxy = MediaProxy(allow_private=ALLOW_PRIVATE_STREAM_URLS)
+        _proxy = MediaProxy(allow_private=True)
     return await _proxy.start()
 
 

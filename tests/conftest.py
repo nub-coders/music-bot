@@ -47,7 +47,6 @@ for _name, _value in {
     "NUB_YT_API_BASE_URL": "https://provider.invalid",
     "COOKIES_BOOTSTRAP_URL": "https://provider.invalid",
     "COOKIES_REFRESH_HOURS": "0",
-    "ALLOW_PRIVATE_STREAM_URLS": "False",
 }.items():
     _isolation.setenv(_name, _value)
 

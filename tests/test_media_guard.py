@@ -45,17 +45,91 @@ async def test_mixed_dns_answers_are_rejected_before_connect(monkeypatch):
     connect.assert_not_awaited()
 
 
-async def test_size_probe_rejects_redirect_before_private_request(monkeypatch):
+async def test_size_probe_follows_private_redirect_without_opt_in(monkeypatch):
+    monkeypatch.setenv("ALLOW_PRIVATE_STREAM_URLS", "False")
     requests = []
 
     def respond(request):
         requests.append(str(request.url))
-        return httpx.Response(302, headers={"Location": "http://127.0.0.1:8080/private"})
+        if request.url.host == "8.8.8.8":
+            return httpx.Response(302, headers={"Location": "http://127.0.0.1:8080/private"})
+        return httpx.Response(200, headers={"Content-Length": "1234"})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         monkeypatch.setattr(youtube, "get_http_client", lambda: client)
-        assert await youtube._get_remote_file_size("http://8.8.8.8/audio.mp3") is None
-    assert requests == ["http://8.8.8.8/audio.mp3"]
+        assert await youtube._get_remote_file_size("http://8.8.8.8/audio.mp3") == 1234
+    assert requests == ["http://8.8.8.8/audio.mp3", "http://127.0.0.1:8080/private"]
+
+
+@pytest.mark.skipif(
+    not all(shutil.which(binary) for binary in ("ffprobe", "ffmpeg")),
+    reason="ffprobe and ffmpeg are required",
+)
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "media.internal"])
+@pytest.mark.parametrize("legacy_setting", [None, "False"])
+async def test_private_streams_work_without_environment_switch(allow_localhost, monkeypatch, host, legacy_setting):
+    from tools import make_media_stream
+
+    if legacy_setting is None:
+        monkeypatch.delenv("ALLOW_PRIVATE_STREAM_URLS", raising=False)
+    else:
+        monkeypatch.setenv("ALLOW_PRIVATE_STREAM_URLS", legacy_setting)
+    monkeypatch.setattr(media_guard, "_proxy", None)
+    monkeypatch.setattr(youtube, "_http_client", None)
+
+    resolve = url_guard.resolve_all
+
+    async def resolve_media_host(name, port):
+        if name == "media.internal":
+            return ["127.0.0.1"]
+        return await resolve(name, port)
+
+    monkeypatch.setattr(url_guard, "resolve_all", resolve_media_host)
+    audio = io.BytesIO()
+    with wave.open(audio, "wb") as wav:
+        wav.setparams((1, 2, 48000, 0, "NONE", "not compressed"))
+        # Keep enough input for FFmpeg's analysis before its EOF reconnects.
+        wav.writeframes(b"\x00\x10" * 480000)
+    body = audio.getvalue()
+    requests = []
+
+    async def origin(reader, writer):
+        try:
+            request = await reader.readuntil(b"\r\n\r\n")
+            requests.append(request.split(b"\r\n", 1)[0])
+            writer.write(f"HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode())
+            if not request.startswith(b"HEAD "):
+                writer.write(body)
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_server(origin, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    process = None
+    try:
+        url = f"http://{host}:{port}/song.wav"
+        assert await youtube._get_remote_file_size(url) == len(body)
+        media = await make_media_stream(url)
+        await asyncio.wait_for(media.check_stream(), 10)
+        assert media.microphone is not None
+        command = shlex.split(media.microphone.path)
+        command[-1:-1] = ["-t", "0.05"]
+        process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        pcm, error = await asyncio.wait_for(process.communicate(), 10)
+        assert process.returncode == 0, error.decode()
+        assert len(pcm) > 1000 and any(pcm)
+        assert any(request.startswith(b"HEAD ") for request in requests)
+        assert sum(request.startswith(b"GET ") for request in requests) >= 2
+    finally:
+        if process and process.returncode is None:
+            process.kill()
+            await process.wait()
+        await youtube.close_http_client()
+        await media_guard.close_media_proxy()
+        server.close()
+        await server.wait_closed()
 
 
 @pytest.mark.parametrize("response_headers,expected", [({}, None), ({"Content-Length": "9999999999"}, 9999999999)])

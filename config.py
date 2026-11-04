@@ -172,17 +172,6 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", None)
 # ── Media File Limits ─────────────────────────────────────────────────────────────
 MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB limit (2,147,483,648 bytes)
 
-# ── Direct stream URL safety (SSRF) ───────────────────────────────────────────────
-# /play accepts arbitrary http(s) URLs from any group member, which are then
-# fetched by yt-dlp and by the bot's HTTP client. By default those URLs must
-# resolve to globally-routable addresses, so nobody can make the bot read
-# 169.254.169.254 (cloud metadata), a loopback admin port, or the host's LAN.
-#
-# Set ALLOW_PRIVATE_STREAM_URLS=True only when the bot is deliberately pointed at
-# a private media server (Jellyfin/Plex on a LAN). It re-opens the metadata and
-# loopback surface to everyone who can type /play, so keep it off in public bots.
-ALLOW_PRIVATE_STREAM_URLS = os.getenv("ALLOW_PRIVATE_STREAM_URLS", "False").lower() in ("true", "1", "yes")
-
 # ── Working directory / startup ───────────────────────────────────────────────────
 ggg       = os.getcwd()
 StartTime = time.time()

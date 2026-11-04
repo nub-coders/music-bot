@@ -165,7 +165,7 @@ def get_http_client() -> httpx.AsyncClient:
             http2=use_h2,
             verify=verify,
             limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=90),
-            transport=PublicHTTPTransport(allow_private=ALLOW_PRIVATE_STREAM_URLS),
+            transport=PublicHTTPTransport(allow_private=True),
             trust_env=False,
         )
     return _http_client
@@ -189,7 +189,6 @@ from config import (
     COOKIES_BOOTSTRAP_URL,
     COOKIES_REFRESH_HOURS,
     MAX_FILE_SIZE_BYTES,
-    ALLOW_PRIVATE_STREAM_URLS,
 )
 from url_guard import check_url as check_stream_url
 from media_guard import PublicHTTPTransport, get_media_proxy
@@ -1224,7 +1223,7 @@ async def _get_remote_file_size(url: str) -> int | None:
         return None
     # Defence in depth: callers are expected to have gated the URL already, but
     # this function is the one that actually issues the request.
-    block_reason = await check_stream_url(url, allow_private=ALLOW_PRIVATE_STREAM_URLS)
+    block_reason = await check_stream_url(url, allow_private=True)
     if block_reason:
         logger.warning(f"[youtube._get_remote_file_size] Refused size check: {block_reason}")
         return None
@@ -1235,7 +1234,7 @@ async def _get_remote_file_size(url: str) -> int | None:
         for method in ("HEAD", "GET"):
             target = url
             for _ in range(10):
-                if await check_stream_url(target, allow_private=ALLOW_PRIVATE_STREAM_URLS):
+                if await check_stream_url(target, allow_private=True):
                     return None
                 headers = {"Range": "bytes=0-0"} if method == "GET" else {}
                 async with http.stream(method, target, headers=headers, follow_redirects=False, timeout=5.0) as resp:
@@ -1372,13 +1371,12 @@ async def get_video_details(video_id, *, mode="audio"):
     if is_direct_stream_url(video_id):
         logger.info(f"[DIRECT URL] Handling direct stream URL: {video_id}")
 
-        # SSRF gate. Anyone in the group can pass a URL here, and everything
-        # below fetches it -- so reject loopback / private / link-local targets
-        # (cloud metadata, LAN services, admin ports) before the first request.
-        block_reason = await check_stream_url(video_id, allow_private=ALLOW_PRIVATE_STREAM_URLS)
+        # Validate HTTP(S) destinations before fetching. Local and private
+        # media servers are supported automatically.
+        block_reason = await check_stream_url(video_id, allow_private=True)
         if block_reason:
             logger.warning(f"[youtube.get_video_details] Refused direct URL: {block_reason} — {video_id[:120]}")
-            return {"error": "That link points to a private or non-routable address, so it cannot be played."}
+            return {"error": "That stream URL is invalid or could not be resolved."}
 
         is_live = (
             ".m3u8" in video_id.lower()
@@ -1607,7 +1605,7 @@ async def handle_youtube(argument, track_id=None, chat_id=None, update_callback=
 
     resolved_url = details.get("stream_url")
     if resolved_url and resolved_url != "N/A":
-        reason = await check_stream_url(resolved_url, allow_private=ALLOW_PRIVATE_STREAM_URLS)
+        reason = await check_stream_url(resolved_url, allow_private=True)
         if reason:
             logger.warning(f"[youtube.handle_youtube] Rejected resolved stream: {reason}")
             return ("That media destination is not allowed.", "00:00", None, None, None, None, None, None)
