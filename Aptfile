@@ -1,6 +1,6 @@
 ffmpeg
 ca-certificates
-libmediainfo0
+libmediainfo0v5
 libmagic1
 libffi-dev
 libssl-dev

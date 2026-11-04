@@ -1,0 +1,9 @@
+{
+  "name": "nub-music-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node.js runtime for yt-dlp on Heroku",
+  "engines": {
+    "node": "24.x"
+  }
+}
