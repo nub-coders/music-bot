@@ -1,6 +1,16 @@
 """plugins/start.py — /start handler, welcome formatting, command menu, join logging."""
 
+from pyrogram.errors import MessageNotModified
+
 from plugins._common import *  # noqa: F401,F403
+
+
+async def _edit_menu_caption(message, **kwargs):
+    """A repeated click can request the page that Telegram already displays."""
+    try:
+        await message.edit_caption(**kwargs)
+    except MessageNotModified:
+        pass
 
 
 def _cmd_page(title: str, rows, open: bool = False) -> str:
@@ -497,7 +507,8 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
     # ---------- Routing ----------
     if data in ("all", "help"):
         await callback_query.answer()
-        await callback_query.message.edit_caption(
+        await _edit_menu_caption(
+            callback_query.message,
             caption=Messages.HELP_CATEGORY_SELECT,
             reply_markup=Buttons.help_markup(is_admin=is_admin, is_owner=is_owner, is_sudo=is_sudo),
         )
@@ -514,7 +525,8 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
 
         await callback_query.answer()
         # Caption-bound: the help menu lives on the start card's photo/video.
-        await callback_query.message.edit_caption(
+        await _edit_menu_caption(
+            callback_query.message,
             caption=rich_caption(category_pages[data]),
             reply_markup=Buttons.BACK,
         )
@@ -523,7 +535,8 @@ async def commands_callback(client: Client, callback_query: CallbackQuery):
         greet_message = await gvarstatus(client.me.id, "WELCOME") or Messages.DEFAULT_START_MESSAGE
         greet_message = await format_welcome_message(client, greet_message, user_id, callback_query.from_user.mention())
         buttons_markup = Buttons.start_markup(client.me.username, ow_id, OWNER_ID, GROUP)
-        await callback_query.message.edit_caption(
+        await _edit_menu_caption(
+            callback_query.message,
             caption=greet_message,
             reply_markup=buttons_markup,
         )
