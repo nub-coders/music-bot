@@ -47,10 +47,10 @@ async def get_stream_url(youtube_url: str, mode: str = "audio", skip_api: bool =
     """Direct stream URL for a YouTube link. Non-YouTube URLs are returned as-is.
 
     Delegates to youtube.get_stream / get_video_stream, the multi-tier extraction
-    pipeline: Innertube -> ytube API -> yt-dlp fallback (with mem+disk cache).
+    pipeline: ytube API -> Innertube -> yt-dlp fallback (with mem+disk cache).
 
     skip_api bypasses the ytube API resolver proxy (and its cache) so the caller
-    gets a direct Innertube/yt-dlp URL — used by the playback-timeout retry.
+    gets a direct Innertube/yt-dlp URL after a refreshed resolver stream fails.
     """
     youtube_pattern = r'^(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+'
     if not re.match(youtube_pattern, youtube_url):
@@ -1140,20 +1140,34 @@ async def join_call(message, title, youtube_link, chat, by, duration, mode, thum
                         except Exception as create_err:
                             logger.debug(f"[join_call] Auto-starting voice chat failed in {chat_id}: {create_err}")
                 elif is_timeout_err and youtube_link:
-                    logger.warning(f"[join_call] Playback stream timed out for {youtube_link}; re-extracting a direct stream URL (bypassing resolver proxy)")
-                    evict_stream_cache(youtube_link, mode=mode)
-                    try:
-                        # skip_api so we route around the (slow/unreachable) ytube resolver
-                        # proxy that just timed out and get a direct Innertube/yt-dlp URL.
-                        fresh_stream = await get_stream_url(youtube_link, mode=mode, skip_api=True)
-                        if fresh_stream:
+                    logger.warning(f"[join_call] Playback stream timed out for {youtube_link}; refreshing the resolver stream")
+                    # Resolver streams can fail transiently while direct YouTube
+                    # extraction requires a login. Refresh through the provider
+                    # once before trying the direct-only fallback.
+                    for skip_api in (False, True):
+                        if not state.is_current(chat_id, generation):
+                            return
+                        evict_stream_cache(youtube_link, mode=mode)
+                        try:
+                            fresh_stream = await get_stream_url(youtube_link, mode=mode, skip_api=skip_api)
+                            if not state.is_current(chat_id, generation):
+                                return
+                            if not fresh_stream:
+                                # The normal resolver already tries Innertube and
+                                # yt-dlp when the provider returns no usable URL.
+                                break
                             stream_source = fresh_stream
-                            logger.info(f"[RETRY PLAYING DIRECT URL] Retrying play with fresh stream URL for chat {chat_id}: {stream_source}")
+                            logger.info("[join_call] Retrying playback in chat %s via %s", chat_id,
+                                        "direct extraction" if skip_api else "refreshed resolver")
                             if not await play_current_stream():
                                 return
                             retried = True
-                    except Exception as retry_err:
-                        logger.warning(f"[join_call] Retry play with fresh stream URL failed in {chat_id}: {retry_err}")
+                            break
+                        except Exception as retry_err:
+                            if not state.is_current(chat_id, generation):
+                                return
+                            logger.warning("[join_call] Playback retry failed in chat %s (%s): %s",
+                                           chat_id, type(retry_err).__name__, retry_err)
                 elif is_timeout_err:
                     # No youtube_link to re-extract from (pure direct URL). A connection
                     # timeout is often transient — retry the same source once.

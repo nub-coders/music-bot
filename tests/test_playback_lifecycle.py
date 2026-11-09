@@ -1,10 +1,12 @@
 import asyncio
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 import tools
+import youtube
 from plugins import playback
 from state import SessionStore
 
@@ -202,6 +204,149 @@ async def test_retry_reconstructs_stream_with_egress_guards(session, fake_playba
     assert call.play.await_count == 2
     assert options.await_count == 2
     assert session.playing[chat.id]["stream_url"] == "https://media.example/audio"
+
+
+@pytest.fixture
+def youtube_retry(monkeypatch, tmp_path):
+    watch = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    stale = f"https://media.example/stale.mp4?expire={int(time.time()) + 3600}"
+    fresh = "https://provider.invalid/stream/resolver/fresh"
+    direct = "https://media.example/direct.mp4"
+    response = SimpleNamespace(status_code=200, json=lambda: {"stream_url": fresh})
+    provider = SimpleNamespace(get=AsyncMock(return_value=response))
+    local = AsyncMock(return_value=None)
+    ytdlp = AsyncMock(return_value=None)
+    monkeypatch.setattr(youtube, "API_TOKEN", "test-resolver-token")
+    monkeypatch.setattr(youtube, "BASE_URL", "https://provider.invalid")
+    monkeypatch.setattr(youtube, "_api_fail_count", 0)
+    monkeypatch.setattr(youtube, "_api_cooldown_until", 0)
+    monkeypatch.setattr(youtube, "_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(youtube, "_MEM_CACHE", {})
+    monkeypatch.setattr(youtube, "_STREAM_CACHE", {})
+    monkeypatch.setattr(youtube, "get_http_client", lambda: provider)
+    monkeypatch.setattr(youtube, "resolve_innertube", local)
+    monkeypatch.setattr(youtube, "_run_yt_dlp", ytdlp)
+    monkeypatch.setattr(tools, "make_media_stream", AsyncMock(side_effect=lambda source, mode: source))
+    for mode in ("audio", "video"):
+        youtube._mem_cache_set((mode, watch), stale)
+        youtube._write_cache_sync(watch, stale, prefix=f"{mode}_")
+    return SimpleNamespace(watch=watch, stale=stale, fresh=fresh, direct=direct,
+                           response=response, provider=provider, local=local, ytdlp=ytdlp)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["audio", "video"])
+async def test_timeout_refreshes_provider_before_blocked_youtube_fallback(session, fake_playback, youtube_retry, mode):
+    _bot, call = fake_playback
+    retry = youtube_retry
+    chat, message = chat_and_message(-1008020)
+    call.play.side_effect = [TimeoutError(), None]
+
+    await tools.join_call(message, "Song", retry.watch, chat, "User", "1:00", mode, None,
+                          stream_url=retry.stale, assistant_num=1)
+
+    assert [attempt.args[1] for attempt in call.play.await_args_list] == [retry.stale, retry.fresh]
+    assert session.playing[chat.id]["stream_url"] == retry.fresh
+    retry.provider.get.assert_awaited_once()
+    assert retry.provider.get.call_args.kwargs["params"] == {"q": retry.watch}
+    retry.local.assert_not_awaited()
+    retry.ytdlp.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["audio", "video"])
+async def test_timeout_keeps_direct_fallback_after_fresh_provider_stream_fails(session, fake_playback, youtube_retry, mode):
+    _bot, call = fake_playback
+    retry = youtube_retry
+    chat, message = chat_and_message(-1008021)
+    call.play.side_effect = [TimeoutError(), TimeoutError(), None]
+    retry.local.return_value = {"stream_url": retry.direct}
+
+    await tools.join_call(message, "Song", retry.watch, chat, "User", "1:00", mode, None,
+                          stream_url=retry.stale, assistant_num=1)
+
+    assert [attempt.args[1] for attempt in call.play.await_args_list] == [retry.stale, retry.fresh, retry.direct]
+    assert session.playing[chat.id]["stream_url"] == retry.direct
+    retry.provider.get.assert_awaited_once()
+    retry.local.assert_awaited_once_with(retry.watch, mode=mode)
+
+
+@pytest.mark.asyncio
+async def test_exhausted_stream_retries_clear_playback_once(session, fake_playback, youtube_retry):
+    _bot, call = fake_playback
+    retry = youtube_retry
+    chat, message = chat_and_message(-1008022)
+    call.play.side_effect = TimeoutError()
+    await session.activate(chat.id)
+
+    await tools.join_call(message, "Song", retry.watch, chat, "User", "1:00", "audio", None,
+                          stream_url=retry.stale, assistant_num=1)
+
+    assert [attempt.args[1] for attempt in call.play.await_args_list] == [retry.stale, retry.fresh]
+    assert chat.id not in session.active
+    assert chat.id not in session.playing
+    retry.provider.get.assert_awaited_once()
+    retry.ytdlp.assert_awaited_once()
+    tools.rich_send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("direct_available", [True, False])
+async def test_provider_outage_uses_direct_resolution_once(session, fake_playback, youtube_retry, direct_available):
+    _bot, call = fake_playback
+    retry = youtube_retry
+    chat, message = chat_and_message(-1008024)
+    retry.response.status_code = 503
+    retry.local.return_value = {"stream_url": retry.direct} if direct_available else None
+    call.play.side_effect = [TimeoutError(), None]
+
+    await tools.join_call(message, "Song", retry.watch, chat, "User", "1:00", "audio", None,
+                          stream_url=retry.stale, assistant_num=1)
+
+    retry.provider.get.assert_awaited_once()
+    retry.local.assert_awaited_once_with(retry.watch, mode="audio")
+    if direct_available:
+        assert session.playing[chat.id]["stream_url"] == retry.direct
+        retry.ytdlp.assert_not_awaited()
+    else:
+        call.play.assert_awaited_once_with(chat.id, retry.stale)
+        retry.ytdlp.assert_awaited_once()
+        assert chat.id not in session.active
+
+
+@pytest.mark.asyncio
+async def test_stop_during_provider_refresh_does_not_play_or_start_fallback(session, fake_playback, youtube_retry):
+    _bot, call = fake_playback
+    retry = youtube_retry
+    chat, message = chat_and_message(-1008023)
+    call.play.side_effect = TimeoutError()
+    refreshing = asyncio.Event()
+    release = asyncio.Event()
+
+    async def resolve(*args, **kwargs):
+        refreshing.set()
+        await release.wait()
+        return retry.response
+
+    retry.provider.get.side_effect = resolve
+    task = asyncio.create_task(tools.join_call(message, "Song", retry.watch, chat, "User", "1:00", "audio", None,
+                                               stream_url=retry.stale, assistant_num=1))
+    try:
+        await asyncio.wait_for(refreshing.wait(), 1)
+        await session.deactivate(chat.id)
+        release.set()
+        await asyncio.wait_for(task, 1)
+    finally:
+        release.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    call.play.assert_awaited_once_with(chat.id, retry.stale)
+    retry.local.assert_not_awaited()
+    retry.ytdlp.assert_not_awaited()
+    assert chat.id not in session.active
+    assert chat.id not in session.playing
 
 
 @pytest.mark.asyncio
